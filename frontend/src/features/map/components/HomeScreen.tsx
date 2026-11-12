@@ -43,7 +43,9 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   return (
     <div className="flex h-dvh flex-col">
       <div className="relative flex-1">
-        <KakaoMap center={position} markers={markers} level={nearby && radius > 1000 ? 6 : 4} className="absolute inset-0" />
+        <div className="absolute inset-0">
+          <KakaoMap center={position} markers={markers} level={nearby && radius > 1000 ? 6 : 4} className="size-full" />
+        </div>
 
         <div className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
           <HomeSearchBar />
