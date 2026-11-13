@@ -6,7 +6,7 @@ import { useConditionStore } from '../../condition/store'
 import { useCurrentPosition } from '../hooks/useCurrentPosition'
 import { MOCK_NEARBY } from '../mock'
 import HomeSearchBar from './HomeSearchBar'
-import KakaoMap from './KakaoMap'
+import KakaoMap, { type MapMarker } from './KakaoMap'
 import NearbySheet from './NearbySheet'
 
 interface HomeScreenProps {
@@ -16,23 +16,25 @@ interface HomeScreenProps {
 
 /**
  * 홈 / 바로 추천 (HOM-01) + 주변 장소 탐색 시트 (HOM-02). 지도·검색창·하단바는 고정.
- * 지도는 기본 좌표(서울시청)로 먼저 그리고, 현재 위치를 받으면 이동한다.
+ * 지도는 기본 좌표(서울시청)로 먼저 그리고, 현재 위치를 받으면 현재 위치 점을 표시하고
+ * 현재 위치와 장소 마커가 모두 보이게 범위를 맞춘다.
  */
 export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const navigate = useNavigate()
-  const { position, denied } = useCurrentPosition()
+  const { position, denied, loading } = useCurrentPosition()
   const setOrigin = useConditionStore((s) => s.setOrigin)
   const [radius, setRadius] = useState(1000)
 
-  // 주변 장소 마커 예시 (API 연결 전 목업)
-  const markers = useMemo(
-    () =>
-      MOCK_NEARBY.filter((p) => !nearby || p.distance <= radius).map((p) => ({
-        lat: position.lat + p.offset.lat,
-        lng: position.lng + p.offset.lng,
-      })),
-    [position, nearby, radius],
-  )
+  // 주변 장소 마커 예시 (API 연결 전 목업) + 현재 위치 점
+  const markers = useMemo<MapMarker[]>(() => {
+    const places: MapMarker[] = MOCK_NEARBY.filter((p) => !nearby || p.distance <= radius).map((p) => ({
+      lat: position.lat + p.offset.lat,
+      lng: position.lng + p.offset.lng,
+    }))
+    // 위치를 실제로 받았을 때만 현재 위치 점을 찍는다. 조회 중·거부·실패 시 position 은 서울시청 기본값이라 표시하지 않음
+    if (loading || denied) return places
+    return [...places, { lat: position.lat, lng: position.lng, variant: 'current' }]
+  }, [position, nearby, radius, loading, denied])
 
   // 지금 외출 추천: 출발지 기본값은 현재 위치. 권한이 없으면 비운 채 진입해 직접 설정 안내
   const startRecommend = () => {
@@ -44,7 +46,13 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     <div className="flex h-dvh flex-col">
       <div className="relative flex-1">
         <div className="absolute inset-0">
-          <KakaoMap center={position} markers={markers} level={nearby && radius > 1000 ? 6 : 4} className="size-full" />
+          <KakaoMap
+            center={position}
+            markers={markers}
+            level={nearby && radius > 1000 ? 6 : 4}
+            fitBounds
+            className="size-full"
+          />
         </div>
 
         <div className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
