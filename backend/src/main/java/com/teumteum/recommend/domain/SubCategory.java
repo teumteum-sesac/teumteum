@@ -3,6 +3,8 @@ package com.teumteum.recommend.domain;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+import java.util.Optional;
+
 @Getter
 @RequiredArgsConstructor
 public enum SubCategory {
@@ -47,5 +49,21 @@ public enum SubCategory {
 
     private final String displayName;
     private final int stayMinutes;
+
+    public static Optional<SubCategory> fromDisplayName(String name) {
+        // ① name 이 null 이면 → 바로 "없음" 돌려주기
+        if (name == null) return Optional.empty();
+
+        // ② values() 로 29개를 하나씩 돌면서
+        //    getDisplayName() 이 name 과 같으면 → 그 값을 Optional 에 담아 돌려주기
+        for (SubCategory sub : values()) {
+            if (sub.getDisplayName().equals(name)) {
+                return Optional.of(sub);
+            }
+        }
+        // ③ 끝까지 못 찾으면 → "없음" 돌려주기
+        return Optional.empty();
+
+    }
 
 }
