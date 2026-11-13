@@ -10,10 +10,12 @@ export interface KakaoLatLngBounds {
 }
 
 export interface KakaoMapInstance {
+  getCenter(): KakaoLatLng
   setCenter(latlng: KakaoLatLng): void
   panTo(latlng: KakaoLatLng): void
   setLevel(level: number): void
-  setBounds(bounds: KakaoLatLngBounds): void
+  /** padding(px)을 주면 지도 가장자리에서 그만큼 안쪽에 마커가 오도록 맞춘다 */
+  setBounds(bounds: KakaoLatLngBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number): void
   relayout(): void
 }
 
@@ -41,6 +43,10 @@ export interface KakaoMapsApi {
     strokeOpacity?: number
     map?: KakaoMapInstance
   }) => KakaoOverlay
+  /** 마커 클릭 등 지도 객체 이벤트 */
+  event: {
+    addListener(target: KakaoOverlay, type: 'click', handler: () => void): void
+  }
 }
 
 declare global {
