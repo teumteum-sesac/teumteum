@@ -105,7 +105,10 @@ export default function KakaoMap({
         setReady(true)
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : '지도를 불러오지 못했습니다.')
+        if (cancelled) return
+        // 상세 원인(키 누락·로드 실패 등)은 개발자용으로 콘솔에만 남기고, 화면에는 사용자용 안내만 보여준다
+        console.error('[KakaoMap] 지도 로드 실패:', e)
+        setError('지도를 불러오지 못했어요. 잠시 후 새로고침해 주세요.')
       })
     return () => {
       cancelled = true
@@ -146,7 +149,7 @@ export default function KakaoMap({
 
   return (
     <div className={`relative bg-neutral-200 ${className}`}>
-      <div ref={containerRef} className="size-full" />
+      <div ref={containerRef} className="absolute inset-0" />
       {error && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-neutral-500">
           {error}
