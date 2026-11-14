@@ -10,6 +10,8 @@ export interface MapMarker extends LatLng {
   tone?: 'primary' | 'dark'
   /** 누르면 뜨는 말풍선 문구 */
   title?: string
+  /** 'current'면 현재 위치를 파란 원형 점으로 그린다 (label·tone·title 무시) */
+  variant?: 'current'
 }
 
 interface KakaoMapProps {
@@ -54,9 +56,21 @@ function createLabelElement(marker: MapMarker): HTMLElement {
   return wrap
 }
 
+/** 현재 위치 표시용 파란 원형 점 */
+function createCurrentLocationElement(): HTMLElement {
+  const dot = document.createElement('div')
+  dot.setAttribute('aria-label', '현재 위치')
+  dot.style.cssText = `width:16px;height:16px;border-radius:9999px;border:3px solid #fff;background:${TONE_COLOR.primary};box-shadow:0 0 0 4px rgba(59,108,246,.25),0 1px 4px rgba(0,0,0,.3)`
+  return dot
+}
+
 function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMarker[], polyline: boolean): KakaoOverlay[] {
   const overlays: KakaoOverlay[] = markers.map((m) => {
     const position = new maps.LatLng(m.lat, m.lng)
+    // 현재 위치 점은 좌표가 점의 정중앙에 오도록 yAnchor 0.5
+    if (m.variant === 'current') {
+      return new maps.CustomOverlay({ position, content: createCurrentLocationElement(), map, yAnchor: 0.5 })
+    }
     return m.label
       ? new maps.CustomOverlay({ position, content: createLabelElement(m), map, yAnchor: 1 })
       : new maps.Marker({ position, map })
@@ -92,6 +106,8 @@ export default function KakaoMap({
   const [error, setError] = useState<string | null>(null)
   // 지도는 처음 위치·확대 수준으로 한 번만 만든다. 이후 변경은 아래 effect들이 반영
   const initialRef = useRef({ center, level })
+  // 이번 렌더에서 fitBounds로 화면을 맞췄는지. 같은 렌더의 panTo·setLevel이 맞춘 화면을 덮어쓰지 않게 한다
+  const boundsFittedRef = useRef(false)
 
   // 지도 생성: 한 번만
   useEffect(() => {
@@ -105,7 +121,10 @@ export default function KakaoMap({
         setReady(true)
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : '지도를 불러오지 못했습니다.')
+        if (cancelled) return
+        // 상세 원인(키 누락·로드 실패 등)은 개발자용으로 콘솔에만 남기고, 화면에는 사용자용 안내만 보여준다
+        console.error('[KakaoMap] 지도 로드 실패:', e)
+        setError('지도를 불러오지 못했어요. 잠시 후 새로고침해 주세요.')
       })
     return () => {
       cancelled = true
@@ -124,6 +143,7 @@ export default function KakaoMap({
       const bounds = new maps.LatLngBounds()
       markers.forEach((m) => bounds.extend(new maps.LatLng(m.lat, m.lng)))
       map.setBounds(bounds)
+      boundsFittedRef.current = true
     }
   }, [ready, markers, polyline, fitBounds])
 
@@ -134,6 +154,8 @@ export default function KakaoMap({
     if (!ready || !maps || !mapRef.current) return
     if (initial.lat === center.lat && initial.lng === center.lng) return
     initialRef.current = { ...initialRef.current, center }
+    // 같은 렌더에서 범위를 맞췄으면 그 화면을 유지한다 (마커에 이 위치가 이미 포함됨)
+    if (boundsFittedRef.current) return
     mapRef.current.panTo(new maps.LatLng(center.lat, center.lng))
   }, [ready, center])
 
@@ -141,12 +163,20 @@ export default function KakaoMap({
   useEffect(() => {
     if (!ready || !mapRef.current || initialRef.current.level === level) return
     initialRef.current = { ...initialRef.current, level }
+    // 같은 렌더에서 범위를 맞췄으면 맞춘 확대 수준을 유지한다
+    if (boundsFittedRef.current) return
     mapRef.current.setLevel(level)
   }, [ready, level])
 
+  // 매 렌더 마지막에 실행: 범위 맞춤 표시는 그 렌더에서만 유효하게 초기화한다
+  // (effect는 선언 순서대로 실행되므로 반드시 위 effect들 다음에 둔다)
+  useEffect(() => {
+    boundsFittedRef.current = false
+  })
+
   return (
     <div className={`relative bg-neutral-200 ${className}`}>
-      <div ref={containerRef} className="size-full" />
+      <div ref={containerRef} className="absolute inset-0" />
       {error && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-neutral-500">
           {error}

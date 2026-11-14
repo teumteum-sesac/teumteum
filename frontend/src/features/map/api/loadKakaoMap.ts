@@ -21,6 +21,9 @@ export function loadKakaoMap(): Promise<KakaoMapsApi> {
     script.onload = () => {
       const maps = window.kakao?.maps
       if (!maps) {
+        // 실패 상태를 남기지 않아야 다음 호출(다른 지도 화면 진입 등)에서 처음부터 다시 불러온다
+        loading = null
+        script.remove()
         reject(new Error('카카오 지도 SDK를 초기화하지 못했습니다.'))
         return
       }
@@ -28,6 +31,8 @@ export function loadKakaoMap(): Promise<KakaoMapsApi> {
     }
     script.onerror = () => {
       loading = null
+      // 실패한 <script> 태그가 쌓이지 않게 지운다 (이미 실행된 SDK 코드나 window.kakao 는 되돌려지지 않음)
+      script.remove()
       reject(new Error('카카오 지도 SDK를 불러오지 못했습니다. 앱 키와 등록된 도메인을 확인하세요.'))
     }
     document.head.appendChild(script)
