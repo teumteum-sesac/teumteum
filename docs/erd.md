@@ -199,7 +199,7 @@ CREATE TABLE `recommendation_history` (
   `destination_latitude`      DECIMAL(10,7) NULL,
   `destination_longitude`     DECIMAL(10,7) NULL,
   `start_time`                TIME          NOT NULL COMMENT '시작 시각 (30분 단위)',
-  `available_minutes`         SMALLINT      NOT NULL COMMENT '이용 시간(분). 0~360, 0 = 시간 제한 없음',
+  `available_minutes`         SMALLINT      NOT NULL COMMENT '이용 시간(분). 30~360',
   `transport_type`            VARCHAR(20)   NOT NULL COMMENT 'TRANSIT / WALK / CAR',
   `total_minutes`             SMALLINT      NOT NULL DEFAULT 0 COMMENT '총 소요시간(분)',
   `final_travel_minutes`      SMALLINT      NOT NULL DEFAULT 0 COMMENT '마지막 장소→도착지(분)',
@@ -325,7 +325,7 @@ DROP TABLE IF EXISTS `member`;
 | 도착지 이동시간 | 없음 | `final_travel_minutes` | 총 소요시간에 마지막 장소→도착지 이동 포함. 프론트 `finalTravelMinutes` 와 대응 |
 | `recommendation_type` (단일/코스) | 있음 | 삭제 | 사용자가 단일/코스를 고르지 않음. 장소 수로 판단 가능 |
 | `recommendation_mode` | 있음 | `category_mode` (`DIRECT`/`RANDOM`) | 프론트 `CategoryMode` 와 통일 |
-| `start_at`, `end_at` | 있음 | `start_time` + `available_minutes` | 조건은 시작 시각 + 이용 시간(0분~6시간 슬라이더, 0분 = 시간 제한 없음) |
+| `start_at`, `end_at` | 있음 | `start_time` + `available_minutes` | 조건은 시작 시각 + 이용 시간(0분~6시간 슬라이더, 0분이면 추천 불가) |
 | `recommendation_history.member_id` | NOT NULL | NULL 허용 | 비회원 이용 중심 서비스 |
 | `category_code` | 없음 | 추가 + 기본 데이터 | 대분류 영문 코드로 API·프론트와 연결 |
 | `place.created_at` | 없음 | 추가 | |
@@ -342,7 +342,7 @@ DROP TABLE IF EXISTS `member`;
 | 체류시간 | `place.default_stay_minutes` 만 | `category.stay_minutes`(세분류별) 추가 | 세분류별 예상 체류시간 표 (RES-01, 결정 1) |
 | 시작 시각 | 없음 | `recommendation_history.start_time`, `course.start_time` | 시작 시각 + 이용 시간, 저장 코스의 방문 시각 표시 |
 | 대중교통 정보 | 없음 | `course_place.transit_info` | 상세에 노선·환승 표시 (DET-01) |
-| `available_minutes` | 0~360 | 0 = 시간 제한 없음 | 결정 4 |
+| `available_minutes` | 0~360 | 30~360 (0분은 추천 불가라 저장 안 됨) | 결정 4 |
 | 카테고리 이름 | `카페·디저트` 등 | `카페/디저트` 등 | 화면설계서·프론트와 통일 |
 
 ## 8. 남은 결정 사항
