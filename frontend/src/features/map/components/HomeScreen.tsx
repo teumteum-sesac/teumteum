@@ -33,6 +33,8 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const [category, setCategory] = useState<CategoryCode | null>(null)
   // 주변 탐색에서 지도 마커로 고른 장소. 시트에서 해당 카드를 강조한다
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null)
+  // 마커를 누를 때마다 1씩 늘린다. 같은 마커를 다시 눌러도 시트가 해당 카드로 다시 스크롤하게 한다
+  const [scrollRequest, setScrollRequest] = useState(0)
   // 주변 탐색 시트 높이. 지도 영역도 같은 만큼 줄인다 (HOM-02 ①)
   const [sheetLevel, setSheetLevel] = useState<SheetLevel>('half')
 
@@ -55,6 +57,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
       onClick: nearby
         ? () => {
             setSelectedPlaceId(p.placeId)
+            setScrollRequest((n) => n + 1)
             setSheetLevel((current) => (current === 'collapsed' ? 'half' : current))
           }
         : undefined,
@@ -120,6 +123,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             onCategoryChange={changeCategory}
             places={places}
             selectedPlaceId={selectedPlaceId}
+            scrollRequest={scrollRequest}
             radiusEmpty={radiusPlaces.length === 0}
             level={sheetLevel}
             onLevelChange={setSheetLevel}

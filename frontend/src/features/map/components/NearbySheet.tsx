@@ -1,16 +1,31 @@
-import { useEffect, useRef, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { Link } from 'react-router'
 import Chip from '../../../shared/components/Chip'
 import ChipGroup from '../../../shared/components/ChipGroup'
 import EmptyState from '../../../shared/components/EmptyState'
 import { CATEGORIES, getCategoryIcon, getCategoryLabel, type CategoryCode } from '../../../shared/types/domain'
 import { formatDistance, walkMinutes, type NearbyPlace } from '../mock'
-import { SHEET_HEIGHT_CLASS, SHEET_LEVELS, type SheetLevel } from '../sheetLayout'
+import { clampSheetHeight, SHEET_HEIGHT_CLASS, snapSheetLevel, tapSheetLevel, type SheetLevel } from '../sheetLayout'
 
 const RADIUS_OPTIONS = [500, 1000, 3000]
 
-/** 손잡이를 이만큼(px) 이상 끌면 단계를 바꾼다 */
-const DRAG_THRESHOLD = 40
+/** 이만큼(px) 이하로 움직이면 끌기가 아니라 누름으로 본다 */
+const TAP_SLOP = 8
+/** 놓은 높이에서 가장 가까운 단계가 처음 단계여도, 이만큼(px) 이상 끌었으면 끈 방향으로 한 단계 옮긴다 */
+const STEP_THRESHOLD = 40
+/** 마커를 누른 뒤 이 시간(ms) 안에 끝나는 시트 높이 애니메이션 후에 카드 위치를 다시 맞춘다 */
+const RESCROLL_WINDOW_MS = 1000
+
+interface DragState {
+  pointerId: number
+  startY: number
+  /** 끌기 시작 때 시트 높이(px) */
+  startHeight: number
+  /** 시트를 담은 지도 영역 높이(px) */
+  parentHeight: number
+  /** TAP_SLOP 을 넘게 움직였으면 true (누름이 아니라 끌기) */
+  moved: boolean
+}
 
 interface NearbySheetProps {
   radius: number
@@ -22,6 +37,8 @@ interface NearbySheetProps {
   places: NearbyPlace[]
   /** 지도 마커로 고른 장소. 해당 카드를 강조하고 목록에서 보이게 스크롤한다 */
   selectedPlaceId: string | null
+  /** 마커를 누를 때마다 바뀌는 값. 같은 마커를 다시 눌러도 해당 카드로 다시 스크롤한다 */
+  scrollRequest: number
   /** true면 대분류와 상관없이 반경 안에 장소가 하나도 없다 (빈 목록 안내 문구 구분용) */
   radiusEmpty: boolean
   /** 시트 높이 단계. 지도 영역도 같은 값으로 줄이도록 HomeScreen 이 관리한다 */
@@ -30,7 +47,9 @@ interface NearbySheetProps {
 }
 
 /**
- * 주변 장소 탐색 바텀시트 (HOM-02): 접힘 / 반만(기본) / 전체 3단계. 손잡이를 끌거나 눌러 바꾼다.
+ * 주변 장소 탐색 바텀시트 (HOM-02): 접힘 / 반만(기본) / 전체 3단계.
+ * - 손잡이·'내 주변 장소' 제목 줄을 누르면 반만 ↔ 접힘 (전체에서는 반만)
+ * - 끌면 시트가 손가락을 따라 움직이고, 놓으면 가까운 단계로 정착한다 (길게 끌면 두 단계도 한 번에)
  * 끝까지 내려도 홈으로 가지 않고 접힘 상태로 주변 탐색을 유지한다.
  * 장소 카드를 누르면 장소 1곳짜리 상세(DET-01)로 이동한다. 마커를 누르면 해당 카드를 강조한다.
  * 장소 데이터는 HomeScreen 에서 받는다 (주변 장소 API 연동 TODO 는 HomeScreen 참고)
@@ -42,73 +61,129 @@ export default function NearbySheet({
   onCategoryChange,
   places,
   selectedPlaceId,
+  scrollRequest,
   radiusEmpty,
   level,
   onLevelChange,
 }: NearbySheetProps) {
-  const dragStartY = useRef<number | null>(null)
+  const sheetRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const drag = useRef<DragState | null>(null)
+  // 끌기 중 시트 높이(px). null 이면 단계(level) 높이를 쓴다
+  const [dragHeight, setDragHeight] = useState<number | null>(null)
 
-  // 마커로 고른 카드가 목록 밖에 있으면 보이는 위치까지 스크롤한다
+  // 마커로 고른 카드가 목록 밖에 있으면 보이는 위치까지 스크롤한다.
+  // 접힘에서 펼쳐지는 중이면 목록 높이가 아직 작으므로, 높이 애니메이션이 끝나면(transitionend) 한 번 더 맞춘다
   useEffect(() => {
     if (!selectedPlaceId) return
-    const card = listRef.current?.querySelector(`[data-place-id="${CSS.escape(selectedPlaceId)}"]`)
-    card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [selectedPlaceId])
+    const sheet = sheetRef.current
+    const scroll = () => {
+      const card = listRef.current?.querySelector(`[data-place-id="${CSS.escape(selectedPlaceId)}"]`)
+      card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+    const onTransitionEnd = (e: TransitionEvent) => {
+      if (e.target === sheet && e.propertyName === 'height') scroll()
+    }
+    scroll()
+    sheet?.addEventListener('transitionend', onTransitionEnd)
+    const timer = setTimeout(() => sheet?.removeEventListener('transitionend', onTransitionEnd), RESCROLL_WINDOW_MS)
+    return () => {
+      clearTimeout(timer)
+      sheet?.removeEventListener('transitionend', onTransitionEnd)
+    }
+  }, [selectedPlaceId, scrollRequest])
 
-  const onPointerDown = (e: PointerEvent<HTMLButtonElement>) => {
-    dragStartY.current = e.clientY
-    // 손잡이 밖으로 끌어도 pointerup 을 이 버튼이 받도록 잡아 둔다 (마우스 드래그 대응)
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return
+    // 반경 선택 상자는 끌기·누르기 영역에서 뺀다
+    if (e.target instanceof Element && e.target.closest('select')) return
+    const sheet = sheetRef.current
+    if (!sheet) return
+    drag.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      startHeight: sheet.getBoundingClientRect().height,
+      parentHeight: sheet.parentElement?.clientHeight ?? 0,
+      moved: false,
+    }
+    // 영역 밖으로 끌어도 pointermove·pointerup 을 계속 받도록 잡아 둔다
     e.currentTarget.setPointerCapture(e.pointerId)
   }
-  const onPointerUp = (e: PointerEvent<HTMLButtonElement>) => {
-    if (dragStartY.current === null) return
-    const dy = e.clientY - dragStartY.current
-    dragStartY.current = null
-    const index = SHEET_LEVELS.indexOf(level)
-    if (Math.abs(dy) < DRAG_THRESHOLD) {
-      // 짧게 누르면 한 단계 위로 (전체에서는 반만으로)
-      onLevelChange(level === 'full' ? 'half' : SHEET_LEVELS[index + 1])
-    } else if (dy < 0) {
-      onLevelChange(SHEET_LEVELS[Math.min(index + 1, SHEET_LEVELS.length - 1)])
-    } else {
-      // 아래로 끌면 한 단계 아래로. 접힘이 가장 아래이고 홈으로는 이동하지 않는다
-      onLevelChange(SHEET_LEVELS[Math.max(index - 1, 0)])
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    if (!d || d.pointerId !== e.pointerId) return
+    const dy = e.clientY - d.startY
+    if (!d.moved && Math.abs(dy) <= TAP_SLOP) return
+    d.moved = true
+    setDragHeight(clampSheetHeight(d.startHeight - dy, d.parentHeight))
+  }
+  const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    if (!d || d.pointerId !== e.pointerId) return
+    drag.current = null
+    setDragHeight(null)
+    const dy = e.clientY - d.startY
+    if (!d.moved && Math.abs(dy) <= TAP_SLOP) {
+      // 거의 안 움직였으면 누름. 짧게 아래로 끈 것은 여기 오지 않는다 (끌기로 처리)
+      onLevelChange(tapSheetLevel(level))
+      return
     }
+    onLevelChange(snapSheetLevel(level, d.startHeight, dy, d.parentHeight, STEP_THRESHOLD))
   }
   const onPointerCancel = () => {
-    dragStartY.current = null
+    drag.current = null
+    setDragHeight(null)
+  }
+  // 키보드(Enter·Space)로 손잡이를 누른 경우만 처리한다. 포인터 누름은 onPointerUp 에서 처리 (detail = 0 이면 키보드)
+  const onHandleClick = (e: MouseEvent<HTMLButtonElement>) => {
+    if (e.detail === 0) onLevelChange(tapSheetLevel(level))
   }
 
   return (
     <div
-      className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-2xl bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.08)] transition-[height] ${SHEET_HEIGHT_CLASS[level]}`}
+      ref={sheetRef}
+      style={dragHeight === null ? undefined : { height: dragHeight }}
+      className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-2xl bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.08)] ${
+        dragHeight === null ? 'transition-[height] duration-200' : ''
+      } ${SHEET_HEIGHT_CLASS[level]}`}
     >
-      <button
-        type="button"
-        aria-label="시트 높이 조절 (끌어서 펼치기·접기)"
+      {/* 끌기·누르기 영역: 손잡이 + '내 주변 장소' 제목 줄 (반경 선택 상자는 제외) */}
+      <div
         onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
-        className="flex h-7 shrink-0 touch-none items-center justify-center"
+        className="shrink-0 cursor-grab touch-none select-none active:cursor-grabbing"
       >
-        <span className="h-1 w-10 rounded-full bg-neutral-300" />
-      </button>
-
-      <div className="flex items-center justify-between px-4 pb-2">
-        <h2 className="font-bold">내 주변 장소</h2>
-        <select
-          value={radius}
-          onChange={(e) => onRadiusChange(Number(e.target.value))}
-          aria-label="반경"
-          className="h-8 rounded-lg border border-line px-2 text-xs"
+        <button
+          type="button"
+          aria-label={level === 'collapsed' ? '주변 장소 목록 펼치기' : '주변 장소 목록 접기'}
+          aria-expanded={level !== 'collapsed'}
+          onClick={onHandleClick}
+          className="flex h-7 w-full items-center justify-center"
         >
-          {RADIUS_OPTIONS.map((r) => (
-            <option key={r} value={r}>
-              반경 {formatDistance(r)}
-            </option>
-          ))}
-        </select>
+          <span className="h-1 w-10 rounded-full bg-neutral-300" />
+        </button>
+
+        <div className="flex h-10 items-center justify-between px-4 pb-2">
+          <h2 className="font-bold">내 주변 장소</h2>
+          {level === 'collapsed' ? (
+            <span className="text-xs text-neutral-500">눌러서 펼치기 ▲</span>
+          ) : (
+            <select
+              value={radius}
+              onChange={(e) => onRadiusChange(Number(e.target.value))}
+              aria-label="반경"
+              className="h-8 cursor-pointer rounded-lg border border-line px-2 text-xs"
+            >
+              {RADIUS_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  반경 {formatDistance(r)}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
       <div className="px-4 pb-2">
@@ -124,7 +199,7 @@ export default function NearbySheet({
         </ChipGroup>
       </div>
 
-      {/* 목록만 스크롤된다. 끝까지 스크롤해도 바깥(페이지)으로 넘기지 않는다. 시트 드래그는 손잡이에서만 */}
+      {/* 목록만 스크롤된다. 끝까지 스크롤해도 바깥(페이지)으로 넘기지 않는다. 시트 끌기는 위 손잡이·제목 줄에서만 */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
         {places.length === 0 ? (
           <EmptyState
