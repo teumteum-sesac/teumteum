@@ -14,3 +14,6 @@ kakao:
 jwt:
   secret:                  # 32자 이상 임의 문자열
   access-token-validity-seconds: 3600
+
+ors:
+  api-key:
