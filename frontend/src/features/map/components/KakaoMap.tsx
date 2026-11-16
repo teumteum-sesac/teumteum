@@ -23,8 +23,11 @@ interface KakaoMapProps {
   /** 확대 수준 (작을수록 확대) */
   level?: number
   markers?: MapMarker[]
-  /** true면 마커를 순서대로 잇는 경로선을 그린다 (대중교통은 1차 버전에서 직선) */
-  polyline?: boolean
+  /**
+   * 경로선. true면 마커를 순서대로 직선으로 잇고, 좌표 배열을 주면 그 좌표를 따라 그린다 (REQ-041 실제 경로, routePath.ts).
+   * 배열은 렌더마다 새로 만들지 말고 useMemo 로 넘긴다 (바뀌면 마커·경로선을 다시 그림)
+   */
+  polyline?: boolean | LatLng[]
   /** true면 처음 그릴 때 마커가 모두 보이게 맞춘다 */
   fitBounds?: boolean
   /** 범위 맞춤 여백. 없으면 카카오 기본값 */
@@ -73,7 +76,7 @@ function createCurrentLocationElement(): HTMLElement {
   return dot
 }
 
-function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMarker[], polyline: boolean): KakaoOverlay[] {
+function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMarker[], polyline: boolean | LatLng[]): KakaoOverlay[] {
   const overlays: KakaoOverlay[] = markers.map((m) => {
     const position = new maps.LatLng(m.lat, m.lng)
     // 현재 위치 점은 좌표가 점의 정중앙에 오도록 yAnchor 0.5
@@ -87,10 +90,11 @@ function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMar
     if (m.onClick) maps.event.addListener(marker, 'click', m.onClick)
     return marker
   })
-  if (polyline && markers.length > 1) {
+  const path = Array.isArray(polyline) ? polyline : polyline ? markers : []
+  if (path.length > 1) {
     overlays.push(
       new maps.Polyline({
-        path: markers.map((m) => new maps.LatLng(m.lat, m.lng)),
+        path: path.map((p) => new maps.LatLng(p.lat, p.lng)),
         strokeWeight: 4,
         strokeColor: TONE_COLOR.primary,
         strokeOpacity: 0.8,

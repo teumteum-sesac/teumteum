@@ -5,20 +5,25 @@ import Button from '../../../shared/components/Button'
 import type { LatLng } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
 import { getTotalTravelMinutes, type Course } from '../../recommend/types'
+import { buildRoutePath, getRouteStops, type RouteLegResponse } from '../routePath'
 import KakaoMap, { type MapMarker } from './KakaoMap'
 
 interface CourseMapProps {
   course: Course
   /** 돌아가기 버튼 문구 */
   backLabel: string
+  /**
+   * 지도 경로 구간 (추천 상세·저장 코스 응답의 routeLegs). ACTUAL 구간은 실제 경로 좌표를 따라 그리고,
+   * STRAIGHT·구간 없음·값 없음은 지점 사이 직선으로 그린다 (REQ-041)
+   */
+  routeLegs?: RouteLegResponse[]
 }
 
 /**
  * 코스 지도 상세 (DET-02): 출발(S)·방문 순번·도착(E) 마커와 경로선, 전체 코스가 한 화면에 보이게 맞춤.
- * 번호를 누르면 장소명·체류시간·다음 이동시간 말풍선. 대중교통은 1차 버전에서 장소 사이 직선
- * TODO(유지수): 차량·도보 실제 경로 좌표(저장된 경로) 연동
+ * 번호를 누르면 장소명·체류시간·다음 이동시간 말풍선. 차량·도보는 실제 경로, 대중교통은 1차 버전에서 장소 사이 직선
  */
-export default function CourseMap({ course, backLabel }: CourseMapProps) {
+export default function CourseMap({ course, backLabel, routeLegs }: CourseMapProps) {
   const navigate = useNavigate()
 
   const markers = useMemo<MapMarker[]>(() => {
@@ -38,11 +43,14 @@ export default function CourseMap({ course, backLabel }: CourseMapProps) {
     ]
   }, [course])
 
+  // 경로선 좌표. visitOrder 번호는 출발지 0, 장소 1~N, 도착지 N+1 (RouteLegResponse 와 같은 기준)
+  const routePath = useMemo(() => buildRoutePath(getRouteStops(course), routeLegs), [course, routeLegs])
+
   const [center, setCenter] = useState<LatLng>(markers[0])
 
   return (
     <>
-      <KakaoMap center={center} level={5} markers={markers} polyline fitBounds className="min-h-80 flex-1" />
+      <KakaoMap center={center} level={5} markers={markers} polyline={routePath} fitBounds className="min-h-80 flex-1" />
 
       <section className="border-t border-line px-4 py-4">
         <p className="mb-3 text-sm">
