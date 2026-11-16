@@ -1,8 +1,8 @@
 # ERD · 테이블 정의 (초안)
 
-> 담당: 김하윤 · 상태: 초안 (화면설계서 v2.0·저장본 유지 정책 반영, 스냅샷 컬럼 설계 예정·팀 리뷰 전)
+> 담당: 김하윤 · 상태: 초안 (화면설계서 v2.0·저장 코스 스냅샷 DDL 반영·팀 리뷰 전)
 > 이 문서의 SQL을 그대로 실행하면 로컬 MySQL에 테이블과 카테고리 기본 데이터가 만들어집니다.
-> 저장본 유지 정책은 2절에 명시했습니다. 현재 DDL에는 장소 스냅샷 필드가 없어, 후속 설계 확정과 DDL 반영이 필요합니다.
+> 저장본 유지 정책은 2절, 필드 대응·검증·기존 데이터 전환 방침은 [스냅샷 DB 설계](course-snapshot-schema.md)를 참고합니다. 이 DDL은 신규 DB 생성용이며 기존 데이터 마이그레이션용이 아닙니다. CHECK 제약을 강제하는 MySQL 8.0.16 이상을 사용합니다.
 
 ## 1. 로컬에 테이블 만들기
 
@@ -29,7 +29,8 @@ mysql -u root -p < erd.sql
 | `place` | 장소 | 갱신 가능한 공용 장소 정보. 외부(카카오 등) 장소 캐시 | |
 | `place_category` | 장소카테고리 | 장소 ↔ 카테고리 N:M | `place`, `category` |
 | `course` | 저장한 코스 | 추천 코스(1곳 이상)를 저장 시점 정보로 통째로 저장 | `member` |
-| `course_place` | 저장한 코스의 장소 | 장소 참조 + 방문 순서 + 구간 이동 정보. 장소 스냅샷 필드 추가 필요 | `course`, `place` |
+| `course_place` | 저장한 코스의 장소 | 장소 참조 + 장소 정보 스냅샷 + 방문 순서 + 구간 이동 정보 | `course`, `place` |
+| `course_route_leg` | 저장한 코스의 지도 구간 | 저장 당시 구간 순서·실제/직선 경로·JSON 좌표 배열 | `course` |
 | `recommendation_history` | 추천 기록 | 추천 요청 조건·결과. 비회원도 기록 | `member`(선택) |
 | `recommendation_history_category` | 추천 기록 카테고리 | 요청 시 선택한 카테고리 | `recommendation_history`, `category` |
 | `recommendation_history_place` | 추천 기록 장소 | 추천된 장소 + 방문 순서 (다시 추천 시 제외용) | `recommendation_history`, `place` |
@@ -67,17 +68,18 @@ mysql -u root -p < erd.sql
 - 장소별 최신 조회 성공·실패·정보 없음 상태를 구분한다. 일부 조회가 실패해도 저장본은 그대로 제공하고, 저장 당시 값을 최신 정보로 표시하지 않는다.
 - 기본 조회와 최신 정보 조회 모두 로그인한 회원 본인의 저장 코스에 대해서만 허용한다.
 
-**현재 DDL과 후속 설계 범위**
+**스냅샷 저장 위치**
 
-| 데이터 | 현재 저장 위치 | 후속 설계 |
+| 데이터 | 저장 위치 | 규칙 |
 |---|---|---|
 | 회원·코스명·출발지·도착지·이동수단·시작 시각·총 시간·저장일 | `course` | 저장 시 값을 유지하고, 최신 장소 조회로 갱신하지 않는다. |
 | 장소 참조·방문 순서·체류시간·이동시간·대중교통 정보 | `course_place` | 저장 시 값을 유지한다. |
-| 장소명·주소·위도·경도·사진 URL·소개·운영시간·대분류·세분류 | 공용 장소·카테고리 정보 또는 외부 API. 현재 DDL에 별도 저장본 없음 | `course_place`에 장소 스냅샷 필드를 두는 안을 기준으로 컬럼명·자료형·NULL 허용 여부를 확정한다. |
-| 차량·도보 지도 경로, 이동시간 추정 여부 | 현재 DDL에 저장 필드 없음 | 추천·지도 담당자와 저장할 데이터 형식과 위치를 확정한다. |
+| 장소명·주소·위도·경도·사진 URL·소개·운영시간·대분류·세분류 | `course_place` | 공용 장소·카테고리 대신 추천 버전의 값을 복사한다. |
+| 지도 경로 | `course_route_leg` | 구간별 ACTUAL/STRAIGHT와 진행 방향 좌표 배열을 복사한다. |
+| 이동시간 추정 여부·원본 추천 버전 | `course.estimated`, `course.source_recommendation_id` | 직선 지도 표시와 이동시간 추정은 구분한다. 추천이 만료돼도 저장본은 유지한다. |
 | 최신 장소 정보·조회 시각·장소별 조회 상태 | 현재 API 미구현 | 저장본과 분리된 응답 구조를 정의한다. 저장 코스 스냅샷에는 영구 반영하지 않는다. |
 
-이 절은 저장본 유지 동작을 정의한다. 스냅샷 컬럼 추가 등 DB 스키마 변경은 팀 확인 후 별도 반영한다. 사진 URL 보관 범위와 외부 데이터 보관 정책은 NFR-008에 맞춰 장소 담당자와 확인한다.
+스냅샷 DDL은 #31에서 사용자 요청에 따라 반영한다. 사진 URL 보관 범위와 외부 데이터 보관 정책은 NFR-008에 맞춰 장소 담당자와 확인한다. 기존 데이터가 있으면 삭제·재생성 전에 [전환 방침](course-snapshot-schema.md#7-기존-데이터-전환)을 확인한다.
 
 ## 3. 전체 DDL
 
@@ -154,11 +156,14 @@ CREATE TABLE `place_category` (
 CREATE TABLE `course` (
   `course_id`             BIGINT        NOT NULL AUTO_INCREMENT,
   `member_id`             BIGINT        NOT NULL,
-  `course_name`           VARCHAR(200)  NOT NULL,
+  `source_recommendation_id` VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '선택한 추천 코스의 불변 버전 ID. 만료 결과에 FK를 걸지 않음',
+  `course_name`           VARCHAR(810)  NOT NULL,
   `origin_name`           VARCHAR(200)  NULL,
+  `origin_address`        VARCHAR(500)  NULL,
   `origin_latitude`       DECIMAL(10,7) NOT NULL,
   `origin_longitude`      DECIMAL(10,7) NOT NULL,
   `destination_name`      VARCHAR(200)  NULL,
+  `destination_address`   VARCHAR(500)  NULL,
   `destination_latitude`  DECIMAL(10,7) NULL,
   `destination_longitude` DECIMAL(10,7) NULL,
   `transport_type`        VARCHAR(20)   NOT NULL COMMENT 'TRANSIT / WALK / CAR',
@@ -166,16 +171,39 @@ CREATE TABLE `course` (
   `total_minutes`         SMALLINT      NOT NULL COMMENT '총 소요시간(분)',
   `total_travel_minutes`  SMALLINT      NOT NULL DEFAULT 0 COMMENT '이동시간 합계(분)',
   `final_travel_minutes`  SMALLINT      NOT NULL DEFAULT 0 COMMENT '마지막 장소→도착지(분). 도착지 없으면 0',
+  `estimated`            BOOLEAN       NOT NULL COMMENT '이동시간 추정 구간 포함 여부. 직선 지도 표시 여부와 다름',
   `created_at`            DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`course_id`),
-  KEY `IX_course_member` (`member_id`, `created_at`),
-  CONSTRAINT `FK_course_member` FOREIGN KEY (`member_id`) REFERENCES `member` (`member_id`)
+  UNIQUE KEY `UK_course_member_recommendation` (`member_id`, `source_recommendation_id`),
+  KEY `IX_course_member` (`member_id`, `created_at`, `course_id`),
+  CONSTRAINT `FK_course_member` FOREIGN KEY (`member_id`) REFERENCES `member` (`member_id`),
+  CONSTRAINT `CK_course_source_id` CHECK (CHAR_LENGTH(TRIM(`source_recommendation_id`)) > 0),
+  CONSTRAINT `CK_course_transport` CHECK (`transport_type` IN ('TRANSIT', 'WALK', 'CAR')),
+  CONSTRAINT `CK_course_origin` CHECK (`origin_latitude` BETWEEN -90 AND 90 AND `origin_longitude` BETWEEN -180 AND 180),
+  CONSTRAINT `CK_course_destination` CHECK (
+    (`destination_latitude` IS NULL AND `destination_longitude` IS NULL
+      AND `destination_name` IS NULL AND `destination_address` IS NULL AND `final_travel_minutes` = 0)
+    OR (`destination_latitude` IS NOT NULL AND `destination_longitude` IS NOT NULL
+      AND `destination_latitude` BETWEEN -90 AND 90 AND `destination_longitude` BETWEEN -180 AND 180)
+  ),
+  CONSTRAINT `CK_course_start_time` CHECK (`start_time` BETWEEN '00:00:00' AND '23:30:00' AND MINUTE(`start_time`) IN (0, 30) AND SECOND(`start_time`) = 0),
+  CONSTRAINT `CK_course_times` CHECK (`total_minutes` BETWEEN 0 AND 360 AND `total_travel_minutes` BETWEEN 0 AND `total_minutes` AND `final_travel_minutes` BETWEEN 0 AND `total_travel_minutes`),
+  CONSTRAINT `CK_course_estimated` CHECK (`estimated` IN (0, 1))
 ) ENGINE=InnoDB COMMENT='저장한 코스';
 
 CREATE TABLE `course_place` (
   `course_place_id` BIGINT   NOT NULL AUTO_INCREMENT,
   `course_id`       BIGINT   NOT NULL,
   `place_id`        BIGINT   NOT NULL,
+  `place_name`      VARCHAR(200) NOT NULL COMMENT '저장 당시 장소명',
+  `category_code`   VARCHAR(30) NOT NULL COMMENT '저장 당시 대분류 코드',
+  `sub_category_name` VARCHAR(80) NOT NULL COMMENT '저장 당시 세분류 이름',
+  `address`         VARCHAR(500) NULL,
+  `latitude`        DECIMAL(10,7) NOT NULL,
+  `longitude`       DECIMAL(10,7) NOT NULL,
+  `image_url`       VARCHAR(2048) NULL,
+  `description`     TEXT NULL,
+  `opening_hours`   TEXT NULL,
   `visit_order`     SMALLINT NOT NULL COMMENT '1부터 시작',
   `stay_minutes`    SMALLINT NOT NULL COMMENT '예상 체류시간(분)',
   `travel_minutes`  SMALLINT NOT NULL DEFAULT 0 COMMENT '직전 지점→이 장소 이동시간(분). 1번은 출발지에서',
@@ -183,8 +211,27 @@ CREATE TABLE `course_place` (
   PRIMARY KEY (`course_place_id`),
   UNIQUE KEY `UK_course_place_order` (`course_id`, `visit_order`),
   CONSTRAINT `FK_course_place_course` FOREIGN KEY (`course_id`) REFERENCES `course` (`course_id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_course_place_place` FOREIGN KEY (`place_id`) REFERENCES `place` (`place_id`)
+  CONSTRAINT `FK_course_place_place` FOREIGN KEY (`place_id`) REFERENCES `place` (`place_id`),
+  CONSTRAINT `CK_course_place_order` CHECK (`visit_order` BETWEEN 1 AND 4),
+  CONSTRAINT `CK_course_place_coordinates` CHECK (`latitude` BETWEEN -90 AND 90 AND `longitude` BETWEEN -180 AND 180),
+  CONSTRAINT `CK_course_place_times` CHECK (`stay_minutes` >= 0 AND `travel_minutes` >= 0),
+  CONSTRAINT `CK_course_place_category` CHECK (`category_code` IN ('CULTURE', 'CAFE', 'FOOD', 'NATURE', 'ENTERTAINMENT', 'SHOPPING', 'SPORTS', 'TOURISM'))
 ) ENGINE=InnoDB COMMENT='저장한 코스의 장소';
+
+CREATE TABLE `course_route_leg` (
+  `course_route_leg_id` BIGINT NOT NULL AUTO_INCREMENT,
+  `course_id`           BIGINT NOT NULL,
+  `from_visit_order`    SMALLINT NOT NULL COMMENT '출발지 0, 장소 1~N',
+  `to_visit_order`      SMALLINT NOT NULL COMMENT '다음 장소 또는 도착지 N+1',
+  `path_type`          VARCHAR(10) NOT NULL COMMENT 'ACTUAL / STRAIGHT',
+  `coordinates`        JSON NOT NULL COMMENT '진행 방향 순서의 latitude/longitude 객체 배열',
+  PRIMARY KEY (`course_route_leg_id`),
+  UNIQUE KEY `UK_course_route_leg_order` (`course_id`, `from_visit_order`),
+  CONSTRAINT `FK_course_route_leg_course` FOREIGN KEY (`course_id`) REFERENCES `course` (`course_id`) ON DELETE CASCADE,
+  CONSTRAINT `CK_course_route_leg_order` CHECK (`from_visit_order` BETWEEN 0 AND 4 AND `to_visit_order` = `from_visit_order` + 1),
+  CONSTRAINT `CK_course_route_leg_type` CHECK (`path_type` IN ('ACTUAL', 'STRAIGHT')),
+  CONSTRAINT `CK_course_route_leg_coordinates` CHECK (JSON_TYPE(`coordinates`) = 'ARRAY' AND JSON_LENGTH(`coordinates`) >= 2)
+) ENGINE=InnoDB COMMENT='저장한 코스의 지도 경로 구간';
 
 -- ===== 추천 기록 =====
 
@@ -303,6 +350,7 @@ DROP TABLE IF EXISTS `notice`;
 DROP TABLE IF EXISTS `recommendation_history_place`;
 DROP TABLE IF EXISTS `recommendation_history_category`;
 DROP TABLE IF EXISTS `recommendation_history`;
+DROP TABLE IF EXISTS `course_route_leg`;
 DROP TABLE IF EXISTS `course_place`;
 DROP TABLE IF EXISTS `course`;
 DROP TABLE IF EXISTS `place_category`;
@@ -347,13 +395,13 @@ DROP TABLE IF EXISTS `member`;
 
 ## 8. 남은 결정 사항
 
-- 저장 장소 스냅샷 컬럼명·자료형·NULL 허용 여부 및 기존 저장 데이터 전환 방식 — 김하윤·정종일
-- 저장 코스 지도 경로·이동시간 추정 여부 저장 형식과 위치 — 김하윤·나혜빈·유지수
-- 저장본과 최신 조회 정보를 분리하는 API 요청·응답 형식, 장소별 조회 상태·조회 시각 표현 — 김하윤·정종일
+- 스냅샷 DDL은 #31에 반영. 기존 데이터 유무·복원 가능성 확인 및 데이터가 있을 때의 전환 방침 — 김하윤
+- 추천 버전 ID 최대 128자·대소문자 구분, 세분류 미확인 장소의 저장 계약 — 김하윤·나혜빈
+- 경로 좌표 오차·개수·데이터 크기 상한과 제공 범위 — 나혜빈·유지수·김하윤
+- 최신 조회 응답은 course-api.md에 정의. 외부 데이터 보관 범위와 공용 장소 물리 삭제 제한 확인 — 정종일·김하윤
 - 비밀번호 찾기(재설정 링크) 토큰 저장 방식: 테이블 추가 또는 만료 JWT — 김용현
 - 추천 결과 2시간 보관·장소 교체 후보(저장된 카카오 로컬 후보) 저장 위치: DB 또는 서버 캐시 — 나혜빈
 - 전시(문화포털)·공연(KOPIS) 매일 1회 저장 테이블 — 정종일
-- 이동시간 API 실패 여부('예상 시간' 표시) 저장 필요 여부 — 나혜빈·김하윤
 
 - 전체 알림(`notification`) 테이블: 관리자 기능에 있으나 요구사항(발송 방식, 읽음 처리)이 정해지지 않아 넣지 않음 — 정종화
 - `account_status`, `inquiry_status` 값 목록 확정
@@ -363,6 +411,7 @@ DROP TABLE IF EXISTS `member`;
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-16 | 저장 장소 스냅샷·추천 버전 중복 방지·출발/도착 주소·추정 여부·지도 경로 구간 DDL 및 삭제 순서 반영 (#31). 실제 DB 미적용 |
 | 2026-11-11 | 초안 추가 |
 | 2026-11-11 | 테이블·컬럼 영문화, 용어표 정렬, 제약조건·찜 테이블·카테고리 기본 데이터 추가 |
 | 2026-11-12 | 화면설계서 v2.0 반영: 회원 이메일·닉네임, 찜 삭제, 세분류 체류시간, 시작 시각, 대중교통 정보 (7장) |
