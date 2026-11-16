@@ -3,7 +3,7 @@ package com.teumteum.member.controller;
 import com.teumteum.global.common.ApiResponse;
 import com.teumteum.member.dto.EmailExistsResponse;
 import com.teumteum.member.dto.SignupRequest;
-import com.teumteum.member.dto.SignupResponse;
+import com.teumteum.member.dto.LoginResponse;
 import com.teumteum.member.service.MemberService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -24,7 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
  * 판단·처리 로직은 두지 않는다 (MemberService 담당).
  *
  * [만든 API]
- *   POST /api/members                         회원가입 (REQ-001, 화면 AUT-02)
+ *   POST /api/members                         회원가입 + 자동 로그인 토큰 발급 (REQ-001, 화면 AUT-02)
+ *   (로그인은 AuthController: POST /api/auth/login)
  *   GET  /api/members/email-exists?email=...  이메일 중복 확인 (AUT-02 [중복 확인] 버튼)
  *
  * [URL 규칙] AGENTS.md 5장: /api/ + 복수형 명사. "회원(members)을 하나 만든다" = POST /api/members
@@ -43,10 +44,11 @@ public class MemberController {
      *   @Valid       : SignupRequest 의 검증 규칙(@Email, @Size …)을 먼저 검사. 틀리면 400 + fieldErrors (GlobalExceptionHandler)
      *   @RequestBody : 요청 본문 JSON → SignupRequest 객체로 변환
      *   응답 201 Created: "새로 만들어졌다"는 뜻의 상태 코드 (종일님 ApiResponse 사용 예시와 같은 방식)
+     *   응답 data 는 로그인과 같은 LoginResponse (토큰 포함) → 프론트는 가입 직후 바로 로그인 상태가 된다
      */
     @PostMapping
-    public ResponseEntity<ApiResponse<SignupResponse>> signup(@Valid @RequestBody SignupRequest request) {
-        SignupResponse response = memberService.signup(request);
+    public ResponseEntity<ApiResponse<LoginResponse>> signup(@Valid @RequestBody SignupRequest request) {
+        LoginResponse response = memberService.signup(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
     }
 

@@ -25,7 +25,14 @@ import org.springframework.http.HttpStatus;
 public enum MemberErrorCode implements ErrorCode {
 
     /** 409 Conflict: 요청은 맞지만 이미 있는 데이터와 "충돌"할 때 쓰는 상태 코드 */
-    DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 가입된 이메일이에요.");
+    DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 가입된 이메일이에요."),
+
+    /**
+     * 401 Unauthorized: 로그인 실패.
+     * 이메일이 없는 경우·비밀번호가 틀린 경우·탈퇴한 회원을 모두 같은 문구로 응답한다.
+     * 구분해서 알려 주면 "이 이메일은 가입돼 있다"는 정보가 새어 나가기 때문이다.
+     */
+    LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 맞지 않아요.");
 
     private final HttpStatus status;
     private final String message;

@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.global.exception.GlobalExceptionHandler;
 import com.teumteum.member.dto.SignupRequest;
-import com.teumteum.member.dto.SignupResponse;
+import com.teumteum.member.dto.LoginResponse;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.service.MemberService;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,10 +51,10 @@ class MemberControllerTest {
     }
 
     @Test
-    @DisplayName("회원가입 성공 → 201, data 에 회원 정보, 비밀번호는 응답에 없음")
+    @DisplayName("회원가입 성공 → 201, data 에 토큰·회원 정보, 비밀번호는 응답에 없음")
     void signup() throws Exception {
         given(memberService.signup(any(SignupRequest.class)))
-                .willReturn(new SignupResponse(1L, "user@email.com", "틈틈이"));
+                .willReturn(new LoginResponse("token-value", "Bearer", 3600, 1L, "user@email.com", "틈틈이"));
 
         mockMvc.perform(post("/api/members")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -63,6 +63,7 @@ class MemberControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.accessToken").value("token-value"))
                 .andExpect(jsonPath("$.data.memberId").value(1))
                 .andExpect(jsonPath("$.data.email").value("user@email.com"))
                 .andExpect(jsonPath("$.data.nickname").value("틈틈이"))
