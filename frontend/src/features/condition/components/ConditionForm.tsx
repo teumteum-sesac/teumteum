@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
+import { TRANSPORT_STICKER } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
 import SegmentedControl from '../../../shared/components/SegmentedControl'
 import { MAX_CATEGORIES, TRANSPORT_OPTIONS } from '../../../shared/types/domain'
@@ -32,7 +33,12 @@ export default function ConditionForm() {
         </Section>
 
         <Section title="이동수단">
-          <SegmentedControl options={TRANSPORT_OPTIONS} value={transportType} onChange={setTransportType} />
+          <SegmentedControl
+            options={TRANSPORT_OPTIONS}
+            value={transportType}
+            onChange={setTransportType}
+            stickers={TRANSPORT_STICKER}
+          />
         </Section>
 
         <Section title={`카테고리 (최대 ${MAX_CATEGORIES}개)`}>
