@@ -168,7 +168,7 @@ export default function NearbySheet({
         <div className="flex h-10 items-center justify-between px-4 pb-2">
           <h2 className="font-bold">내 주변 장소</h2>
           {level === 'collapsed' ? (
-            <span className="text-xs text-neutral-500">눌러서 펼치기 ▲</span>
+            <span className="text-xs text-neutral-500">펼치기 ▲</span>
           ) : (
             <select
               value={radius}
