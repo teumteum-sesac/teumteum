@@ -133,7 +133,8 @@ npm run lint
 - 모바일 우선. 기본은 모바일 폭으로 스타일링하고 Tailwind 반응형 접두사(`md:`, `lg:`)로 PC 확장
 - `pages/` 의 화면 컴포넌트는 조합만 담당하고, UI·로직은 `features/` 에 둔다. 새 화면은 `app/router.tsx` 에 경로를 등록한다
 - 카카오 지도 SDK는 스크립트 로드가 끝난 뒤에 지도를 생성한다 (`features/map` 에서 로드 로직을 한 곳에 모은다)
-- API 호출은 반드시 `shared/api/client.ts` 의 axios 인스턴스를 거친다 (토큰 첨부·에러 처리 일원화)
+- API 호출은 `shared/api/request.ts` 의 `apiGet`·`apiPost`·`apiPatch`·`apiDelete` 를 쓴다. 공통 응답에서 `data` 만 꺼내 주고, 실패는 `ApiError`(`shared/api/apiError.ts`)로 던진다. 내부에서 `shared/api/client.ts` 의 axios 인스턴스를 거쳐 토큰 첨부·에러 처리가 일원화된다
+- 각 feature 의 API 함수는 `features/xxx/api/xxxApi.ts` 에 두고, 화면 컴포넌트는 그 함수만 부른다
 - TypeScript: `any` 사용 금지. API 요청·응답 타입은 백엔드 DTO 이름과 맞춰 정의한다 (`CourseResponse` 등)
 - 스타일은 Tailwind 우선. 클래스가 지나치게 길어지면 컴포넌트로 분리한다
 - feature 간 직접 import는 최소화하고, 여러 곳에서 쓰는 것은 `shared/` 로 올린다
@@ -163,6 +164,40 @@ npm run lint
 | AUT-02 | 회원가입 | `/signup` | 김용현 |
 
 하단바(홈·주변 탐색·저장한 코스·로그인/마이)는 HOM-01, HOM-02 에만 고정한다.
+
+### 프론트 API 연결 담당 (mock → 실제 API)
+
+화면 14개 중 **각자 메인 화면 1개는 본인이 직접 연결**하고, **나머지 화면은 전부 김용현이 연결**한다.
+
+| 담당 | 메인 연결 화면 | 연결할 API |
+|---|---|---|
+| 김용현 | AUT-01 로그인 | `POST /api/auth/login` (예정) |
+| 정종일 | CON-02 위치 설정 | `GET /api/places/search` (예정) |
+| 나혜빈 | RES-01 추천 결과 목록 | `POST /api/recommendations`, `POST /api/recommendations/{recommendationSetId}/regenerate` |
+| 유지수 | HOM-02 주변 장소 탐색 | `GET /api/places/nearby` (예정) |
+| 김하윤 | MY-02 저장한 코스 목록 | `GET /api/courses`, `DELETE /api/courses/{courseId}` |
+| 정종화 | MY-04 회원 정보 수정·탈퇴 | `PATCH /api/members/me`, `DELETE /api/members/me` (예정) |
+
+**나머지 8개 화면은 김용현이 연결한다**: HOM-01 홈 검색창, CON-01 외출 조건 설정, DET-01 추천 결과 상세(저장 버튼 포함), DET-02 코스 지도 상세, DET-03 장소 교체, MY-01 마이페이지, MY-03 저장한 코스 상세, AUT-02 회원가입.
+(예정)이 붙은 주소는 API 를 만드는 사람이 확정하면 그 이름으로 맞춘다.
+
+#### 메인 연결 화면을 "맡는다"는 것
+
+화면 하나를 끝까지 책임진다는 뜻이다. 그 화면이 쓰는 코드를 숙지하고, 직접 연결하고, 실제로 돌려서 확인한다.
+
+1. **숙지할 코드**
+   - 화면: `pages/XxxPage.tsx` → `features/xxx/components/` (화면이 어떻게 동작하는지)
+   - 데이터: `features/xxx/types.ts`, `features/xxx/mock.ts`, `store.ts` (지금 화면이 쓰는 데이터 모양과 상태)
+   - 호출 방식: `shared/api/request.ts`, `shared/api/apiError.ts` (부르는 법, 오류 받는 법)
+   - 백엔드: 연결할 API 의 `controller`·`dto` (요청·응답 필드 이름). 다른 사람이 만드는 API 면 그 담당자와 응답 형식을 먼저 맞춘다
+2. **연결**
+   - `types.ts` 에 백엔드 DTO 와 같은 이름으로 요청·응답 타입 정의 → `api/xxxApi.ts` 작성 → 화면에서 mock 대신 호출 → 다 쓴 mock 삭제
+   - 로딩 중, 실패(`ApiError.message` 표시), 결과 없음 상태를 처리한다
+3. **테스트** (백엔드 `gradlew.bat bootRun` + 프론트 `npm run dev` 로 실제 화면에서)
+   - 정상 흐름: 화면설계서대로 끝까지 동작하는지
+   - 오류 흐름: 잘못된 입력(400), 로그인 필요(401), 결과 없음, 서버 꺼짐에서 안내 문구가 나오는지
+   - API 만 따로 볼 때는 Swagger UI(`http://localhost:8080/swagger-ui/index.html`)
+   - 연결 후 그 화면에서 나온 버그는 담당자가 1차로 고친다
 
 ## 7. 도메인 용어
 
