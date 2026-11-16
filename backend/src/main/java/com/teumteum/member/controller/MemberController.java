@@ -1,0 +1,65 @@
+package com.teumteum.member.controller;
+
+import com.teumteum.global.common.ApiResponse;
+import com.teumteum.member.dto.EmailExistsResponse;
+import com.teumteum.member.dto.SignupRequest;
+import com.teumteum.member.dto.SignupResponse;
+import com.teumteum.member.service.MemberService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/*
+ * [이 파일이 하는 일]
+ * 회원 관련 HTTP 요청을 받는 입구. 요청을 받아 Service 에 넘기고, 결과를 공통 응답(ApiResponse)으로 감싸 돌려준다.
+ * 판단·처리 로직은 두지 않는다 (MemberService 담당).
+ *
+ * [만든 API]
+ *   POST /api/members                         회원가입 (REQ-001, 화면 AUT-02)
+ *   GET  /api/members/email-exists?email=...  이메일 중복 확인 (AUT-02 [중복 확인] 버튼)
+ *
+ * [URL 규칙] AGENTS.md 5장: /api/ + 복수형 명사. "회원(members)을 하나 만든다" = POST /api/members
+ *
+ * 서버 실행 후 Swagger UI(http://localhost:8080/swagger-ui/index.html)에서 직접 요청해 볼 수 있다.
+ */
+@RestController                   // 이 클래스의 메서드 반환값을 JSON 으로 바꿔 응답한다
+@RequestMapping("/api/members")   // 아래 메서드들 주소 앞에 공통으로 붙는다
+@RequiredArgsConstructor
+public class MemberController {
+
+    private final MemberService memberService;
+
+    /**
+     * 회원가입.
+     *   @Valid       : SignupRequest 의 검증 규칙(@Email, @Size …)을 먼저 검사. 틀리면 400 + fieldErrors (GlobalExceptionHandler)
+     *   @RequestBody : 요청 본문 JSON → SignupRequest 객체로 변환
+     *   응답 201 Created: "새로 만들어졌다"는 뜻의 상태 코드 (종일님 ApiResponse 사용 예시와 같은 방식)
+     */
+    @PostMapping
+    public ResponseEntity<ApiResponse<SignupResponse>> signup(@Valid @RequestBody SignupRequest request) {
+        SignupResponse response = memberService.signup(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(response));
+    }
+
+    /**
+     * 이메일 중복 확인.
+     *   @RequestParam : 주소 뒤 ?email=... 값을 받는다
+     *   @NotBlank @Email : 쿼리 값도 검증. 틀리면 400 (GlobalExceptionHandler 의 HandlerMethodValidationException 처리)
+     */
+    @GetMapping("/email-exists")
+    public ResponseEntity<ApiResponse<EmailExistsResponse>> checkEmailExists(
+            @RequestParam @NotBlank @Email String email
+    ) {
+        boolean exists = memberService.existsByEmail(email);
+        return ResponseEntity.ok(ApiResponse.ok(new EmailExistsResponse(exists)));
+    }
+}

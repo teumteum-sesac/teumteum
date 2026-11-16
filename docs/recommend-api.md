@@ -2,7 +2,7 @@
 
 > 담당: 나혜빈 · 작성일: 2026-11-13 · 추천 생성·다시 추천·코스 상세·장소 교체 후보·장소 교체 5개 API의 초안입니다.
 > 기준: [REQ-019 ~ 029, 050, 056](requirements.md#14-장소-및-코스-추천), 화면설계서 v2.0 RES-01 · DET-01 · DET-02 · DET-03.
-> URL·DTO·오류 코드는 팀 확인 전 제안안입니다. 공통 응답(`ApiResponse`)·오류 형식은 [저장 코스 API 명세](course-api.md)의 공통 규칙과 맞춥니다.
+> URL·DTO는 팀 확인 전 제안안입니다. 공통 응답(`ApiResponse`)·오류 형식은 dev 에 반영된 공통 코드(`global/common`, `global/exception`)를 따릅니다.
 
 ## API 목록
 
@@ -17,8 +17,44 @@
 ## 공통 규칙
 
 - **인증 없음.** 추천·상세·지도·교체는 비회원도 이용한다 (NFR-002). 로그인 상태면 토큰을 함께 보내도 되지만 결과는 같다.
-- 실제 응답은 공통 `ApiResponse`로 감싼다. **이 문서의 성공 JSON은 공통 응답 안의 데이터 부분 예시**다.
-- 오류 코드 이름은 공통 `ErrorCode` 반영 전 제안안이다. 외부 API 오류 원문·API 키는 응답에 넣지 않는다.
+- 실제 응답은 공통 `ApiResponse`로 감싼다. 성공은 `{ "success": true, "data": 업무 DTO, "error": null }` 이고, **이 문서의 성공 JSON은 `data` 에 들어가는 부분 예시**다.
+- 실패는 `{ "success": false, "data": null, "error": { "code", "message", "fieldErrors" } }` 이다. HTTP 상태는 오류 코드에 정해진 값으로 나간다. 외부 API 오류 원문·API 키는 응답에 넣지 않는다.
+- 오류 코드는 공통 `ErrorCode` 를 구현한 enum 에서 나온다. 이 문서의 오류 코드는 아래 셋 중 하나에 속한다.
+
+| 소속 | 위치 | 이 문서에서 쓰는 코드 |
+|---|---|---|
+| 공통 (`CommonErrorCode`, 정종일) | `global/exception` | `INVALID_REQUEST` 400, `INTERNAL_SERVER_ERROR` 500 |
+| 추천 (`RecommendErrorCode`, 나혜빈) | `recommend/exception` (추천 API 구현 때 추가) | `RECOMMENDATION_NOT_FOUND` 404, `AVAILABLE_TIME_EXCEEDED` 409, `RECOMMENDATION_EXPIRED` 410, `TOO_MANY_REQUESTS` 429 |
+| 장소 (정종일) | `place` 쪽 오류 코드 | 카카오 장소 검색 실패 503 — **이름 확정 전**, 아래에서는 `PLACE_SEARCH_UNAVAILABLE` 로 임시 표기 |
+
+- `TOO_MANY_REQUESTS` 는 지금은 다시 추천에서만 쓰므로 추천 쪽에 둔다. 다른 도메인에서도 필요해지면 공통으로 옮긴다.
+- 장소 검색 실패는 장소 서비스가 던진 오류를 추천이 그대로 전달한다 (추천에서 따로 만들지 않음).
+
+실패 응답 예시 (검증 실패 400):
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "입력값을 확인해 주세요.",
+    "fieldErrors": [
+      { "field": "availableMinutes", "message": "30 이상이어야 합니다" }
+    ]
+  }
+}
+```
+
+실패 응답 예시 (만료 410). `fieldErrors` 는 검증 실패일 때만 들어가고, 없으면 JSON 에서 빠진다:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": { "code": "RECOMMENDATION_EXPIRED", "message": "추천이 만료되었습니다." }
+}
+```
 - 시간 길이는 **분 단위 정수**, 시각은 `HH:mm`, 만료 시각은 오프셋을 포함한 ISO 8601 문자열이다.
 - 좌표 필드 이름은 [course-api.md](course-api.md)와 같이 `latitude`, `longitude` 를 쓴다. 프론트 `lat`/`lng` 와는 연동 시 맞춘다.
 - 선택 정보가 없으면 `null`, 목록이 비면 `[]` 이다.
@@ -81,10 +117,10 @@
 | `origin` | LocationRequest | O | 출발지. 프론트 기본값은 현재 위치 |
 | `destination` | LocationRequest 또는 null | X | 도착지. 없으면 출발지 주변에서 끝나는 코스 |
 | `startTime` | string | O | `HH:mm`, 30분 단위 (`mm` 은 `00` 또는 `30`) |
-| `availableMinutes` | integer | O | `30, 60, 120, 180, 240, 300, 360` 중 하나. 0분은 추천 불가(프론트에서 추천받기 비활성), 들어오면 400 `INVALID_REQUEST` |
+| `availableMinutes` | integer | O | `30 ~ 360` (분). 화면 슬라이더 단계(30, 60, 120 … 360)는 프론트 규칙이고 서버는 범위만 검사한다. 0분은 추천 불가(프론트에서 추천받기 비활성), 들어오면 400 `INVALID_REQUEST` |
 | `transportType` | string | O | `TRANSIT` · `WALK` · `CAR` |
 | `categoryMode` | string | O | `DIRECT` · `RANDOM` |
-| `categories` | string[] | X | 대분류 코드 0 ~ 3개, 중복 불가. `RANDOM` 이면 무시. `DIRECT` 인데 비어 있으면 `RANDOM` 으로 처리 |
+| `categories` | string[] | X | 대분류 코드 0 ~ 3개. 중복이 오면 오류 대신 서버가 하나로 정리한다. `RANDOM` 이면 무시. `DIRECT` 인데 비어 있으면 `RANDOM` 으로 처리 |
 
 `LocationRequest`: `name: string 또는 null`, `address: string 또는 null`, `latitude: number`(-90 ~ 90), `longitude: number`(-180 ~ 180).
 
@@ -193,11 +229,11 @@
 
 ### 1.5 실패 응답
 
-| HTTP 상태 | 제안 오류 코드 | 발생 상황 | 화면 처리 |
+| HTTP 상태 | 오류 코드 (소속) | 발생 상황 | 화면 처리 |
 |---|---|---|---|
-| 400 | `INVALID_REQUEST` | 필수값 누락, 좌표 범위·시각 형식·이용 시간 단계·대분류 개수(4개 이상) 오류 | 조건 확인 안내 |
-| 503 | `PLACE_SEARCH_UNAVAILABLE` | 장소 검색 외부 API가 응답하지 않아 후보를 하나도 얻지 못함 | "잠시 후 다시 시도해 주세요" |
-| 500 | `INTERNAL_SERVER_ERROR` | 서버 처리 실패 | 오류 안내, 재시도 가능 |
+| 400 | `INVALID_REQUEST` (공통) | 필수값 누락, 좌표 범위·시각 형식·이용 시간 범위(30 ~ 360)·대분류 개수(4개 이상)·잘못된 enum 값 | 조건 확인 안내 |
+| 503 | `PLACE_SEARCH_UNAVAILABLE` (장소, 이름 확정 전) | 장소 검색 외부 API가 응답하지 않아 후보를 하나도 얻지 못함 | "잠시 후 다시 시도해 주세요" |
+| 500 | `INTERNAL_SERVER_ERROR` (공통) | 서버 처리 실패 | 오류 안내, 재시도 가능 |
 
 이동시간 API 실패는 오류로 응답하지 않는다. 직선거리로 계산하고 `estimated: true` 로 표시한다 (REQ-022).
 
@@ -223,11 +259,11 @@
 - 같은 조건으로 **다른 장소·조합**을 추천한다. 직전 묶음에 나온 장소는 가능한 한 제외한다. 랜덤 추천에도 같게 적용한다.
 - 후보가 모자라면 겹치는 장소가 나올 수 있고, 그래도 없으면 1.4와 같은 빈 결과를 반환한다.
 
-| HTTP 상태 | 제안 오류 코드 | 발생 상황 | 화면 처리 |
+| HTTP 상태 | 오류 코드 (소속) | 발생 상황 | 화면 처리 |
 |---|---|---|---|
-| 404 | `RECOMMENDATION_NOT_FOUND` | 없는 묶음 ID | 조건 설정으로 이동 |
-| 410 | `RECOMMENDATION_EXPIRED` | 2시간이 지나 조건이 사라짐 | 프론트가 가진 조건으로 추천 생성 API 호출 |
-| 429 | `TOO_MANY_REQUESTS` | 같은 사용자가 최근 1분 안에 다시 추천을 5번 넘게 요청 | "잠시 후 다시 시도해 주세요" |
+| 404 | `RECOMMENDATION_NOT_FOUND` (추천) | 없는 묶음 ID | 조건 설정으로 이동 |
+| 410 | `RECOMMENDATION_EXPIRED` (추천) | 2시간이 지나 조건이 사라짐 | 프론트가 가진 조건으로 추천 생성 API 호출 |
+| 429 | `TOO_MANY_REQUESTS` (추천) | 같은 사용자가 최근 1분 안에 다시 추천을 5번 넘게 요청 | "잠시 후 다시 시도해 주세요" |
 
 - **다시 추천 제한:** 같은 사용자 기준 **최근 1분 동안 5번까지** 허용하고 6번째부터 `429` 를 반환한다. 다시 추천은 호출할 때마다 새 `recommendationSetId` 가 생기므로 묶음 ID가 아니라 사용자 기준으로 센다. 비회원도 이용하므로 사용자 구분 방법(IP 등)은 구현 단계에서 정한다.
 - 외부 API 무료 한도를 지키기 위한 제한이다 (NFR-014).
@@ -340,14 +376,14 @@
 - 교체 결과는 **새 `recommendationId`** 로 보관한다. 원래 버전도 만료 전까지 남겨 두어, 저장 API가 사용자가 실제로 본 버전을 저장할 수 있게 한다 (course-api 1.2). 만료 시각은 원래 묶음과 같다.
 - 프론트는 응답의 새 ID로 상세 화면(`/results/{새 recommendationId}`)을 갱신한다.
 
-| HTTP 상태 | 제안 오류 코드 | 발생 상황 | 화면 처리 |
+| HTTP 상태 | 오류 코드 (소속) | 발생 상황 | 화면 처리 |
 |---|---|---|---|
-| 400 | `INVALID_REQUEST` | 필드 누락, `newPlaceId` 가 후보 목록에 없음 | 후보 다시 조회 |
-| 404 | `RECOMMENDATION_NOT_FOUND` | 코스 없음 또는 `targetPlaceId` 가 코스에 없음 | 상세로 복귀 |
-| 409 | `AVAILABLE_TIME_EXCEEDED` | 바꾸면 이용 시간을 넘음 | "선택한 시간을 넘어요" 경고 후 상세로 복귀 (코스는 그대로) |
+| 400 | `INVALID_REQUEST` (공통) | 필드 누락, `newPlaceId` 가 후보 목록에 없음 | 후보 다시 조회 |
+| 404 | `RECOMMENDATION_NOT_FOUND` (추천) | 코스 없음 또는 `targetPlaceId` 가 코스에 없음 | 상세로 복귀 |
+| 409 | `AVAILABLE_TIME_EXCEEDED` (추천) | 바꾸면 이용 시간을 넘음 | "선택한 시간을 넘어요" 경고 후 상세로 복귀 (코스는 그대로) |
+| 410 | `RECOMMENDATION_EXPIRED` (추천) | 만료 | 만료 안내 후 다시 추천 |
 
 - **시간 초과 교체는 막는다.** 서버는 교체를 반영하지 않고 `409` 를 반환하며 코스는 바뀌지 않는다. 추천 코스는 이용 시간을 넘지 않아야 하기 때문이다 (NFR-024). 프론트가 4번 응답으로 미리 회색 처리하더라도, 서버는 요청을 받을 때 다시 확인한다.
-| 410 | `RECOMMENDATION_EXPIRED` | 만료 | 만료 안내 후 다시 추천 |
 
 ---
 
@@ -361,12 +397,16 @@
 | 기본 체류시간 | 세분류를 확인할 수 없는 장소는 60분 | 나혜빈 결정 (2026-11-13) |
 | 시간 초과 교체 | 교체를 막고 `409`. 프론트는 초과 후보를 회색으로 미리 표시 | NFR-024, 나혜빈 결정 (2026-11-13) |
 | 다시 추천 제한 | 같은 사용자 기준 최근 1분에 5번까지, 넘으면 `429` | REQ-026, NFR-014, 나혜빈 결정 (2026-11-13) |
+| 공통 응답·오류 형식 | dev 에 반영된 `ApiResponse`·`ErrorCode` 를 따른다. 오류 코드 소속은 공통 규칙 표 참고 | 정종일 공통 코드 반영 (2026-11-16) |
+| 오류 코드 소속 | `TOO_MANY_REQUESTS` 는 추천 쪽(필요하면 나중에 공통으로 이동), 장소 검색 실패 503 은 장소 쪽에서 만들고 추천은 그대로 전달 | 나혜빈·정종일 합의 (2026-11-16) |
+| 이용 시간 검증 | 서버는 `30 ~ 360` 범위만 검사. 슬라이더 단계는 프론트 규칙 | 나혜빈 결정 (2026-11-16) |
+| 대분류 중복 | 400 대신 서버에서 중복을 하나로 정리 | 나혜빈 결정 (2026-11-16) |
 
 ### 6.2 남은 항목
 
 | 항목 | 확인할 내용 | 담당 |
 |---|---|---|
-| 공통 응답 | `ApiResponse` JSON 구조, `ErrorCode` 이름. 확정되면 이 문서의 오류 코드 이름을 맞춘다 | 정종일 |
+| 장소 검색 실패 오류 코드 | 정종일님이 장소 쪽에 만들 503 오류 코드 이름. 정해지면 1.5와 공통 규칙 표의 `PLACE_SEARCH_UNAVAILABLE` 임시 이름을 바꾼다 | 정종일 |
 | 장소 후보 | 장소 서비스가 넘겨줄 후보 형식(세분류 포함), 검색 반경 단계, 세분류 ↔ 카카오 분류 매핑 | 정종일·나혜빈 |
 | 코스 저장 연결 | 저장 API가 `recommendationId` 로 추천 결과를 조회하는 서비스 메서드 | 나혜빈·김하윤 |
 | 지도 경로 | `routeLegs` 좌표를 추천 시 함께 보관하는 범위 | 나혜빈·유지수 |
@@ -382,3 +422,4 @@
 | 2026-11-13 | 결과 0건 응답(200 + 빈 목록)·기본 체류시간 60분 확정, 보관 위치는 구현 단계로 이동 |
 | 2026-11-13 | 시간 초과 교체 차단(409, 후보 회색 표시)·다시 추천 1분 5회 제한 확정, 보관은 DB 테이블 + 만료 시각 우선 검토 |
 | 2026-11-14 | 이용 시간 0분 = 추천 불가로 수정 (시간 제한 없음 아님). 0분 요청은 400 |
+| 2026-11-16 | 공통 `ApiResponse`·`ErrorCode` 반영: 실패 응답 예시 추가, 오류 코드 소속(공통·추천·장소) 표시, 이용 시간 검증을 `30 ~ 360` 으로, 대분류 중복은 서버에서 정리 |
