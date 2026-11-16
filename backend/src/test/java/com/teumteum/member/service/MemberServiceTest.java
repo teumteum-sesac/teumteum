@@ -7,12 +7,15 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.member.domain.Member;
+import com.teumteum.member.dto.LoginRequest;
+import com.teumteum.member.dto.LoginResponse;
 import com.teumteum.member.dto.SignupRequest;
-import com.teumteum.member.dto.SignupResponse;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.repository.MemberRepository;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,10 +25,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /*
  * [이 파일이 하는 일]
- * MemberService 의 회원가입 규칙(중복이면 막기, 비밀번호 암호화)이 맞게 동작하는지 확인하는 단위 테스트.
+ * MemberService 의 규칙(가입: 중복 막기·비밀번호 암호화·토큰 발급 / 로그인: 비밀번호 확인·탈퇴 회원 막기)을 확인하는 단위 테스트.
  * DB 없이 돈다.
  *
  * [Mock(가짜 객체)을 쓰는 이유]
@@ -34,7 +38,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  *     given(memberRepository.existsByEmail("a@b.com")).willReturn(true);   // "이미 있다"고 대답하게 함
  *   서비스가 생성자로 의존성을 받기 때문에(의존성 주입) 이렇게 가짜를 끼워 넣을 수 있다.
  *
- * 비밀번호 암호화기는 진짜 BCrypt 를 써서 실제로 해시가 되는지 확인한다.
+ * 비밀번호 암호화기(BCrypt)와 토큰 발급기(JwtProvider)는 진짜를 써서 실제로 해시·토큰이 되는지 확인한다.
  *
  * 실행 (backend/ 에서): gradlew.bat test --tests "com.teumteum.member.service.MemberServiceTest"
  */
@@ -45,28 +49,45 @@ class MemberServiceTest {
     private MemberRepository memberRepository;
 
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final JwtProvider jwtProvider = new JwtProvider("test-secret-key-for-teumteum-jwt-0123456789", 3600);
 
     private MemberService memberService;
 
     @BeforeEach   // 각 테스트 실행 전에 매번 새로 만든다
     void setUp() {
-        memberService = new MemberService(memberRepository, passwordEncoder);
+        memberService = new MemberService(memberRepository, passwordEncoder, jwtProvider);
     }
 
+    /** DB 에 저장된 것처럼 id 가 매겨진 회원을 만든다 (id 는 원래 DB 가 매기므로 테스트에서는 직접 넣는다) */
+    private Member savedMember(Long id, String rawPassword) {
+        Member member = Member.create("user@email.com", passwordEncoder.encode(rawPassword), "틈틈이");
+        ReflectionTestUtils.setField(member, "id", id);
+        return member;
+    }
+
+    // ===== 회원가입 =====
+
     @Test
-    @DisplayName("가입하면 비밀번호를 BCrypt 해시로 바꿔 저장하고, 응답에는 이메일·닉네임을 담는다")
+    @DisplayName("가입하면 비밀번호를 BCrypt 해시로 저장하고, 바로 쓸 수 있는 로그인 토큰을 준다")
     void signup() {
-        // given: 가입되지 않은 이메일, save 는 받은 회원을 그대로 돌려준다고 가정
+        // given: 가입되지 않은 이메일, save 는 받은 회원에 id 1 을 매겨 돌려준다고 가정
         SignupRequest request = new SignupRequest("user@email.com", "abc12345", "틈틈이");
         given(memberRepository.existsByEmail("user@email.com")).willReturn(false);
-        given(memberRepository.save(any(Member.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(memberRepository.save(any(Member.class))).willAnswer(invocation -> {
+            Member member = invocation.getArgument(0);
+            ReflectionTestUtils.setField(member, "id", 1L);
+            return member;
+        });
 
         // when
-        SignupResponse response = memberService.signup(request);
+        LoginResponse response = memberService.signup(request);
 
-        // then 1: 응답 값
+        // then 1: 응답 값 (가입 후 자동 로그인 → 토큰이 들어 있고, 그 토큰의 주인이 방금 가입한 회원)
+        assertThat(response.memberId()).isEqualTo(1L);
         assertThat(response.email()).isEqualTo("user@email.com");
         assertThat(response.nickname()).isEqualTo("틈틈이");
+        assertThat(response.tokenType()).isEqualTo("Bearer");
+        assertThat(jwtProvider.getMemberId(response.accessToken())).isEqualTo(1L);
 
         // then 2: 실제로 save() 에 넘어간 회원을 붙잡아서(ArgumentCaptor) 비밀번호가 어떻게 저장됐는지 확인
         ArgumentCaptor<Member> captor = ArgumentCaptor.forClass(Member.class);
@@ -102,5 +123,54 @@ class MemberServiceTest {
 
         assertThat(memberService.existsByEmail("user@email.com")).isTrue();
         assertThat(memberService.existsByEmail("new@email.com")).isFalse();
+    }
+
+    // ===== 로그인 =====
+
+    @Test
+    @DisplayName("이메일·비밀번호가 맞으면 그 회원의 토큰을 발급한다")
+    void login() {
+        given(memberRepository.findByEmail("user@email.com")).willReturn(Optional.of(savedMember(5L, "abc12345")));
+
+        LoginResponse response = memberService.login(new LoginRequest("user@email.com", "abc12345"));
+
+        assertThat(response.memberId()).isEqualTo(5L);
+        assertThat(response.expiresIn()).isEqualTo(3600);
+        assertThat(jwtProvider.getMemberId(response.accessToken())).isEqualTo(5L);
+    }
+
+    @Test
+    @DisplayName("없는 이메일이면 LOGIN_FAILED")
+    void loginUnknownEmail() {
+        given(memberRepository.findByEmail("none@email.com")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> memberService.login(new LoginRequest("none@email.com", "abc12345")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(MemberErrorCode.LOGIN_FAILED);
+    }
+
+    @Test
+    @DisplayName("비밀번호가 틀리면 LOGIN_FAILED (없는 이메일과 같은 오류)")
+    void loginWrongPassword() {
+        given(memberRepository.findByEmail("user@email.com")).willReturn(Optional.of(savedMember(5L, "abc12345")));
+
+        assertThatThrownBy(() -> memberService.login(new LoginRequest("user@email.com", "wrong-password")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(MemberErrorCode.LOGIN_FAILED);
+    }
+
+    @Test
+    @DisplayName("탈퇴한 회원은 비밀번호가 맞아도 LOGIN_FAILED")
+    void loginWithdrawnMember() {
+        Member withdrawn = savedMember(5L, "abc12345");
+        withdrawn.withdraw();
+        given(memberRepository.findByEmail("user@email.com")).willReturn(Optional.of(withdrawn));
+
+        assertThatThrownBy(() -> memberService.login(new LoginRequest("user@email.com", "abc12345")))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(MemberErrorCode.LOGIN_FAILED);
     }
 }
