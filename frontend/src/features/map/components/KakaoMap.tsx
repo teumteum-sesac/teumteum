@@ -41,13 +41,15 @@ const TONE_COLOR = {
 }
 
 function createLabelElement(marker: MapMarker): HTMLElement {
+  // 바깥 상자는 핀 크기 그대로 둔다. CustomOverlay 는 처음 크기로 기준점을 잡으므로
+  // 말풍선이 상자 크기를 바꾸면 핀이 좌표에서 밀린다 → 말풍선은 absolute 로 핀 위에 띄운다
   const wrap = document.createElement('div')
-  wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer'
+  wrap.style.cssText = 'position:relative;cursor:pointer'
 
   const bubble = document.createElement('div')
   bubble.textContent = marker.title ?? ''
   bubble.style.cssText =
-    'display:none;margin-bottom:4px;padding:4px 8px;border-radius:8px;background:#fff;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);white-space:nowrap'
+    'display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;padding:4px 8px;border-radius:8px;background:#fff;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);white-space:nowrap'
 
   const pin = document.createElement('div')
   pin.textContent = marker.label ?? ''
@@ -189,12 +191,13 @@ export default function KakaoMap({
     }
   }, [ready, markers, polyline, fitBounds, boundsPadding])
 
-  // 중심 이동: 처음 만든 위치와 같으면 건너뛴다 (fitBounds로 맞춘 화면을 덮지 않도록)
+  // 중심 이동: 마지막으로 받은 center 와 같은 객체면 건너뛴다 (처음 그릴 때 fitBounds로 맞춘 화면을 덮지 않도록)
+  // 좌표가 아니라 객체로 비교하므로, 같은 좌표라도 새 객체를 넘기면 다시 이동한다 (DET-02 같은 항목 재선택)
   useEffect(() => {
     const maps = mapsRef.current
     const { center: initial } = initialRef.current
     if (!ready || !maps || !mapRef.current) return
-    if (initial.lat === center.lat && initial.lng === center.lng) return
+    if (initial === center) return
     initialRef.current = { ...initialRef.current, center }
     // 같은 렌더에서 범위를 맞췄으면 그 화면을 유지한다 (마커에 이 위치가 이미 포함됨)
     if (boundsFittedRef.current) return

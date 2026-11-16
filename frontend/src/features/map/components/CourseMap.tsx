@@ -51,7 +51,7 @@ export default function CourseMap({ course, backLabel }: CourseMapProps) {
         </p>
         <ol className="flex flex-col gap-1">
           {markers.map((m) => (
-            <MapRow key={m.label} label={m.label ?? ''} name={m.title ?? ''} dark={m.tone === 'dark'} onClick={() => setCenter(m)} />
+            <MapRow key={m.label} label={m.label ?? ''} name={m.title ?? ''} dark={m.tone === 'dark'} onClick={() => setCenter({ lat: m.lat, lng: m.lng })} />
           ))}
         </ol>
       </section>
