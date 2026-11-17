@@ -38,6 +38,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import static org.mockito.Mockito.never;
 
 // 실제 DB 없이 회원별 조회 조건, 집계 결과 연결, 페이지 응답을 검증한다.
 @ExtendWith(MockitoExtension.class)
@@ -257,5 +258,44 @@ class CourseServiceTest {
                 .isEqualByComparingTo("37.5650");
         assertThat(savedLeg.coordinates().getLast().longitude())
                 .isEqualByComparingTo("126.9780");
+    }
+
+    @Test
+    void deletesOwnedCourse() {
+        // 1. 삭제 대상 코스를 준비한다.
+        Course course = mock(Course.class);
+        given(course.getCourseId()).willReturn(42L);
+
+        // 2. 회원 7의 코스 42가 조회되는 상황을 설정한다.
+        given(courseRepository.findByCourseIdAndMemberId(42L, 7L))
+                .willReturn(Optional.of(course));
+
+        // 3. 삭제 메서드를 실행한다.
+        var response = courseService.deleteCourse(7L, 42L);
+
+        // 4. 조회한 코스를 Repository에 삭제 요청했는지 확인한다.
+        verify(courseRepository).delete(course);
+
+        // 5. 삭제 결과가 올바른지 확인한다.
+        assertThat(response.courseId()).isEqualTo("42");
+        assertThat(response.deleted()).isTrue();
+    }
+
+    @Test
+    void rejectsDeletingOtherMembersCourse() {
+        // 회원 7과 코스 42가 모두 일치하는 데이터가 없는 상황이다.
+        // 코스가 없거나, 다른 회원 소유일 때 이런 결과가 나온다.
+        given(courseRepository.findByCourseIdAndMemberId(42L, 7L))
+                .willReturn(Optional.empty());
+
+        // 삭제를 시도하면 COURSE_NOT_FOUND 예외가 발생해야 한다.
+        assertThatThrownBy(() -> courseService.deleteCourse(7L, 42L))
+                .isInstanceOfSatisfying(CustomException.class, exception -> {
+                    assertThat(exception.getErrorCode())
+                            .isEqualTo(CourseErrorCode.COURSE_NOT_FOUND);
+                });
+
+        // 소유권 확인에 실패했으므로 삭제 메서드는 호출되면 안 된다.
+        verify(courseRepository, never()).delete(any(Course.class));
     }
 }

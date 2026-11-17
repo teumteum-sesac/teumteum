@@ -18,8 +18,8 @@ export default function ConditionForm() {
   const { origin, availableMinutes, transportType, setTransportType } = useConditionStore()
   const requestRecommend = useRecommendStore((s) => s.request)
 
-  // 출발지가 없으면 비활성 (시간은 항상 값이 있다. 0분 = 시간 제한 없음). 카테고리는 비어 있으면 랜덤으로 진행
-  const canSubmit = origin !== null
+  // 출발지가 없거나 이용시간이 0분이면 비활성 (REQ-008, 0분은 슬라이더 시작 위치). 카테고리는 비어 있으면 랜덤으로 진행
+  const canSubmit = origin !== null && availableMinutes > 0
 
   return (
     <>
@@ -28,7 +28,7 @@ export default function ConditionForm() {
           <LocationFields />
         </Section>
 
-        <Section title={`시간 · ${availableMinutes === 0 ? '시간 제한 없음' : formatMinutes(availableMinutes)}`}>
+        <Section title={`시간 · ${availableMinutes === 0 ? '0분' : formatMinutes(availableMinutes)}`}>
           <TimeSelector />
         </Section>
 

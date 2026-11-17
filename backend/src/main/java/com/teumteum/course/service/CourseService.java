@@ -4,6 +4,7 @@ import com.teumteum.course.domain.Course;
 import com.teumteum.course.domain.CoursePlace;
 import com.teumteum.course.domain.CourseRouteLeg;
 import com.teumteum.course.dto.CourseCoordinateResponse;
+import com.teumteum.course.dto.CourseDeleteResponse;
 import com.teumteum.course.dto.CourseListResponse;
 import com.teumteum.course.dto.CourseLocationResponse;
 import com.teumteum.course.dto.CoursePlaceResponse;
@@ -245,5 +246,19 @@ public class CourseService {
                 places,
                 routeLegs
         );
+    }
+
+    // 클래스의 읽기 전용 설정을 덮어써서 삭제를 쓰기 트랜잭션으로 실행한다.
+    @Transactional
+    public CourseDeleteResponse deleteCourse(Long memberId, Long courseId) {
+        // 없거나 다른 회원 소유의 코스는 삭제 전에 기존 검증에서 거절한다.
+        Course course = findOwnedCourse(memberId, courseId);
+
+        // 실제 DB의 ON DELETE CASCADE 설정으로 저장 장소·경로도 함께 삭제된다.
+        // 공용 장소(place)는 삭제하지 않는다.
+        courseRepository.delete(course);
+
+        // 트랜잭션 커밋에 실패하면 정상 응답 대신 예외가 전달된다.
+        return new CourseDeleteResponse(course.getCourseId().toString(), true);
     }
 }
