@@ -28,7 +28,7 @@ public class CourseController {
     @GetMapping
     public ResponseEntity<ApiResponse<CourseListResponse>> getCourses(
             // 기존 Resolver가 회원 ID를 채운다. 사용자가 쿼리로 지정하는 회원 ID가 아니다.
-            // [임시] 현재는 X-Member-Id 헤더를 사용한다. JWT 연결은 인증 계층에서 처리한다.
+            // 로그인 토큰(Authorization: Bearer)을 JwtAuthenticationFilter 가 검증하고 회원 ID 를 넣어 준다.
             @LoginMember Long memberId,
             // URL에 page가 없으면 첫 페이지(0), size가 없으면 20개를 요청한다.
             @RequestParam(name = "page", defaultValue = "0") int page,
