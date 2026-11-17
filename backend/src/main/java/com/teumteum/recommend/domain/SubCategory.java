@@ -3,50 +3,69 @@ package com.teumteum.recommend.domain;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
+import static com.teumteum.recommend.domain.CategoryCode.CULTURE;
+import static com.teumteum.recommend.domain.CategoryCode.ENTERTAINMENT;
+import static com.teumteum.recommend.domain.CategoryCode.FOOD;
+import static com.teumteum.recommend.domain.CategoryCode.NATURE;
+import static com.teumteum.recommend.domain.CategoryCode.SHOPPING;
+import static com.teumteum.recommend.domain.CategoryCode.SPORTS;
+import static com.teumteum.recommend.domain.CategoryCode.TOURISM;
+
+/**
+ * 세분류 29개와 예상 체류시간(분) (화면설계서 RES-01 체류시간표).
+ * <p>
+ * category: 이 세분류가 속한 대분류. 세분류 필터를 대분류별로 묶을 때 쓴다 (REQ-050).
+ * 맨 위 import static 덕분에 CategoryCode.CULTURE 대신 CULTURE 만 써도 된다.
+ */
 @Getter
 @RequiredArgsConstructor
 public enum SubCategory {
-    // 1. 값 목록
+    // 1. 값 목록 (소속 대분류, 이름, 체류시간)
     // 문화생활
-    EXHIBITION("전시", 90),
-    MOVIE("영화", 150),
-    PERFORMANCE("공연", 150),
-    BOOKSTORE("책방", 60),
+    EXHIBITION(CULTURE, "전시", 90),
+    MOVIE(CULTURE, "영화", 150),
+    PERFORMANCE(CULTURE, "공연", 150),
+    BOOKSTORE(CULTURE, "책방", 60),
     // 카페/디저트
-    CAFE("카페", 60),
-    BAKERY("베이커리", 30),
-    DESSERT("디저트", 40),
+    // 이 enum 안에서 CAFE 라고만 쓰면 대분류가 아니라 세분류 SubCategory.CAFE(자기 자신)를 가리킨다.
+    // 그래서 카페/디저트 줄만 CategoryCode.CAFE 로 이름을 다 적는다.
+    CAFE(CategoryCode.CAFE, "카페", 60),
+    BAKERY(CategoryCode.CAFE, "베이커리", 30),
+    DESSERT(CategoryCode.CAFE, "디저트", 40),
     // 음식/맛집
-    KOREAN("한식", 60),
-    WESTERN("양식", 60),
-    JAPANESE("일식", 60),
-    CHINESE("중식", 60),
-    SNACK("분식", 40),
+    KOREAN(FOOD, "한식", 60),
+    WESTERN(FOOD, "양식", 60),
+    JAPANESE(FOOD, "일식", 60),
+    CHINESE(FOOD, "중식", 60),
+    SNACK(FOOD, "분식", 40),
     // 자연/휴식
-    PARK("공원", 60),
-    WALKING_TRAIL("산책로", 60),
-    HAN_RIVER("한강", 90),
+    PARK(NATURE, "공원", 60),
+    WALKING_TRAIL(NATURE, "산책로", 60),
+    HAN_RIVER(NATURE, "한강", 90),
     // 오락/체험
-    ESCAPE_ROOM("방탈출", 90),
-    BOARD_GAME("보드게임", 120),
-    WORKSHOP("공방", 120),
-    KARAOKE("노래방", 60),
+    ESCAPE_ROOM(ENTERTAINMENT, "방탈출", 90),
+    BOARD_GAME(ENTERTAINMENT, "보드게임", 120),
+    WORKSHOP(ENTERTAINMENT, "공방", 120),
+    KARAOKE(ENTERTAINMENT, "노래방", 60),
     // 쇼핑/구경
-    PROP_SHOP("소품샵", 40),
-    POPUP_STORE("팝업스토어", 40),
-    MARKET("시장", 60),
-    DEPARTMENT_STORE("백화점", 90),
+    PROP_SHOP(SHOPPING, "소품샵", 40),
+    POPUP_STORE(SHOPPING, "팝업스토어", 40),
+    MARKET(SHOPPING, "시장", 60),
+    DEPARTMENT_STORE(SHOPPING, "백화점", 90),
     // 스포츠활동
-    BILLIARDS("당구", 90),
-    BOWLING("볼링", 90),
-    CLIMBING("클라이밍", 120),
+    BILLIARDS(SPORTS, "당구", 90),
+    BOWLING(SPORTS, "볼링", 90),
+    CLIMBING(SPORTS, "클라이밍", 120),
     // 관광/명소
-    LANDMARK("랜드마크", 60),
-    PALACE("고궁", 90),
-    OBSERVATORY("전망대", 60);
+    LANDMARK(TOURISM, "랜드마크", 60),
+    PALACE(TOURISM, "고궁", 90),
+    OBSERVATORY(TOURISM, "전망대", 60);
 
+    private final CategoryCode category;
     private final String displayName;
     private final int stayMinutes;
 
@@ -66,4 +85,17 @@ public enum SubCategory {
 
     }
 
+    /**
+     * 한 대분류에 속한 세분류들을 선언 순서대로 돌려준다.
+     * 예) SPORTS → [당구, 볼링, 클라이밍]
+     */
+    public static List<SubCategory> of(CategoryCode category) {
+        List<SubCategory> result = new ArrayList<>();
+        for (SubCategory sub : values()) {
+            if (sub.getCategory() == category) {
+                result.add(sub);
+            }
+        }
+        return result;
+    }
 }
