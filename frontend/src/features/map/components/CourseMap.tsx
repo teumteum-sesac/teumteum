@@ -20,6 +20,8 @@ interface CourseMapProps {
   course: Course
   /** 돌아가기 버튼 문구 */
   backLabel: string
+  /** 저장 지도의 직접 진입에서도 저장 상세로 돌아갈 수 있도록 지정한다. */
+  backTo?: string
   /**
    * 지도 경로 구간 (추천 상세·저장 코스 응답의 routeLegs). ACTUAL 구간은 실제 경로 좌표를 따라 그리고,
    * STRAIGHT·구간 없음·값 없음은 지점 사이 직선으로 그린다 (REQ-041)
@@ -31,7 +33,7 @@ interface CourseMapProps {
  * 코스 지도 상세 (DET-02): 출발(S)·방문 순번·도착(E) 마커와 경로선, 전체 코스가 한 화면에 보이게 맞춤.
  * 번호를 누르면 장소명·체류시간·다음 이동시간 말풍선. 차량·도보는 실제 경로, 대중교통은 1차 버전에서 장소 사이 직선
  */
-export default function CourseMap({ course, backLabel, routeLegs }: CourseMapProps) {
+export default function CourseMap({ course, backLabel, backTo, routeLegs }: CourseMapProps) {
   const navigate = useNavigate()
 
   const markers = useMemo<MapMarker[]>(() => {
@@ -100,7 +102,7 @@ export default function CourseMap({ course, backLabel, routeLegs }: CourseMapPro
       </section>
 
       <BottomActionBar>
-        <Button variant="secondary" onClick={() => navigate(-1)}>
+        <Button variant="secondary" onClick={() => { if (backTo) navigate(backTo); else navigate(-1) }}>
           {backLabel}
         </Button>
       </BottomActionBar>
