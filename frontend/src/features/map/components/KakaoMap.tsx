@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getStickerUrl } from '../../../shared/assets/stickerAssets'
 import type { LatLng } from '../../../shared/types/domain'
 import { loadKakaoMap } from '../api/loadKakaoMap'
-import type { KakaoMapInstance, KakaoMapsApi, KakaoMarkerImage, KakaoOverlay } from '../types'
+import type { KakaoCustomOverlay, KakaoMapInstance, KakaoMapsApi, KakaoMarkerImage, KakaoOverlay } from '../types'
 
 /**
  * 지도 마커. label이 있으면 S·순번 같은 라벨 마커(핀 스티커 + 글자)로, 없으면 장소 핀 마커로 그린다.
@@ -43,6 +43,11 @@ interface KakaoMapProps {
    * 받은 좌표를 다시 center 로 넘기지 않는다 (지도가 이미 그 위치에 있음)
    */
   onCenterChange?: (center: LatLng) => void
+  /**
+   * 바깥(예: DET-02 방문 순서 목록)에서 라벨 마커를 선택한다. 마커 id 로 찾아 강조하고 말풍선을 연다.
+   * 같은 마커를 다시 골라도 동작하도록 매번 새 객체로 넘긴다
+   */
+  selectMarker?: { id: string } | null
   className?: string
 }
 
@@ -79,7 +84,7 @@ const FLAG_BASE = { x: 135 / STICKER_PX, y: 449 / STICKER_PX }
 const LABEL_PIN_SIZE = 48 // 코스 지도 S·순번
 const FLAG_SIZE = 44 // 코스 지도 도착 E
 const PLACE_PIN_SIZE = 36 // 주변 탐색 장소 (개수가 많아 작게)
-const ME_SIZE = 44 // 현재 위치
+const ME_SIZE = 54 // 현재 위치 스티커 (흰 원 60px 안)
 
 /** 스티커 이미지 한 장을 고정 크기로 */
 function createStickerImage(url: string, size: number): HTMLImageElement {
@@ -93,33 +98,82 @@ function createStickerImage(url: string, size: number): HTMLImageElement {
   return img
 }
 
-/** CustomOverlay 에 넣을 내용과 기준점 */
-interface OverlayContent {
-  content: HTMLElement
-  xAnchor: number
-  yAnchor: number
+/** 말풍선이 지도 가장자리에서 떨어질 최소 간격(px). 이보다 가까우면 지도를 그만큼만 옮긴다 */
+const BUBBLE_EDGE_GAP = 12
+/** 겹칠 때 순서: 기본 라벨 마커 < 선택한 마커 < 현재 위치 */
+const Z_LABEL = 1
+const Z_SELECTED = 10
+const Z_CURRENT = 20
+/** 현재 위치: 바깥 핑크 후광 · 흰 원 지름(px) */
+const ME_HALO_SIZE = 76
+const ME_RING_SIZE = 60
+/** 현재 위치 pulse 는 페이지에서 처음 한 번만 (지도가 다시 그려질 때마다 반복하지 않음) */
+let mePulsePlayed = false
+
+/** 라벨 마커 하나를 선택·해제하는 손잡이 */
+interface LabelControl {
+  overlay: KakaoCustomOverlay
+  /** 말풍선 (없으면 null) */
+  bubble: HTMLElement | null
+  setSelected: (selected: boolean) => void
 }
 
-/** S·순번 라벨 마커 (핀 스티커 + 흰 원 안 글자) 또는 도착 깃발 (icon: 'flag'). 누르면 말풍선 */
-function createLabelOverlay(marker: MapMarker): OverlayContent {
+/** CustomOverlay 에 넣을 내용과 기준점 */
+interface LabelContent {
+  content: HTMLElement
+  /** 누르는 부분 (핀·깃발) */
+  pin: HTMLElement
+  bubble: HTMLElement | null
+  xAnchor: number
+  yAnchor: number
+  setSelected: (selected: boolean) => void
+}
+
+/** 말풍선: 장소명(굵게) + 체류·다음 이동(보조). title 은 '장소명 · 체류 … · 다음 이동 …' 모양 */
+function createBubble(title: string): HTMLElement {
+  const bubble = document.createElement('div')
+  // 핀 위 가운데, 핀과 10px 떨어뜨려 숫자를 가리지 않는다. 폭은 160~200px, 길면 줄바꿈
+  bubble.style.cssText =
+    'display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:10px;box-sizing:border-box;width:max-content;min-width:160px;max-width:200px;padding:8px 12px;border-radius:12px;background:#fff;color:#202020;box-shadow:0 4px 12px rgba(0,0,0,.18);text-align:center;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;cursor:default'
+  const [name, ...rest] = title.split(' · ')
+  const nameEl = document.createElement('p')
+  nameEl.textContent = name
+  nameEl.style.cssText = 'margin:0;font-size:14px;font-weight:700;line-height:1.35'
+  bubble.append(nameEl)
+  if (rest.length > 0) {
+    const sub = document.createElement('p')
+    sub.textContent = rest.join(' · ')
+    sub.style.cssText = 'margin:2px 0 0;font-size:12px;line-height:1.4;color:#5f5f5f'
+    bubble.append(sub)
+  }
+  // 아래 꼬리 (마커 쪽)
+  const tail = document.createElement('div')
+  tail.style.cssText =
+    'position:absolute;left:50%;bottom:-5px;width:10px;height:10px;background:#fff;transform:translateX(-50%) rotate(45deg);box-shadow:2px 2px 3px rgba(0,0,0,.08)'
+  bubble.append(tail)
+  return bubble
+}
+
+/** S·순번 라벨 마커 (핀 스티커 + 흰 원 안 글자) 또는 도착 깃발 (icon: 'flag'). 누르면 선택·말풍선 */
+function createLabelOverlay(marker: MapMarker): LabelContent {
   const isFlag = marker.icon === 'flag'
   const url = getStickerUrl(isFlag ? 'mapFlag' : 'mapPin')
   const size = isFlag ? FLAG_SIZE : LABEL_PIN_SIZE
+  // 핀은 핀 끝, 깃발은 깃대 아래 끝이 좌표. 예전 원은 아래 가운데
+  const anchor = !url ? { x: 0.5, y: 1 } : isFlag ? FLAG_BASE : PIN_TIP
 
   // 바깥 상자는 핀 크기 그대로 둔다. CustomOverlay 는 처음 크기로 기준점을 잡으므로
   // 말풍선이 상자 크기를 바꾸면 핀이 좌표에서 밀린다 → 말풍선은 absolute 로 핀 위에 띄운다
   const wrap = document.createElement('div')
   wrap.style.cssText = url ? `position:relative;width:${size}px;height:${size}px` : 'position:relative'
 
-  const bubble = document.createElement('div')
-  bubble.textContent = marker.title ?? ''
-  bubble.style.cssText =
-    'display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;padding:4px 8px;border-radius:8px;background:#fff;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);white-space:nowrap'
+  const bubble = marker.title ? createBubble(marker.title) : null
 
-  // 누르는 부분 (핀·깃발)
+  // 누르는 부분 (핀·깃발). 선택하면 좌표 기준점(핀 끝)을 중심으로 커져서 좌표는 그대로다
   const pin = document.createElement('div')
+  const origin = `${anchor.x * 100}% ${anchor.y * 100}%`
   if (url) {
-    pin.style.cssText = 'position:absolute;inset:0;cursor:pointer'
+    pin.style.cssText = `position:absolute;inset:0;cursor:pointer;transform-origin:${origin};transition:transform .15s ease,filter .15s ease;filter:drop-shadow(0 1px 2px rgba(0,0,0,.2))`
     pin.append(createStickerImage(url, size))
     if (!isFlag && marker.label) {
       const text = document.createElement('span')
@@ -130,31 +184,60 @@ function createLabelOverlay(marker: MapMarker): OverlayContent {
   } else {
     // 스티커 파일이 없으면 예전 색 원 라벨
     pin.textContent = marker.label ?? ''
-    pin.style.cssText = `display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;border:2px solid #fff;background:${TONE_COLOR[marker.tone ?? 'primary']};color:#fff;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer`
+    pin.style.cssText = `display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;border:2px solid #fff;background:${TONE_COLOR[marker.tone ?? 'primary']};color:#fff;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;transform-origin:${origin};transition:transform .15s ease`
   }
 
-  if (marker.title) {
-    pin.addEventListener('click', () => {
-      bubble.style.display = bubble.style.display === 'none' ? 'block' : 'none'
-    })
+  const setSelected = (selected: boolean) => {
+    if (bubble) bubble.style.display = selected ? 'block' : 'none'
+    pin.style.transform = selected ? 'scale(1.08)' : ''
+    // 선택: 흰 링 + 연한 핑크 빛 + 그림자 / 기본: 옅은 그림자
+    if (url) {
+      pin.style.filter = selected
+        ? 'drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 6px rgba(242,111,168,.85)) drop-shadow(0 3px 6px rgba(0,0,0,.25))'
+        : 'drop-shadow(0 1px 2px rgba(0,0,0,.2))'
+    }
   }
+
+  // 지도 클릭(선택 해제)으로 번지지 않게 막는다
+  for (const type of ['mousedown', 'touchstart', 'click']) wrap.addEventListener(type, (e) => e.stopPropagation())
   if (marker.onClick) pin.addEventListener('click', marker.onClick)
-  wrap.append(bubble, pin)
-
-  // 핀은 핀 끝, 깃발은 깃대 아래 끝이 좌표. 예전 원은 아래 가운데
-  const anchor = !url ? { x: 0.5, y: 1 } : isFlag ? FLAG_BASE : PIN_TIP
-  return { content: wrap, xAnchor: anchor.x, yAnchor: anchor.y }
+  if (bubble) wrap.append(bubble)
+  wrap.append(pin)
+  return { content: wrap, pin, bubble, xAnchor: anchor.x, yAnchor: anchor.y, setSelected }
 }
 
-/** 현재 위치 스티커 (map-me). 좌표가 그림 가운데에 온다 */
+/** 현재 위치 스티커 (map-me) + 흰 원 + 핑크 후광 + '내 위치' 라벨. 좌표가 원 가운데에 온다 */
 function createCurrentLocationElement(): HTMLElement {
   const url = getStickerUrl('mapMe')
   const el = document.createElement('div')
   el.setAttribute('aria-label', '현재 위치')
   if (url) {
     el.setAttribute('role', 'img')
-    el.style.cssText = `width:${ME_SIZE}px;height:${ME_SIZE}px`
-    el.append(createStickerImage(url, ME_SIZE))
+    // 바깥 상자는 후광 크기로 고정 (기준점이 밀리지 않게). 라벨은 상자 밖 위쪽에 absolute
+    el.style.cssText = `position:relative;width:${ME_HALO_SIZE}px;height:${ME_HALO_SIZE}px;pointer-events:none`
+    const halo = document.createElement('div')
+    halo.style.cssText = 'position:absolute;inset:0;border-radius:9999px;background:rgba(242,111,168,.22);border:1.5px solid rgba(242,111,168,.4);box-sizing:border-box'
+    const ring = document.createElement('div')
+    ring.style.cssText = `position:absolute;left:50%;top:50%;width:${ME_RING_SIZE}px;height:${ME_RING_SIZE}px;transform:translate(-50%,-50%);border-radius:9999px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.22);display:flex;align-items:center;justify-content:center`
+    ring.append(createStickerImage(url, ME_SIZE))
+    const label = document.createElement('div')
+    label.textContent = '내 위치'
+    label.setAttribute('aria-hidden', 'true')
+    label.style.cssText = 'position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px;padding:2px 8px;border-radius:9999px;border:1.5px solid #f26fa8;background:#fff;color:#202020;font-size:11px;font-weight:700;line-height:1.4;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.15)'
+    el.append(halo, ring, label)
+    // 처음 한 번만 은은한 pulse (움직임 줄이기 설정이면 생략)
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (!mePulsePlayed && !reduceMotion && typeof halo.animate === 'function') {
+      mePulsePlayed = true
+      halo.animate(
+        [
+          { transform: 'scale(.7)', opacity: 0.9 },
+          { transform: 'scale(1.15)', opacity: 0.4 },
+          { transform: 'scale(1)', opacity: 1 },
+        ],
+        { duration: 1200, easing: 'ease-out' },
+      )
+    }
   } else {
     // 스티커 파일이 없으면 예전 파란 점
     el.style.cssText = `width:16px;height:16px;border-radius:9999px;border:3px solid #fff;background:${TONE_COLOR.primary};box-shadow:0 0 0 4px rgba(59,108,246,.25),0 1px 4px rgba(0,0,0,.3)`
@@ -170,18 +253,40 @@ function createPlacePinImage(maps: KakaoMapsApi): KakaoMarkerImage | null {
   return new maps.MarkerImage(url, new maps.Size(PLACE_PIN_SIZE, PLACE_PIN_SIZE), { offset })
 }
 
-function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMarker[], polyline: boolean | LatLng[]): KakaoOverlay[] {
+/**
+ * 마커·경로선을 그린다. 라벨 마커는 id(없으면 label)로 선택 손잡이를 labels 에 담고,
+ * 누르면 onLabelClick(id) 를 부른다 (선택·해제는 KakaoMap 이 한 곳에서 관리)
+ */
+function drawOverlays(
+  maps: KakaoMapsApi,
+  map: KakaoMapInstance,
+  markers: MapMarker[],
+  polyline: boolean | LatLng[],
+  onLabelClick: (id: string) => void,
+): { overlays: KakaoOverlay[]; labels: Map<string, LabelControl> } {
   // 장소 핀 이미지는 장소 마커가 있을 때 한 번만 만든다
   let placePinImage: KakaoMarkerImage | null | undefined
-  const overlays: KakaoOverlay[] = markers.map((m) => {
+  const labels = new Map<string, LabelControl>()
+  const overlays: KakaoOverlay[] = markers.map((m, i) => {
     const position = new maps.LatLng(m.lat, m.lng)
-    // 현재 위치는 좌표가 그림 정중앙에 오도록 yAnchor 0.5
+    // 현재 위치는 좌표가 그림 정중앙에 오도록 yAnchor 0.5, 다른 마커보다 위에 둔다
     if (m.variant === 'current') {
-      return new maps.CustomOverlay({ position, content: createCurrentLocationElement(), map, yAnchor: 0.5 })
+      return new maps.CustomOverlay({ position, content: createCurrentLocationElement(), map, yAnchor: 0.5, zIndex: Z_CURRENT })
     }
     if (m.label) {
-      const { content, xAnchor, yAnchor } = createLabelOverlay(m)
-      return new maps.CustomOverlay({ position, content, map, xAnchor, yAnchor })
+      const { content, pin, bubble, xAnchor, yAnchor, setSelected } = createLabelOverlay(m)
+      const overlay = new maps.CustomOverlay({ position, content, map, xAnchor, yAnchor, zIndex: Z_LABEL })
+      const id = m.id ?? `${m.label}-${i}`
+      labels.set(id, {
+        overlay,
+        bubble,
+        setSelected: (selected) => {
+          setSelected(selected)
+          overlay.setZIndex(selected ? Z_SELECTED : Z_LABEL)
+        },
+      })
+      pin.addEventListener('click', () => onLabelClick(id))
+      return overlay
     }
     // 장소 마커는 카카오 Marker 그대로 (이미지만 핀 스티커). 많아도 가볍고 클릭 이벤트를 그대로 쓴다
     if (placePinImage === undefined) placePinImage = createPlacePinImage(maps)
@@ -201,7 +306,24 @@ function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMar
       }),
     )
   }
-  return overlays
+  return { overlays, labels }
+}
+
+/**
+ * 말풍선이 지도 밖으로 잘리면 잘린 만큼만 지도를 옮긴다 (가운데로 무조건 옮기지 않음).
+ * 말풍선이 그려진 다음 프레임에 실제 위치를 재서 계산한다
+ */
+function panToShowBubble(map: KakaoMapInstance, container: HTMLElement, bubble: HTMLElement) {
+  requestAnimationFrame(() => {
+    const c = container.getBoundingClientRect()
+    const b = bubble.getBoundingClientRect()
+    let dx = 0
+    let dy = 0
+    if (b.left < c.left + BUBBLE_EDGE_GAP) dx = b.left - (c.left + BUBBLE_EDGE_GAP)
+    else if (b.right > c.right - BUBBLE_EDGE_GAP) dx = b.right - (c.right - BUBBLE_EDGE_GAP)
+    if (b.top < c.top + BUBBLE_EDGE_GAP) dy = b.top - (c.top + BUBBLE_EDGE_GAP)
+    if (dx !== 0 || dy !== 0) map.panBy(Math.round(dx), Math.round(dy))
+  })
 }
 
 /** 범위 맞춤 시 지도 가장자리에서 비울 여백(px). 지도 위에 떠 있는 검색창 등에 마커가 가리지 않게 한다 */
@@ -243,6 +365,7 @@ export default function KakaoMap({
   fitBounds = false,
   boundsPadding,
   onCenterChange,
+  selectMarker,
   className = '',
 }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -257,6 +380,20 @@ export default function KakaoMap({
   const boundsFittedRef = useRef(false)
   // 크기 변경 감지(ResizeObserver) 콜백에서 최신 마커·fitBounds·여백 값을 읽기 위한 보관소
   const latestRef = useRef({ markers, fitBounds, boundsPadding })
+  // 라벨 마커 선택: 한 번에 하나만. 선택하면 강조 + 말풍선, 해제하면 원래대로
+  const labelsRef = useRef(new Map<string, LabelControl>())
+  const selectedIdRef = useRef<string | null>(null)
+  const selectLabelRef = useRef((id: string | null, showWholeBubble: boolean) => {
+    const prev = selectedIdRef.current
+    if (prev && prev !== id) labelsRef.current.get(prev)?.setSelected(false)
+    selectedIdRef.current = id
+    if (!id) return
+    const control = labelsRef.current.get(id)
+    control?.setSelected(true)
+    if (showWholeBubble && control?.bubble && mapRef.current && containerRef.current) {
+      panToShowBubble(mapRef.current, containerRef.current, control.bubble)
+    }
+  })
 
   // 지도 생성: 한 번만
   useEffect(() => {
@@ -287,7 +424,13 @@ export default function KakaoMap({
     const map = mapRef.current
     if (!ready || !maps || !map) return
     overlayRefs.current.forEach((o) => o.setMap(null))
-    overlayRefs.current = drawOverlays(maps, map, markers, polyline)
+    // 마커 클릭: 같은 마커를 다시 누르면 해제, 다른 마커면 이전 것을 해제하고 선택 (말풍선이 잘리면 지도를 조금 옮김)
+    const { overlays, labels } = drawOverlays(maps, map, markers, polyline, (id) =>
+      selectLabelRef.current(selectedIdRef.current === id ? null : id, true),
+    )
+    overlayRefs.current = overlays
+    labelsRef.current = labels
+    selectedIdRef.current = null
 
     if (fitBounds && markers.length > 1) {
       fitToMarkers(maps, map, markers, boundsPadding, containerRef.current)
@@ -362,6 +505,22 @@ export default function KakaoMap({
     maps.event.addListener(map, 'idle', handleIdle)
     return () => maps.event.removeListener(map, 'idle', handleIdle)
   }, [ready, listensCenter])
+
+  // 지도 빈 곳을 누르면 선택 해제 (말풍선 닫기). 마커를 누른 것은 마커 쪽에서 지도로 번지지 않게 막아 둠
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!ready || !maps || !map) return
+    const handleMapClick = () => selectLabelRef.current(null, false)
+    maps.event.addListener(map, 'click', handleMapClick)
+    return () => maps.event.removeListener(map, 'click', handleMapClick)
+  }, [ready])
+
+  // 바깥(방문 순서 목록)에서 고른 마커 강조. 지도 이동은 center 로 하므로 여기서는 옮기지 않는다
+  useEffect(() => {
+    if (!ready || !selectMarker) return
+    selectLabelRef.current(selectMarker.id, false)
+  }, [ready, selectMarker])
 
   // 매 렌더 마지막에 실행: 범위 맞춤 표시는 그 렌더에서만 유효하게 초기화한다
   // (effect는 선언 순서대로 실행되므로 반드시 위 effect들 다음에 둔다)
