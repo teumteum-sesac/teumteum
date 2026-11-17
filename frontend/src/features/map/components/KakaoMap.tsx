@@ -1,16 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
+import { getStickerUrl } from '../../../shared/assets/stickerAssets'
 import type { LatLng } from '../../../shared/types/domain'
 import { loadKakaoMap } from '../api/loadKakaoMap'
-import type { KakaoMapInstance, KakaoMapsApi, KakaoOverlay } from '../types'
+import type { KakaoMapInstance, KakaoMapsApi, KakaoMarkerImage, KakaoOverlay } from '../types'
 
-/** 지도 마커. label이 있으면 S·순번·E 같은 라벨 마커로, 없으면 기본 마커로 그린다 */
+/**
+ * 지도 마커. label이 있으면 S·순번 같은 라벨 마커(핀 스티커 + 글자)로, 없으면 장소 핀 마커로 그린다.
+ * 스티커 이미지 파일이 없으면 예전 모양(색 원 라벨·카카오 기본 마커·파란 점)으로 그린다
+ */
 export interface MapMarker extends LatLng {
   label?: string
-  /** 라벨 마커 색 (출발·도착은 어둡게, 장소는 기본색) */
+  /** 스티커 파일이 없을 때 라벨 마커 색 (출발·도착은 어둡게, 장소는 기본색) */
   tone?: 'primary' | 'dark'
+  /** 'flag'면 라벨 마커를 깃발 스티커로 그린다 (코스 도착지 E, 글자는 그리지 않음) */
+  icon?: 'flag'
   /** 누르면 뜨는 말풍선 문구 */
   title?: string
-  /** 'current'면 현재 위치를 파란 원형 점으로 그린다 (label·tone·title 무시) */
+  /** 'current'면 현재 위치 스티커로 그린다 (label·tone·title 무시) */
   variant?: 'current'
   /** 마커를 구분하는 값 (예: 장소 placeId). 렌더링에는 쓰지 않는다 */
   id?: string
@@ -48,20 +54,84 @@ const TONE_COLOR = {
   dark: '#404040',
 }
 
-function createLabelElement(marker: MapMarker): HTMLElement {
+/** 경로선 색을 못 읽었을 때 쓰는 값 (index.css 의 --color-primary 와 같은 메인 핑크) */
+const ROUTE_COLOR_FALLBACK = '#f26fa8'
+
+/**
+ * 경로선 색. 카카오 Polyline 은 CSS 클래스를 못 쓰므로 디자인 토큰 --color-primary(index.css @theme)를 실제 값으로 읽어 넘긴다.
+ * 토큰이 바뀌면 경로선 색도 같이 바뀐다
+ */
+function getRouteColor(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || ROUTE_COLOR_FALLBACK
+}
+
+// ── 지도 스티커 (docs/design-sticker.md 지도 핀: map-pin · map-flag · map-me) ──
+// 기준점 = 이미지 안에서 마커 좌표에 놓일 위치. 512×512 원본에서 측정한 픽셀을 비율로 둔다.
+// 이미지가 늦게 떠도 좌표가 밀리지 않도록 표시 크기를 모두 고정한다 (CustomOverlay·MarkerImage 모두 처음 크기로 기준점을 잡음)
+const STICKER_PX = 512
+/** map-pin 핀 끝 (254, 452) */
+const PIN_TIP = { x: 254 / STICKER_PX, y: 452 / STICKER_PX }
+/** map-pin 가운데 흰 원 중심 (252, 215). 여기에 S·순번 글자를 얹는다 */
+const PIN_CIRCLE = { x: 252 / STICKER_PX, y: 215 / STICKER_PX }
+/** map-flag 깃대 아래 끝 (135, 449) */
+const FLAG_BASE = { x: 135 / STICKER_PX, y: 449 / STICKER_PX }
+/** 표시 크기(px) */
+const LABEL_PIN_SIZE = 48 // 코스 지도 S·순번
+const FLAG_SIZE = 44 // 코스 지도 도착 E
+const PLACE_PIN_SIZE = 36 // 주변 탐색 장소 (개수가 많아 작게)
+const ME_SIZE = 44 // 현재 위치
+
+/** 스티커 이미지 한 장을 고정 크기로 */
+function createStickerImage(url: string, size: number): HTMLImageElement {
+  const img = document.createElement('img')
+  img.src = url
+  img.alt = ''
+  img.width = size
+  img.height = size
+  img.draggable = false
+  img.style.cssText = `display:block;width:${size}px;height:${size}px`
+  return img
+}
+
+/** CustomOverlay 에 넣을 내용과 기준점 */
+interface OverlayContent {
+  content: HTMLElement
+  xAnchor: number
+  yAnchor: number
+}
+
+/** S·순번 라벨 마커 (핀 스티커 + 흰 원 안 글자) 또는 도착 깃발 (icon: 'flag'). 누르면 말풍선 */
+function createLabelOverlay(marker: MapMarker): OverlayContent {
+  const isFlag = marker.icon === 'flag'
+  const url = getStickerUrl(isFlag ? 'mapFlag' : 'mapPin')
+  const size = isFlag ? FLAG_SIZE : LABEL_PIN_SIZE
+
   // 바깥 상자는 핀 크기 그대로 둔다. CustomOverlay 는 처음 크기로 기준점을 잡으므로
   // 말풍선이 상자 크기를 바꾸면 핀이 좌표에서 밀린다 → 말풍선은 absolute 로 핀 위에 띄운다
   const wrap = document.createElement('div')
-  wrap.style.cssText = 'position:relative;cursor:pointer'
+  wrap.style.cssText = url ? `position:relative;width:${size}px;height:${size}px` : 'position:relative'
 
   const bubble = document.createElement('div')
   bubble.textContent = marker.title ?? ''
   bubble.style.cssText =
     'display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:4px;padding:4px 8px;border-radius:8px;background:#fff;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);white-space:nowrap'
 
+  // 누르는 부분 (핀·깃발)
   const pin = document.createElement('div')
-  pin.textContent = marker.label ?? ''
-  pin.style.cssText = `display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;border:2px solid #fff;background:${TONE_COLOR[marker.tone ?? 'primary']};color:#fff;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.3)`
+  if (url) {
+    pin.style.cssText = 'position:absolute;inset:0;cursor:pointer'
+    pin.append(createStickerImage(url, size))
+    if (!isFlag && marker.label) {
+      const text = document.createElement('span')
+      text.textContent = marker.label
+      text.style.cssText = `position:absolute;left:${PIN_CIRCLE.x * 100}%;top:${PIN_CIRCLE.y * 100}%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;line-height:1;color:#202020`
+      pin.append(text)
+    }
+  } else {
+    // 스티커 파일이 없으면 예전 색 원 라벨
+    pin.textContent = marker.label ?? ''
+    pin.style.cssText = `display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9999px;border:2px solid #fff;background:${TONE_COLOR[marker.tone ?? 'primary']};color:#fff;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer`
+  }
 
   if (marker.title) {
     pin.addEventListener('click', () => {
@@ -70,28 +140,52 @@ function createLabelElement(marker: MapMarker): HTMLElement {
   }
   if (marker.onClick) pin.addEventListener('click', marker.onClick)
   wrap.append(bubble, pin)
-  return wrap
+
+  // 핀은 핀 끝, 깃발은 깃대 아래 끝이 좌표. 예전 원은 아래 가운데
+  const anchor = !url ? { x: 0.5, y: 1 } : isFlag ? FLAG_BASE : PIN_TIP
+  return { content: wrap, xAnchor: anchor.x, yAnchor: anchor.y }
 }
 
-/** 현재 위치 표시용 파란 원형 점 */
+/** 현재 위치 스티커 (map-me). 좌표가 그림 가운데에 온다 */
 function createCurrentLocationElement(): HTMLElement {
-  const dot = document.createElement('div')
-  dot.setAttribute('aria-label', '현재 위치')
-  dot.style.cssText = `width:16px;height:16px;border-radius:9999px;border:3px solid #fff;background:${TONE_COLOR.primary};box-shadow:0 0 0 4px rgba(59,108,246,.25),0 1px 4px rgba(0,0,0,.3)`
-  return dot
+  const url = getStickerUrl('mapMe')
+  const el = document.createElement('div')
+  el.setAttribute('aria-label', '현재 위치')
+  if (url) {
+    el.setAttribute('role', 'img')
+    el.style.cssText = `width:${ME_SIZE}px;height:${ME_SIZE}px`
+    el.append(createStickerImage(url, ME_SIZE))
+  } else {
+    // 스티커 파일이 없으면 예전 파란 점
+    el.style.cssText = `width:16px;height:16px;border-radius:9999px;border:3px solid #fff;background:${TONE_COLOR.primary};box-shadow:0 0 0 4px rgba(59,108,246,.25),0 1px 4px rgba(0,0,0,.3)`
+  }
+  return el
+}
+
+/** 장소 핀 마커 이미지 (주변 탐색). 모든 장소 마커가 이 이미지 하나를 함께 쓴다. 파일이 없으면 null → 카카오 기본 마커 */
+function createPlacePinImage(maps: KakaoMapsApi): KakaoMarkerImage | null {
+  const url = getStickerUrl('mapPin')
+  if (!url) return null
+  const offset = new maps.Point(Math.round(PIN_TIP.x * PLACE_PIN_SIZE), Math.round(PIN_TIP.y * PLACE_PIN_SIZE))
+  return new maps.MarkerImage(url, new maps.Size(PLACE_PIN_SIZE, PLACE_PIN_SIZE), { offset })
 }
 
 function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMarker[], polyline: boolean | LatLng[]): KakaoOverlay[] {
+  // 장소 핀 이미지는 장소 마커가 있을 때 한 번만 만든다
+  let placePinImage: KakaoMarkerImage | null | undefined
   const overlays: KakaoOverlay[] = markers.map((m) => {
     const position = new maps.LatLng(m.lat, m.lng)
-    // 현재 위치 점은 좌표가 점의 정중앙에 오도록 yAnchor 0.5
+    // 현재 위치는 좌표가 그림 정중앙에 오도록 yAnchor 0.5
     if (m.variant === 'current') {
       return new maps.CustomOverlay({ position, content: createCurrentLocationElement(), map, yAnchor: 0.5 })
     }
     if (m.label) {
-      return new maps.CustomOverlay({ position, content: createLabelElement(m), map, yAnchor: 1 })
+      const { content, xAnchor, yAnchor } = createLabelOverlay(m)
+      return new maps.CustomOverlay({ position, content, map, xAnchor, yAnchor })
     }
-    const marker = new maps.Marker({ position, map })
+    // 장소 마커는 카카오 Marker 그대로 (이미지만 핀 스티커). 많아도 가볍고 클릭 이벤트를 그대로 쓴다
+    if (placePinImage === undefined) placePinImage = createPlacePinImage(maps)
+    const marker = new maps.Marker(placePinImage ? { position, map, image: placePinImage } : { position, map })
     if (m.onClick) maps.event.addListener(marker, 'click', m.onClick)
     return marker
   })
@@ -101,7 +195,7 @@ function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMar
       new maps.Polyline({
         path: path.map((p) => new maps.LatLng(p.lat, p.lng)),
         strokeWeight: 4,
-        strokeColor: TONE_COLOR.primary,
+        strokeColor: getRouteColor(),
         strokeOpacity: 0.8,
         map,
       }),

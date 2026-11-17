@@ -53,16 +53,30 @@ export interface KakaoOverlay {
   setMap(map: KakaoMapInstance | null): void
 }
 
+/** 마커 이미지 크기(px) */
+export type KakaoSize = object
+/** 이미지 안의 픽셀 위치 (마커 이미지의 기준점) */
+export type KakaoPoint = object
+/** 마커 이미지. 여러 마커가 같은 객체를 함께 써도 된다 */
+export type KakaoMarkerImage = object
+
 export interface KakaoMapsApi {
   load(callback: () => void): void
   LatLng: new (lat: number, lng: number) => KakaoLatLng
   LatLngBounds: new () => KakaoLatLngBounds
   Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number }) => KakaoMapInstance
-  Marker: new (options: { position: KakaoLatLng; map?: KakaoMapInstance }) => KakaoOverlay
+  Marker: new (options: { position: KakaoLatLng; map?: KakaoMapInstance; image?: KakaoMarkerImage }) => KakaoOverlay
+  Size: new (width: number, height: number) => KakaoSize
+  Point: new (x: number, y: number) => KakaoPoint
+  /** offset: 이미지 안에서 마커 좌표에 맞출 픽셀 위치 (예: 핀 끝) */
+  MarkerImage: new (src: string, size: KakaoSize, options?: { offset?: KakaoPoint; alt?: string }) => KakaoMarkerImage
   CustomOverlay: new (options: {
     position: KakaoLatLng
     content: HTMLElement | string
     map?: KakaoMapInstance
+    /** 내용 상자 안에서 좌표에 맞출 위치 (0 왼쪽 ~ 1 오른쪽, 기본 0.5) */
+    xAnchor?: number
+    /** 내용 상자 안에서 좌표에 맞출 위치 (0 위 ~ 1 아래, 기본 0.5) */
     yAnchor?: number
   }) => KakaoOverlay
   Polyline: new (options: {
