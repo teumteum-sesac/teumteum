@@ -1,13 +1,16 @@
 package com.teumteum.recommend.service;
 
+import com.teumteum.global.exception.CustomException;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.RecommendCondition;
 import com.teumteum.recommend.domain.RecommendCondition.Location;
 import com.teumteum.recommend.domain.RecommendationSet;
 import com.teumteum.recommend.domain.RecommendedCourse;
 import com.teumteum.recommend.dto.LocationRequest;
+import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendRequest;
 import com.teumteum.recommend.dto.RecommendResponse;
+import com.teumteum.recommend.exception.RecommendErrorCode;
 import com.teumteum.recommend.repository.RecommendationStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -73,6 +76,28 @@ public class RecommendService {
         recommendationStore.save(recommendationSet);
 
         return responseMapper.toResponse(recommendationSet);
+    }
+
+    /**
+     * 추천 코스 상세 (GET /api/recommendations/courses/{recommendationId}, 명세 3장).
+     * <p>
+     * 코스 저장(course 도메인)도 이 메서드로 저장할 코스의 장소·일정·지도 데이터를 가져간다.
+     * 다른 도메인은 보관소(repository)가 아니라 이 서비스를 통해 접근한다 (AGENTS.md 도메인 경계).
+     *
+     * @throws CustomException 없거나 정리된 ID → 404 RECOMMENDATION_NOT_FOUND, 2시간 지난 ID → 410 RECOMMENDATION_EXPIRED
+     */
+    public RecommendCourseDetailResponse getCourseDetail(String recommendationId) {
+        RecommendedCourse course = recommendationStore.findCourse(recommendationId)
+                .orElseThrow(() -> new CustomException(RecommendErrorCode.RECOMMENDATION_NOT_FOUND));
+        if (course.isExpiredAt(OffsetDateTime.now(clock))) {
+            throw new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED);
+        }
+
+        // 출발지·이동수단 같은 조건은 묶음에 있다. 코스와 묶음은 같이 보관·정리되므로 보통 항상 있다
+        RecommendationSet recommendationSet = recommendationStore.findSet(course.recommendationSetId())
+                .orElseThrow(() -> new CustomException(RecommendErrorCode.RECOMMENDATION_NOT_FOUND));
+
+        return responseMapper.toCourseDetailResponse(course, recommendationSet.condition());
     }
 
     /** 요청 DTO → 조건 도메인. 정리 규칙은 RecommendCondition 생성자가 처리한다 */

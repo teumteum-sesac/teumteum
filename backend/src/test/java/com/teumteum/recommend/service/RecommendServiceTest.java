@@ -11,8 +11,10 @@ import com.teumteum.recommend.domain.PlaceCandidate;
 import com.teumteum.recommend.domain.TransportType;
 import com.teumteum.recommend.domain.TravelRoute;
 import com.teumteum.recommend.dto.LocationRequest;
+import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendRequest;
 import com.teumteum.recommend.dto.RecommendResponse;
+import com.teumteum.recommend.exception.RecommendErrorCode;
 import com.teumteum.recommend.repository.InMemoryRecommendationStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -132,6 +134,48 @@ class RecommendServiceTest {
 
         assertThrows(CustomException.class,
                 () -> recommendService.recommend(request(CategoryMode.RANDOM, List.of())));
+    }
+
+    // ===================== 코스 상세 =====================
+
+    @Test
+    @DisplayName("추천받은 코스 ID 로 상세를 조회하면 묶음의 조건(출발지·이동수단)까지 담아 준다")
+    void getCourseDetail_ok() {
+        given(courseSearchService.findCourses(any())).willReturn(List.of(plan("101")));
+        RecommendResponse created = recommendService.recommend(request(CategoryMode.RANDOM, List.of()));
+        String courseId = created.courses().get(0).recommendationId();
+
+        RecommendCourseDetailResponse detail = recommendService.getCourseDetail(courseId);
+
+        assertEquals(courseId, detail.recommendationId());
+        assertEquals(created.recommendationSetId(), detail.recommendationSetId());
+        assertEquals("성수역", detail.origin().name());
+        assertEquals(TransportType.WALK, detail.transportType());
+        assertEquals(1, detail.routeLegs().size());
+    }
+
+    @Test
+    @DisplayName("없는 코스 ID 면 404 RECOMMENDATION_NOT_FOUND")
+    void getCourseDetail_notFound() {
+        CustomException e = assertThrows(CustomException.class,
+                () -> recommendService.getCourseDetail("rc_없는아이디"));
+
+        assertEquals(RecommendErrorCode.RECOMMENDATION_NOT_FOUND, e.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("2시간이 지난 코스면 410 RECOMMENDATION_EXPIRED")
+    void getCourseDetail_expired() {
+        given(courseSearchService.findCourses(any())).willReturn(List.of(plan("101")));
+        String courseId = recommendService.recommend(request(CategoryMode.RANDOM, List.of()))
+                .courses().get(0).recommendationId();
+
+        // 같은 보관소를 쓰고, 시계만 정확히 2시간 뒤(만료 시각)로 맞춘 서비스
+        RecommendService twoHoursLater = new RecommendService(courseSearchService, store, new RecommendResponseMapper(),
+                Clock.fixed(NOW.plusHours(2).toInstant(), ZoneOffset.ofHours(9)));
+
+        CustomException e = assertThrows(CustomException.class, () -> twoHoursLater.getCourseDetail(courseId));
+        assertEquals(RecommendErrorCode.RECOMMENDATION_EXPIRED, e.getErrorCode());
     }
 
     // ===================== 도우미 =====================
