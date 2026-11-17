@@ -96,6 +96,30 @@ class RecommendControllerTest {
                 .andExpect(jsonPath("$.error.code").value("KAKAO_API_ERROR"));
     }
 
+    // ===================== 다시 추천 =====================
+
+    @Test
+    @DisplayName("다시 추천: 요청 본문 없이 주소의 묶음 ID 를 서비스에 넘기고 200 으로 새 결과를 돌려준다")
+    void regenerate_ok() throws Exception {
+        given(recommendService.regenerate("rs_1")).willReturn(emptyResponse());
+
+        mockMvc.perform(post("/api/recommendations/rs_1/regenerate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.recommendationSetId").value("rs_1"));
+    }
+
+    @Test
+    @DisplayName("다시 추천: 만료된 묶음이면 410 RECOMMENDATION_EXPIRED")
+    void regenerate_expired() throws Exception {
+        given(recommendService.regenerate(any()))
+                .willThrow(new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED));
+
+        mockMvc.perform(post("/api/recommendations/rs_old/regenerate"))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_EXPIRED"));
+    }
+
     // ===================== 코스 상세 =====================
 
     @Test
