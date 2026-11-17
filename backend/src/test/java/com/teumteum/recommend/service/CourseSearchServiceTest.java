@@ -16,12 +16,15 @@ import com.teumteum.recommend.domain.TravelRoute.Coordinate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -55,6 +58,10 @@ class CourseSearchServiceTest {
 
     @InjectMocks
     private CourseSearchService courseSearchService;
+
+    /** 코스 조합에 실제로 넘어간 후보 목록을 붙잡는다 (@Captor 로 만들면 제네릭 타입 경고가 없다) */
+    @Captor
+    private ArgumentCaptor<List<PlaceCandidate>> candidatesCaptor;
 
     private final CourseCondition randomCondition =
             new CourseCondition(ORIGIN, null, 180, TransportType.WALK, List.of());
@@ -101,6 +108,25 @@ class CourseSearchServiceTest {
         for (int radius : List.of(1_000, 2_000, 3_000, 5_000)) {
             verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(radius));
         }
+    }
+
+    // ===================== 장소 제외 (다시 추천) =====================
+
+    @Test
+    @DisplayName("제외할 장소는 후보에서 빼고 코스 조합에 넘긴다")
+    void findCourses_excludesPlaces() {
+        given(nearbyPlaceService.findCandidates(anyDouble(), anyDouble(), any(), anyInt()))
+                .willReturn(List.of(nearby("101", "서울 성동구 왕십리로 1", null),
+                        nearby("102", "서울 성동구 왕십리로 2", null)));
+        given(courseComposer.compose(eq(randomCondition), anyList(), anyList()))
+                .willReturn(List.of(course("1"), course("2"), course("3")));
+
+        courseSearchService.findCourses(randomCondition, Set.of("101"));
+
+        verify(courseComposer).compose(eq(randomCondition), candidatesCaptor.capture(), anyList());
+        List<PlaceCandidate> passed = candidatesCaptor.getValue();
+        assertEquals(1, passed.size());
+        assertEquals("102", passed.get(0).placeId()); // 101 은 빠졌다
     }
 
     // ===================== 장소 검색 실패 =====================
