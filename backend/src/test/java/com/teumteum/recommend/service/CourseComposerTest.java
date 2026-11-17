@@ -28,9 +28,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * 코스 조합 테스트.
@@ -253,6 +255,30 @@ class CourseComposerTest {
         verify(travelTimeService, times(legCount))
                 .findRoute(any(), anyDouble(), anyDouble(), anyDouble(), anyDouble());
         assertNotEquals(0, legCount);
+    }
+
+    @Test
+    @DisplayName("이미 찾은 코스가 있으면 모자란 만큼만 새로 만들고, 같은 코스는 다시 만들지 않는다")
+    void compose_fillsOnlyMissingCourses_whenAlreadyFound() {
+        List<CoursePlan> firstRound = composer.compose(randomCondition(180), manyCandidates());
+        List<CoursePlan> alreadyFound = firstRound.subList(0, 1); // 1개는 이미 찾았다고 치기
+
+        List<CoursePlan> added = composer.compose(randomCondition(180), manyCandidates(), alreadyFound);
+
+        assertEquals(2, added.size()); // 3 - 1 = 2개만
+        added.forEach(course -> assertNotEquals(alreadyFound.get(0).placeIds(), course.placeIds()));
+    }
+
+    @Test
+    @DisplayName("이미 3개를 찾았으면 아무것도 만들지 않고 API 도 부르지 않는다")
+    void compose_doesNothing_whenAlreadyThree() {
+        List<CoursePlan> three = composer.compose(randomCondition(180), manyCandidates());
+        clearInvocations(travelTimeService); // 위에서 부른 기록은 지우고 아래만 센다
+
+        List<CoursePlan> added = composer.compose(randomCondition(180), manyCandidates(), three);
+
+        assertTrue(added.isEmpty());
+        verifyNoInteractions(travelTimeService);
     }
 
     // ===================== 조건 정리 =====================

@@ -93,15 +93,33 @@ public class CourseComposer {
      * @return 완성된 코스 0 ~ 3개. 만들 수 있는 코스가 없으면 빈 목록 (오류 아님, REQ-027)
      */
     public List<CoursePlan> compose(CourseCondition condition, List<PlaceCandidate> candidates) {
+        return compose(condition, candidates, List.of());
+    }
+
+    /**
+     * 이미 찾은 코스가 있을 때, 모자란 만큼만 새 코스를 더 만든다 (반경을 넓혀 다시 찾을 때 사용).
+     * <p>
+     * 넓은 반경 후보에는 좁은 반경 후보가 다 들어 있어서 같은 코스가 또 나올 수 있다.
+     * 이미 찾은 코스의 장소 묶음은 처음부터 "해 본 묶음" 으로 넣어 두어 API 를 다시 부르지 않는다.
+     *
+     * @param alreadyFound 앞에서 이미 찾은 코스 (이것과 같은 코스는 만들지 않는다)
+     * @return 새로 만든 코스만. alreadyFound 와 합쳐서 최대 3개가 되도록 만든다
+     */
+    public List<CoursePlan> compose(CourseCondition condition, List<PlaceCandidate> candidates,
+                                    List<CoursePlan> alreadyFound) {
         List<CoursePlan> courses = new ArrayList<>();
-        if (candidates == null || candidates.isEmpty()) {
+        int needed = MAX_COURSE_COUNT - alreadyFound.size();
+        if (candidates == null || candidates.isEmpty() || needed <= 0) {
             return courses;
         }
 
         int maxPlaceCount = placeCountCalculator.calculateMaxPlaceCount(condition.availableMinutes());
         Set<Set<String>> triedPlaceSets = new HashSet<>(); // 이미 만들어 본 장소 묶음 (API 를 두 번 부르지 않게)
+        for (CoursePlan found : alreadyFound) {
+            triedPlaceSets.add(found.placeIds());
+        }
 
-        for (int attempt = 0; attempt < MAX_ATTEMPTS && courses.size() < MAX_COURSE_COUNT; attempt++) {
+        for (int attempt = 0; attempt < MAX_ATTEMPTS && courses.size() < needed; attempt++) {
             // 1단계: 후보를 섞고 고르기 (API 호출 없음)
             List<PlaceCandidate> shuffled = new ArrayList<>(candidates);
             Collections.shuffle(shuffled, random);
@@ -113,7 +131,8 @@ public class CourseComposer {
 
             // 2단계: 고른 코스만 실제 이동시간으로 확정
             confirmCourse(condition, picked)
-                    .filter(course -> isNewCourse(courses, course)) // 마지막 장소를 빼다가 기존 코스와 같아질 수 있음
+                    // 마지막 장소를 빼다가 기존 코스와 같아질 수 있음
+                    .filter(course -> isNewCourse(courses, course) && isNewCourse(alreadyFound, course))
                     .ifPresent(courses::add);
         }
         return courses;
