@@ -17,14 +17,15 @@ import java.lang.annotation.Target;
  *           @LoginMember Long memberId,                  // ← 로그인한 회원 ID 가 자동으로 들어온다
  *           @Valid @RequestBody CourseSaveRequest request) { ... }
  *
- * [지금(임시)과 나중]
- *   지금 : JWT 로그인이 아직 없어서, 요청 헤더 X-Member-Id 값을 회원 ID 로 쓴다.
- *          테스트할 때 Postman 이나 MockMvc 에서 헤더 X-Member-Id: 1 을 넣어 보낸다.
- *   나중 : JWT 가 완성되면 LoginMemberArgumentResolver 안쪽만 "토큰에서 회원 ID 꺼내기"로 바꾼다.
- *          이 어노테이션을 쓰는 팀원 코드는 한 줄도 바뀌지 않는다.
+ * [회원 ID 는 어디서 오나]
+ *   프론트가 보낸 Authorization: Bearer {토큰} 을 JwtAuthenticationFilter 가 검증하고,
+ *   LoginMemberArgumentResolver 가 그 인증 정보에서 회원 ID 를 꺼내 넣어 준다.
+ *   토큰이 없거나 만료·위조면 401 UNAUTHORIZED("로그인이 필요해요.")로 응답한다.
+ *   회원 전용 경로는 global/config/SecurityConfig 에 등록한다.
  *
- * 실제로 값을 채워 주는 곳: LoginMemberArgumentResolver
- * 헤더가 없으면 401 UNAUTHORIZED("로그인이 필요해요.")로 응답한다.
+ * [테스트할 때]
+ *   Swagger·Postman : POST /api/auth/login 으로 받은 accessToken 을 Authorization: Bearer {토큰} 헤더로 보낸다.
+ *   MockMvc        : .principal(new UsernamePasswordAuthenticationToken(1L, null, List.of())) 를 붙인다.
  *
  * [어노테이션 위 설정들]
  *   @Target(PARAMETER)      : 메서드 매개변수에만 붙일 수 있다
