@@ -17,3 +17,6 @@ jwt:
 
 ors:
   api-key:
+
+odsay:
+  api-key:
