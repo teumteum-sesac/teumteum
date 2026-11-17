@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { useAuthStore } from '../../../shared/auth/authStore'
 import Button from '../../../shared/components/Button'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
-import { useSavedCourseStore } from '../store'
+import { useSavedCourseCount } from '../hooks/useSavedCourse'
 
 /**
  * 마이페이지 (MY-01)
@@ -13,7 +13,9 @@ import { useSavedCourseStore } from '../store'
 export default function MyPageContent() {
   const navigate = useNavigate()
   const { isLoggedIn, user, logout } = useAuthStore()
-  const savedCount = useSavedCourseStore((s) => s.savedCourses.length)
+  // 비회원 화면에서는 회원 전용 API를 호출하지 않는다.
+  const { data, loading, error, retry } = useSavedCourseCount(isLoggedIn && user !== null)
+  const savedCount = data?.totalElements
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   if (!isLoggedIn || !user) {
@@ -33,6 +35,14 @@ export default function MyPageContent() {
         <p className="text-lg font-bold">{user.nickname}</p>
         <p className="mt-1 text-sm text-neutral-500">{user.email}</p>
       </section>
+
+      {loading && <p role="status" className="px-4 text-sm text-neutral-500">저장 건수를 불러오는 중이에요.</p>}
+      {error && (
+        <div role="alert" className="px-4 py-2 text-sm">
+          <p>{error}</p>
+          <button type="button" onClick={retry} className="mt-1 underline">저장 건수 다시 조회</button>
+        </div>
+      )}
 
       <ul className="border-t border-line">
         <MenuItem to="/mypage/courses" label="저장한 코스" count={savedCount} />
