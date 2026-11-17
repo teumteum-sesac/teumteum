@@ -2,7 +2,9 @@ package com.teumteum.global.auth;
 
 import com.teumteum.global.exception.CommonErrorCode;
 import com.teumteum.global.exception.CustomException;
+import java.security.Principal;
 import org.springframework.core.MethodParameter;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
@@ -16,21 +18,20 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * [ArgumentResolver 란]
  *   Spring 이 컨트롤러 메서드를 부르기 전에 "매개변수에 뭘 넣을지" 결정하는 부품.
  *   @RequestBody, @RequestParam 도 Spring 안에 이런 부품이 있어서 동작한다.
- *   우리는 "@LoginMember 는 회원 ID 로 채운다"는 부품을 하나 더 만든 것이다.
- *   만들기만 하면 안 되고 global/config/WebConfig 에 등록해야 Spring 이 쓴다.
+ *   우리는 "@LoginMember 는 회원 ID 로 채운다"는 부품을 하나 더 만든 것이다. (global/config/WebConfig 에 등록)
  *
- * [동작 순서]
- *   1) supportsParameter : 이 매개변수가 내가 처리할 대상인가? (@LoginMember + Long 타입)
- *   2) resolveArgument   : 그렇다면 무슨 값을 넣을까? → 회원 ID
+ * [회원 ID 는 어디서 오나] — JWT 방식
+ *   JwtAuthenticationFilter 가 토큰을 검증하고 인증 정보(Authentication, principal = 회원 ID)를 등록해 둔다.
+ *   Spring Security 는 그 인증 정보를 request.getUserPrincipal() 로도 꺼낼 수 있게 해 준다.
+ *   여기서는 그것을 꺼내 Long 회원 ID 로 돌려준다.
+ *   → 예전 임시 방식(X-Member-Id 헤더)은 누구나 다른 회원 ID 를 넣을 수 있어서 삭제했다.
  *
- * TODO(김용현): JWT 로그인 완성 후 resolveArgument 를 "인증된 사용자(토큰)에서 회원 ID 꺼내기"로 교체하고 X-Member-Id 임시 방식 삭제.
- *   임시 방식은 누구나 헤더로 다른 회원 ID 를 넣을 수 있어서 개발·테스트용으로만 쓴다. 배포 전에 반드시 교체.
+ * [테스트에서는]
+ *   MockMvc 요청에 .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of())) 를 붙이면
+ *   로그인한 회원 7번이 보낸 요청이 된다. (CourseControllerTest 참고)
  */
 @Component
 public class LoginMemberArgumentResolver implements HandlerMethodArgumentResolver {
-
-    /** [임시] 회원 ID 를 담아 보내는 요청 헤더 이름 */
-    public static final String MEMBER_ID_HEADER = "X-Member-Id";
 
     @Override
     public boolean supportsParameter(MethodParameter parameter) {
@@ -45,22 +46,17 @@ public class LoginMemberArgumentResolver implements HandlerMethodArgumentResolve
             NativeWebRequest webRequest,
             WebDataBinderFactory binderFactory
     ) {
-        String header = webRequest.getHeader(MEMBER_ID_HEADER);
+        Principal principal = webRequest.getUserPrincipal();
 
-        // 헤더가 없으면 = 로그인 안 한 요청 → 401 "로그인이 필요해요." (GlobalExceptionHandler 가 공통 응답으로 바꿈)
-        if (header == null || header.isBlank()) {
-            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
-        }
-
-        // 숫자가 아니거나 1보다 작으면 올바른 회원 ID 가 아니므로 역시 401
-        try {
-            long memberId = Long.parseLong(header.trim());
-            if (memberId < 1) {
-                throw new CustomException(CommonErrorCode.UNAUTHORIZED);
-            }
+        // 토큰으로 인증된 요청이면 principal 이 Authentication 이고, 그 안의 principal 값이 회원 ID(Long) 이다
+        if (principal instanceof Authentication authentication
+                && authentication.getPrincipal() instanceof Long memberId
+                && memberId > 0) {
             return memberId;
-        } catch (NumberFormatException e) {
-            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
         }
+
+        // 로그인 안 한 요청 → 401 "로그인이 필요해요." (GlobalExceptionHandler 가 공통 응답으로 바꿈)
+        // 보통은 SecurityConfig 가 먼저 막지만, 회원 전용 경로 목록에 빠진 API 에서도 안전하게 401 을 낸다
+        throw new CustomException(CommonErrorCode.UNAUTHORIZED);
     }
 }
