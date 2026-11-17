@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { ApiError, DEFAULT_ERROR_MESSAGE } from '../../../shared/api/apiError'
 import { useAuthStore } from '../../../shared/auth/authStore'
 import type { LoginRedirectState } from '../../../shared/auth/RequireAuth'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
 import StickerImage from '../../../shared/components/StickerImage'
 import TextField from '../../../shared/components/TextField'
+import { checkEmailExists, signup } from '../api/authApi'
 
 const TERMS = [
   { key: 'service', label: '[필수] 이용약관 동의' },
@@ -15,7 +17,9 @@ type TermKey = (typeof TERMS)[number]['key']
 
 /**
  * 회원가입 (AUT-02): 이메일(중복 확인)·비밀번호(8자 이상)·확인·닉네임, 약관 동의
- * TODO(김용현): 이메일 중복 확인·회원가입 API 연동 (현재 중복 확인은 항상 통과, 가입 후 임시 로그인)
+ * - [중복 확인] GET /api/members/email-exists → 사용 가능하면 통과, 이미 있으면 이메일 칸에 안내
+ * - [가입하기] POST /api/members → 응답 토큰으로 바로 로그인(자동 로그인) → 원래 흐름 복귀
+ * - 서버 검증 실패(400)는 입력칸별 문구, 중복(409)은 이메일 칸, 그 밖의 실패는 버튼 위 한 줄 안내
  */
 export default function SignupForm() {
   const navigate = useNavigate()
@@ -26,7 +30,11 @@ export default function SignupForm() {
   const [form, setForm] = useState({ email: '', password: '', passwordConfirm: '', nickname: '' })
   const [agreed, setAgreed] = useState<Record<TermKey, boolean>>({ service: false, privacy: false })
 
-  const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }))
+  const set = (key: keyof typeof form) => (value: string) => {
+    setForm((f) => ({ ...f, [key]: value }))
+    // 다시 고치면 그 칸의 서버 오류 문구는 지운다
+    setServerErrors((prev) => ({ ...prev, [key]: undefined }))
+  }
 
   // 항목별 실시간 검증 (입력을 시작한 항목만 안내)
   const errors = {
@@ -35,18 +43,75 @@ export default function SignupForm() {
     passwordConfirm: form.passwordConfirm && form.password !== form.passwordConfirm ? '비밀번호가 일치하지 않아요.' : undefined,
     nickname: undefined,
   }
-  // [임시] 중복 확인: API 연동 전에는 누르면 사용 가능으로 처리. 이메일을 바꾸면 다시 확인
+  // 중복 확인을 통과한 이메일. 이메일을 바꾸면 다시 확인해야 한다
   const [checkedEmail, setCheckedEmail] = useState<string | null>(null)
+  const [checking, setChecking] = useState(false)
+  // 서버가 알려준 오류: 입력칸별(serverErrors) / 폼 전체(formError)
+  const [serverErrors, setServerErrors] = useState<Partial<Record<keyof typeof form, string>>>({})
+  const [formError, setFormError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
   const emailChecked = checkedEmail !== null && checkedEmail === form.email
   const filled = Object.values(form).every((v) => v.length > 0)
   const valid = filled && emailChecked && Object.values(errors).every((e) => !e)
   const allAgreed = TERMS.every((t) => agreed[t.key])
+  // 화면에 보일 입력칸 오류: 입력 중 검증이 먼저, 없으면 서버가 준 문구
+  const shownErrors = {
+    email: errors.email ?? serverErrors.email,
+    password: errors.password ?? serverErrors.password,
+    passwordConfirm: errors.passwordConfirm,
+    nickname: serverErrors.nickname,
+  }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleCheckEmail = async () => {
+    setChecking(true)
+    setServerErrors((prev) => ({ ...prev, email: undefined }))
+    try {
+      const { exists } = await checkEmailExists(form.email.trim())
+      if (exists) {
+        setCheckedEmail(null)
+        setServerErrors((prev) => ({ ...prev, email: '이미 가입된 이메일이에요.' }))
+      } else {
+        setCheckedEmail(form.email)
+      }
+    } catch (err) {
+      setServerErrors((prev) => ({ ...prev, email: err instanceof ApiError ? err.message : DEFAULT_ERROR_MESSAGE }))
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!valid || !allAgreed) return
-    // [임시] 가입 후 자동 로그인 → 원래 흐름으로 복귀
-    setLogin('mock-token', { email: form.email, nickname: form.nickname })
+    if (!valid || !allAgreed || submitting) return
+    setSubmitting(true)
+    setFormError(null)
+    try {
+      const res = await signup({ email: form.email.trim(), password: form.password, nickname: form.nickname.trim() })
+      // 가입 응답에 토큰이 있다 → 바로 로그인 상태 (REQ-001 가입 후 자동 로그인)
+      setLogin(res.accessToken, { memberId: res.memberId, email: res.email, nickname: res.nickname })
+    } catch (err) {
+      setSubmitting(false)
+      if (!(err instanceof ApiError)) {
+        setFormError(DEFAULT_ERROR_MESSAGE)
+        return
+      }
+      if (err.code === 'DUPLICATE_EMAIL') {
+        // 확인 후 그 사이에 누가 가입한 경우: 다시 중복 확인하도록 되돌린다
+        setCheckedEmail(null)
+        setServerErrors({ email: err.message })
+      } else if (err.fieldErrors.length > 0) {
+        setServerErrors({
+          email: err.getFieldMessage('email'),
+          password: err.getFieldMessage('password'),
+          nickname: err.getFieldMessage('nickname'),
+        })
+      } else {
+        setFormError(err.message)
+      }
+      return
+    }
+
     if (redirect?.pendingAction === 'save') {
       navigate(redirect.from, { replace: true, state: { afterLogin: 'save' } })
     } else {
@@ -75,22 +140,30 @@ export default function SignupForm() {
               type="email"
               value={form.email}
               onChange={(e) => set('email')(e.target.value)}
-              error={errors.email}
+              error={shownErrors.email}
               hint={emailChecked ? '사용할 수 있는 이메일이에요' : '중복 확인을 해주세요'}
+              autoComplete="email"
             />
           </div>
           <Button
             variant="secondary"
             className={`mb-5 w-auto shrink-0 px-4 ${emailChecked ? 'bg-turtle/50!' : ''}`}
-            disabled={!form.email || Boolean(errors.email)}
-            onClick={() => setCheckedEmail(form.email)}
+            disabled={!form.email || Boolean(errors.email) || checking || emailChecked}
+            onClick={() => void handleCheckEmail()}
           >
-            중복 확인
+            {checking ? '확인 중…' : emailChecked ? '확인됨' : '중복 확인'}
           </Button>
         </div>
-        <TextField label="비밀번호" name="password" type="password" value={form.password} onChange={(e) => set('password')(e.target.value)} error={errors.password} hint="8자 이상" />
-        <TextField label="비밀번호 확인" name="passwordConfirm" type="password" value={form.passwordConfirm} onChange={(e) => set('passwordConfirm')(e.target.value)} error={errors.passwordConfirm} />
-        <TextField label="닉네임" name="nickname" value={form.nickname} onChange={(e) => set('nickname')(e.target.value)} />
+        <TextField label="비밀번호" name="password" type="password" autoComplete="new-password" maxLength={64} value={form.password} onChange={(e) => set('password')(e.target.value)} error={shownErrors.password} hint="8자 이상" />
+        <TextField label="비밀번호 확인" name="passwordConfirm" type="password" autoComplete="new-password" maxLength={64} value={form.passwordConfirm} onChange={(e) => set('passwordConfirm')(e.target.value)} error={shownErrors.passwordConfirm} />
+        <TextField
+          label="닉네임"
+          name="nickname"
+          maxLength={50}
+          value={form.nickname}
+          onChange={(e) => set('nickname')(e.target.value)}
+          error={shownErrors.nickname}
+        />
 
         <fieldset className="paper-card mt-2 flex flex-col gap-2.5 p-4 text-sm">
           <label className="flex items-center gap-2 border-b-2 border-dashed border-line pb-2.5 font-bold">
@@ -117,9 +190,16 @@ export default function SignupForm() {
       </div>
 
       <BottomActionBar>
-        <Button type="submit" variant="pink" disabled={!valid || !allAgreed}>
-          가입하기
-        </Button>
+        <div className="flex w-full flex-col gap-2">
+          {formError && (
+            <p role="alert" className="rounded-xl border-2 border-dashed border-red-300 bg-red-50/70 px-3 py-2 text-center text-sm text-red-600">
+              {formError}
+            </p>
+          )}
+          <Button type="submit" variant="pink" disabled={!valid || !allAgreed || submitting}>
+            {submitting ? '가입하는 중…' : '가입하기'}
+          </Button>
+        </div>
       </BottomActionBar>
     </form>
   )
