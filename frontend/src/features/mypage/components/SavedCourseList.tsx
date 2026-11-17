@@ -1,85 +1,81 @@
-import { useRef, useState, type PointerEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import Button from '../../../shared/components/Button'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import EmptyState from '../../../shared/components/EmptyState'
-import { formatMinutes, formatShortDate } from '../../../shared/utils/format'
-import { getCourseName } from '../../recommend/types'
-import { useSavedCourseStore, type SavedCourse } from '../store'
+import { useSavedCourses } from '../hooks/useSavedCourses'
+import SavedCourseCard from './SavedCourseCard'
 
-/** 왼쪽으로 이만큼(px) 이상 밀면 저장 해제 확인 */
-const SWIPE_THRESHOLD = 60
-
-/**
- * 저장한 코스 목록 (MY-02): 최신순. 카드를 누르면 MY-03.
- * 저장 해제는 카드의 버튼 또는 왼쪽으로 밀기 → 페이지 안에서 한 번 더 확인
- * TODO(김하윤): 저장한 코스 조회·삭제 API 연동
- */
+// MY-02: 서버의 요약 목록을 표시하고, 확인 후 삭제 API를 호출한다.
 export default function SavedCourseList() {
   const navigate = useNavigate()
-  const { savedCourses, remove } = useSavedCourseStore()
+  const { data, loading, error, deletingId, deleteError, loadMore, retry, removeCourse, clearDeleteError } = useSavedCourses()
   const [removingId, setRemovingId] = useState<string | null>(null)
 
-  if (savedCourses.length === 0) {
-    return (
-      <EmptyState
-        message="아직 저장한 코스가 없어요"
-        action={
-          <Button className="w-auto px-6" onClick={() => navigate('/condition')}>
-            지금 외출 추천
-          </Button>
-        }
-      />
-    )
+  async function handleRemove() {
+    if (!removingId) return
+    if (await removeCourse(removingId)) setRemovingId(null)
+  }
+
+  if (!data && loading) {
+    return <p role="status" className="p-6 text-center text-sm text-neutral-500">저장한 코스를 불러오는 중이에요.</p>
   }
 
   return (
-    <>
-      <ul className="flex flex-col gap-3 p-4">
-        {savedCourses.map((saved) => (
-          <SavedCourseCard key={saved.course.courseId} saved={saved} onRemove={() => setRemovingId(saved.course.courseId)} />
-        ))}
-      </ul>
+    <div aria-busy={loading || deletingId !== null}>
+      {data && <p className="px-4 pt-4 text-sm text-neutral-500">저장한 코스 {data.totalElements}개</p>}
 
-      {removingId && (
-        <ConfirmDialog
-          message="저장을 해제할까요?"
-          confirmLabel="저장 해제"
-          onCancel={() => setRemovingId(null)}
-          onConfirm={() => {
-            remove(removingId)
-            setRemovingId(null)
-          }}
+      {/* 조회에 실패해도 이미 가져온 목록은 계속 보여 준다. */}
+      {error && (
+        <div role="alert" className="m-4 rounded-xl border border-line p-4">
+          <p className="mb-3 text-sm">{error}</p>
+          <Button variant="secondary" onClick={retry} disabled={loading || deletingId !== null}>다시 시도</Button>
+        </div>
+      )}
+
+      {/* 현재 배열 길이 대신 서버의 전체 건수로 빈 목록을 판단한다. */}
+      {data?.totalElements === 0 && !loading && !error && (
+        <EmptyState
+          message="아직 저장한 코스가 없어요"
+          action={<Button className="w-auto px-6" onClick={() => navigate('/condition')}>지금 외출 추천</Button>}
         />
       )}
-    </>
-  )
-}
 
-/** 저장한 코스 카드: 코스명, 장소 수, 총 소요시간, 저장일 */
-function SavedCourseCard({ saved, onRemove }: { saved: SavedCourse; onRemove: () => void }) {
-  const { course, savedAt } = saved
-  const startX = useRef<number | null>(null)
+      {data && data.content.length > 0 && (
+        <ul className="flex flex-col gap-3 p-4">
+          {data.content.map((course) => (
+            <SavedCourseCard
+              key={course.courseId}
+              course={course}
+              disabled={loading || deletingId !== null}
+              onRemove={() => {
+                clearDeleteError()
+                setRemovingId(course.courseId)
+              }}
+            />
+          ))}
+        </ul>
+      )}
 
-  const onPointerDown = (e: PointerEvent) => {
-    startX.current = e.clientX
-  }
-  const onPointerUp = (e: PointerEvent) => {
-    if (startX.current !== null && startX.current - e.clientX > SWIPE_THRESHOLD) onRemove()
-    startX.current = null
-  }
+      {data && loading && <p role="status" className="p-4 text-center text-sm text-neutral-500">목록을 불러오는 중이에요.</p>}
+      {data?.hasNext && !error && (
+        <div className="px-4 pb-4">
+          <Button variant="secondary" onClick={loadMore} disabled={loading || deletingId !== null}>더 보기</Button>
+        </div>
+      )}
 
-  return (
-    <li onPointerDown={onPointerDown} onPointerUp={onPointerUp} className="flex items-center gap-2 rounded-2xl border border-line p-4">
-      <Link to={`/mypage/courses/${course.courseId}`} className="min-w-0 flex-1" draggable={false}>
-        <p className="truncate font-bold">{getCourseName(course)}</p>
-        <p className="mt-1 text-xs text-neutral-500">
-          {course.places.length}곳 · {formatMinutes(course.totalMinutes)} · {formatShortDate(savedAt)} 저장
-        </p>
-      </Link>
-      <button type="button" onClick={onRemove} className="shrink-0 rounded-lg border border-line px-2 py-1 text-xs text-neutral-500">
-        저장 해제
-      </button>
-    </li>
+      {removingId && (
+        // 공통 Dialog를 변경하지 않고 삭제 요청 동안 내부 버튼들을 비활성화한다.
+        <fieldset disabled={deletingId !== null} className="contents">
+          <ConfirmDialog
+            message="저장을 해제할까요?"
+            description={deleteError ?? undefined}
+            confirmLabel={deletingId ? '저장 해제 중…' : '저장 해제'}
+            onCancel={() => { if (!deletingId) setRemovingId(null) }}
+            onConfirm={() => { void handleRemove() }}
+          />
+        </fieldset>
+      )}
+    </div>
   )
 }
