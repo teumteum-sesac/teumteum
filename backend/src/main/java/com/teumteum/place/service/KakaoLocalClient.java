@@ -148,4 +148,19 @@ public class KakaoLocalClient {
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
     }
+
+    public KakaoPlaceResponse searchKeyword(String query, double lng, double lat, int radius, int page, int size) {
+
+        return get("keyword-radius", uri -> uri.path("/v2/local/search/keyword.json")
+                .queryParam("query", query)
+                .queryParam("x", lng)
+                .queryParam("y",lat)
+                .queryParam("radius", clamp(radius, 1, MAX_RADIUS))
+                .queryParam("page", clamp(page, 1, MAX_PAGE))
+                .queryParam("size", clamp(size, 1, PLACE_MAX_SIZE))
+                .queryParam("sort", "distance")
+                .build(), KakaoPlaceResponse.class);
+
+    }
+
 }
