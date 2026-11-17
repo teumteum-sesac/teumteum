@@ -1,12 +1,15 @@
 package com.teumteum.course.controller;
 
+import com.teumteum.course.dto.CourseDeleteResponse;
 import com.teumteum.course.dto.CourseListResponse;
 import com.teumteum.course.dto.CourseResponse;
 import com.teumteum.course.service.CourseService;
 import com.teumteum.global.auth.LoginMember;
 import com.teumteum.global.common.ApiResponse;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -51,6 +54,23 @@ public class CourseController {
         CourseResponse response = courseService.getCourse(memberId, courseId);
 
         // 상세 데이터를 공통 응답으로 감싸 200 OK로 반환한다.
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    // DELETE /api/courses/1처럼 코스 ID를 지정해 삭제한다.
+    @DeleteMapping("/{courseId}")
+    public ResponseEntity<ApiResponse<CourseDeleteResponse>> deleteCourse(
+            // 기존 인증 계층에서 요청한 회원 ID를 받는다.
+            @LoginMember Long memberId,
+
+            // 주소에 포함된 삭제 대상 코스 ID를 받는다.
+            @PathVariable("courseId") @Positive Long courseId
+    ) {
+        // Service에서 본인 코스 확인과 실제 삭제를 수행한다.
+        CourseDeleteResponse response =
+                courseService.deleteCourse(memberId, courseId);
+
+        // 삭제 성공 결과를 공통 응답으로 감싸 200 OK로 반환한다.
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }
