@@ -1,5 +1,9 @@
 package com.teumteum.global.config;
 
+import com.teumteum.global.auth.JwtAuthenticationFilter;
+import com.teumteum.global.auth.JwtProvider;
+import com.teumteum.global.auth.SecurityErrorHandler;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -7,14 +11,31 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/**
- * [임시] 인증(JWT) 구현 전까지 모든 요청을 허용한다.
- * TODO(김용현): JWT 인증 필터 추가 후 회원 전용(/api/courses 등)·관리자(/api/admin/**) 경로를 막는다.
+/*
+ * [이 파일이 하는 일]
+ * "어떤 주소는 로그인해야 들어갈 수 있는가"를 정하는 보안 설정 (NFR-002).
+ *
+ * [경로 규칙] — 서비스는 비회원 이용 중심 (AGENTS.md 1장)
+ *   로그인 필요 : /api/courses/**     코스 저장·조회·삭제 (MY-02·MY-03, DET-01 저장)
+ *                 /api/members/me/**  내 정보 조회·수정·탈퇴 (MY-01·MY-04)
+ *                 /api/admin/**       관리자 (TODO(정종화): 관리자 권한(ROLE) 생기면 hasRole 로 바꾼다)
+ *   나머지 전부 : 로그인 없이 허용 (추천·장소·회원가입·로그인·Swagger 등)
+ *   새 회원 전용 API 를 만들면 위 목록에 경로를 추가한다.
+ *
+ * [요청 한 번의 흐름]
+ *   JwtAuthenticationFilter (토큰 → 회원 ID 인증 정보 등록)
+ *     → authorizeHttpRequests (경로 규칙 검사, 막히면 SecurityErrorHandler 가 401/403 공통 응답)
+ *     → 컨트롤러 (@LoginMember 로 회원 ID 받기)
  */
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtProvider jwtProvider;
+    private final SecurityErrorHandler securityErrorHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -22,10 +43,18 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)         // JWT(무상태) 방식이라 CSRF 불필요
                 .formLogin(AbstractHttpConfigurer::disable)    // 기본 로그인 화면 끄기
                 .httpBasic(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // 서버 세션 안 씀
                 .authorizeHttpRequests(auth -> auth
-                        .anyRequest().permitAll()              // [임시] 전부 허용
-                );
+                        .requestMatchers("/api/courses/**", "/api/members/me/**", "/api/admin/**").authenticated()
+                        .anyRequest().permitAll()
+                )
+                // 401·403 을 공통 응답(ApiResponse) 형식으로
+                .exceptionHandling(handler -> handler
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler)
+                )
+                // Spring 기본 로그인 필터보다 앞에서 토큰을 확인한다
+                .addFilterBefore(new JwtAuthenticationFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

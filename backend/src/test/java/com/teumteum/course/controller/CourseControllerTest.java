@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -35,6 +36,10 @@ import com.teumteum.course.dto.CourseDeleteResponse;
 
 // 서버와 DB 없이 실제 요청 매핑, 회원 ID 해석, 공통 응답 및 예외 처리를 검증한다.
 class CourseControllerTest {
+    // 토큰 검증이 끝나 회원 7번으로 인증된 요청 (실제 서버에서는 JwtAuthenticationFilter 가 만든다)
+    private static final UsernamePasswordAuthenticationToken MEMBER_7 =
+            new UsernamePasswordAuthenticationToken(7L, null, List.of());
+
     private MockMvc mockMvc;
     private CourseService courseService;
 
@@ -54,7 +59,7 @@ class CourseControllerTest {
         given(courseService.getCourses(7L, 0, 20)).willReturn(
                 new CourseListResponse(List.of(summary), 0, 20, 1L, 1, false));
 
-        mockMvc.perform(get("/api/courses").header("X-Member-Id", "7"))
+        mockMvc.perform(get("/api/courses").principal(MEMBER_7))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].courseId").value("42"))
@@ -70,7 +75,7 @@ class CourseControllerTest {
         given(courseService.getCourses(7L, 3, 10)).willReturn(
                 new CourseListResponse(List.of(), 3, 10, 25L, 3, false));
 
-        mockMvc.perform(get("/api/courses").header("X-Member-Id", "7")
+        mockMvc.perform(get("/api/courses").principal(MEMBER_7)
                         .param("page", "3").param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content").isEmpty())
@@ -87,10 +92,10 @@ class CourseControllerTest {
         verifyNoInteractions(courseService);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"0", "-1", "abc"})
-    void invalidMemberReturnsUnauthorized(String memberId) throws Exception {
-        mockMvc.perform(get("/api/courses").header("X-Member-Id", memberId))
+    @Test
+    void oldMemberHeaderReturnsUnauthorized() throws Exception {
+        // 임시 X-Member-Id 헤더 방식은 삭제됐다. 토큰 인증 정보가 없으면 401 이다.
+        mockMvc.perform(get("/api/courses").header("X-Member-Id", "7"))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(courseService);
     }
@@ -98,7 +103,7 @@ class CourseControllerTest {
     @ParameterizedTest
     @CsvSource({"page, abc", "size, 2147483648"})
     void invalidNumberReturnsBadRequest(String parameter, String value) throws Exception {
-        mockMvc.perform(get("/api/courses").header("X-Member-Id", "7").param(parameter, value))
+        mockMvc.perform(get("/api/courses").principal(MEMBER_7).param(parameter, value))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
         verifyNoInteractions(courseService);
@@ -110,7 +115,7 @@ class CourseControllerTest {
         given(courseService.getCourses(7L, page, size))
                 .willThrow(new CustomException(CommonErrorCode.INVALID_REQUEST));
 
-        mockMvc.perform(get("/api/courses").header("X-Member-Id", "7")
+        mockMvc.perform(get("/api/courses").principal(MEMBER_7)
                         .param("page", Integer.toString(page)).param("size", Integer.toString(size)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
@@ -126,9 +131,9 @@ class CourseControllerTest {
                 .willThrow(new CustomException(CourseErrorCode.COURSE_NOT_FOUND));
 
         // 2. 회원 7이 코스 42를 상세 조회하는 HTTP 요청을 흉내 낸다.
-        // 주소의 42는 @PathVariable로, 임시 헤더의 7은 @LoginMember로 전달된다.
+        // 주소의 42는 @PathVariable로, 인증 정보의 회원 7은 @LoginMember로 전달된다.
         mockMvc.perform(get("/api/courses/42")
-                        .header("X-Member-Id", "7"))
+                        .principal(MEMBER_7))
                 // 3. GlobalExceptionHandler가 예외를 HTTP 404로 변환하는지 확인한다.
                 .andExpect(status().isNotFound())
                 // 4. 공통 응답의 실패 여부와 오류 코드가 올바른지 확인한다.
@@ -158,7 +163,7 @@ class CourseControllerTest {
         given(courseService.getCourse(7L, 42L)).willReturn(response);
 
         // 회원 ID는 임시 인증 헤더, 코스 ID는 주소에서 가져온다.
-        mockMvc.perform(get("/api/courses/42").header("X-Member-Id", "7"))
+        mockMvc.perform(get("/api/courses/42").principal(MEMBER_7))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.courseId").value("42"))
@@ -192,7 +197,7 @@ class CourseControllerTest {
     @ValueSource(strings = {"abc", "1.5", "9223372036854775808"})
     void malformedCourseIdReturns400(String courseId) throws Exception {
         // 숫자가 아니거나 Long 범위를 넘는 주소 값은 Spring의 타입 변환 단계에서 거절한다.
-        mockMvc.perform(get("/api/courses/" + courseId).header("X-Member-Id", "7"))
+        mockMvc.perform(get("/api/courses/" + courseId).principal(MEMBER_7))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
         verifyNoInteractions(courseService);
@@ -206,7 +211,7 @@ class CourseControllerTest {
         given(courseService.getCourse(7L, courseId))
                 .willThrow(new CustomException(CommonErrorCode.INVALID_REQUEST));
 
-        mockMvc.perform(get("/api/courses/" + courseId).header("X-Member-Id", "7"))
+        mockMvc.perform(get("/api/courses/" + courseId).principal(MEMBER_7))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
@@ -221,7 +226,7 @@ class CourseControllerTest {
 
         // 회원 7이 코스 42를 삭제하는 요청을 보낸다.
         mockMvc.perform(delete("/api/courses/42")
-                        .header("X-Member-Id", "7"))
+                        .principal(MEMBER_7))
                 // HTTP 상태와 공통 응답 형식을 확인한다.
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -254,7 +259,7 @@ class CourseControllerTest {
 
         // 회원 7이 코스 42의 삭제를 요청한다.
         mockMvc.perform(delete("/api/courses/42")
-                        .header("X-Member-Id", "7"))
+                        .principal(MEMBER_7))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code")
@@ -268,7 +273,7 @@ class CourseControllerTest {
     void deleteWithInvalidIdReturns400() throws Exception {
         // 코스 ID는 Long 타입인데 주소에 문자열 abc를 넣는다.
         mockMvc.perform(delete("/api/courses/abc")
-                        .header("X-Member-Id", "7"))
+                        .principal(MEMBER_7))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
@@ -282,7 +287,7 @@ class CourseControllerTest {
     void deleteWithNonPositiveIdReturns400(long courseId) throws Exception {
         // 0과 음수로 각각 삭제를 요청한다.
         mockMvc.perform(delete("/api/courses/" + courseId)
-                        .header("X-Member-Id", "7"))
+                        .principal(MEMBER_7))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
