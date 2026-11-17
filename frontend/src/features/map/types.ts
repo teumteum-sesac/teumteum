@@ -42,6 +42,8 @@ export interface KakaoMapInstance {
   getCenter(): KakaoLatLng
   setCenter(latlng: KakaoLatLng): void
   panTo(latlng: KakaoLatLng): void
+  /** 지도 중심을 화면 픽셀만큼 부드럽게 옮긴다 (dx > 0 이면 오른쪽, dy > 0 이면 아래쪽을 더 보여 줌) */
+  panBy(dx: number, dy: number): void
   setLevel(level: number): void
   /** padding(px)을 주면 지도 가장자리에서 그만큼 안쪽에 마커가 오도록 맞춘다 */
   setBounds(bounds: KakaoLatLngBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number): void
@@ -51,6 +53,11 @@ export interface KakaoMapInstance {
 /** 지도 위에 올리는 것(마커·오버레이·선)의 공통 부분 */
 export interface KakaoOverlay {
   setMap(map: KakaoMapInstance | null): void
+}
+
+/** 사용자 정의 오버레이 (DOM 을 지도 위에 올림). 겹칠 때 위·아래 순서를 바꿀 수 있다 */
+export interface KakaoCustomOverlay extends KakaoOverlay {
+  setZIndex(zIndex: number): void
 }
 
 /** 마커 이미지 크기(px) */
@@ -78,7 +85,9 @@ export interface KakaoMapsApi {
     xAnchor?: number
     /** 내용 상자 안에서 좌표에 맞출 위치 (0 위 ~ 1 아래, 기본 0.5) */
     yAnchor?: number
-  }) => KakaoOverlay
+    /** 겹칠 때 위에 올 순서 (클수록 위) */
+    zIndex?: number
+  }) => KakaoCustomOverlay
   Polyline: new (options: {
     path: KakaoLatLng[]
     strokeWeight?: number
@@ -89,8 +98,8 @@ export interface KakaoMapsApi {
   /** 마커 클릭, 지도 이동·확대가 끝남(idle) 등 지도 객체 이벤트 */
   event: {
     addListener(target: KakaoOverlay, type: 'click', handler: () => void): void
-    addListener(target: KakaoMapInstance, type: 'idle', handler: () => void): void
-    removeListener(target: KakaoMapInstance, type: 'idle', handler: () => void): void
+    addListener(target: KakaoMapInstance, type: 'idle' | 'click', handler: () => void): void
+    removeListener(target: KakaoMapInstance, type: 'idle' | 'click', handler: () => void): void
   }
 }
 
