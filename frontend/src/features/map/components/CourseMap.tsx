@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
+import Icon from '../../../shared/components/Icon'
+import { PAPER_STYLE } from '../../../shared/assets/stickerAssets'
 import type { LatLng } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
 import { getTotalTravelMinutes, type Course } from '../../recommend/types'
@@ -73,12 +75,15 @@ export default function CourseMap({ course, backLabel, routeLegs }: CourseMapPro
         className="min-h-80 flex-1"
       />
 
-      <section className="border-t border-line px-4 py-4">
-        <p className="mb-3 text-sm">
-          <span className="font-bold">총 {formatMinutes(course.totalMinutes)}</span>
-          <span className="ml-2 text-neutral-500">이동 {formatMinutes(getTotalTravelMinutes(course))}</span>
+      {/* 지도 아래 종이 패널: 총 시간 라벨 + 지점 목록 (누르면 그 지점으로 지도 이동) */}
+      <section className="relative z-10 -mt-5 rounded-t-[28px] border-2 border-b-0 border-line bg-cream px-4 pt-4 pb-3" style={PAPER_STYLE}>
+        <p className="mb-2 flex items-center gap-2 px-1">
+          <span className="flex items-center gap-1 rounded-full border-2 border-ink bg-sunny px-2.5 py-0.5 text-sm font-bold">
+            <Icon name="clock" className="size-4" strokeWidth={2.6} />총 {formatMinutes(course.totalMinutes)}
+          </span>
+          <span className="text-xs text-neutral-500">이동 {formatMinutes(getTotalTravelMinutes(course))}</span>
         </p>
-        <ol className="flex flex-col gap-1">
+        <ol className="flex flex-col">
           {markers.map((m) => (
             <MapRow
               key={m.label}
@@ -106,13 +111,14 @@ export default function CourseMap({ course, backLabel, routeLegs }: CourseMapPro
 function MapRow({ label, name, dark, onClick }: { label: string; name: string; dark: boolean; onClick: () => void }) {
   return (
     <li>
-      <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left active:bg-neutral-100">
+      <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left active:bg-primary-light/60">
         <span
-          className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${dark ? 'bg-neutral-700' : 'bg-primary'}`}
+          className={`flex size-7 shrink-0 items-center justify-center rounded-full border-2 border-ink font-display text-sm ${dark ? 'bg-sunny text-ink' : 'bg-primary text-white'}`}
         >
           {label}
         </span>
         <span className="flex-1 truncate text-sm">{name}</span>
+        <Icon name="location" className="size-4 text-neutral-400" />
       </button>
     </li>
   )

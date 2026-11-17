@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
+import { CATEGORY_STICKER } from '../../../shared/assets/stickerAssets'
+import StickerImage from '../../../shared/components/StickerImage'
 import { getCategoryLabel } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
 import { useConditionStore } from '../../condition/store'
@@ -45,18 +47,24 @@ export default function PlaceReplace({ courseId, placeId }: PlaceReplaceProps) {
   return (
     <>
       <div className="flex flex-col gap-5 px-4 py-5">
-        <p className="text-lg font-bold">이 장소만 바꿔볼까요?</p>
+        <div className="flex items-center gap-2">
+          <StickerImage name="turtleHead" className="size-11" />
+          <p className="font-display text-xl">이 장소만 바꿔 볼까요?</p>
+        </div>
 
-        <section className="rounded-xl bg-neutral-100 p-4 text-sm">
-          <p className="text-xs text-neutral-500">지금</p>
-          <p className="mt-1 font-bold">{current.name}</p>
-          <p className="text-xs text-neutral-500">
-            {getCategoryLabel(current.category)} › {current.subCategory} · 체류 {formatMinutes(current.stayMinutes)}
-          </p>
+        <section className="paper-card relative flex items-center gap-3 p-3.5">
+          <span className="absolute -top-2.5 left-3 rounded-full border-2 border-ink bg-sunny px-2 text-[11px] font-bold">지금</span>
+          <StickerImage name={CATEGORY_STICKER[current.category]} className="size-11" />
+          <span className="min-w-0">
+            <p className="truncate font-bold">{current.name}</p>
+            <p className="text-xs text-neutral-500">
+              {getCategoryLabel(current.category)} › {current.subCategory} · 체류 {formatMinutes(current.stayMinutes)}
+            </p>
+          </span>
         </section>
 
         <section>
-          <h3 className="mb-3 text-sm font-bold">바꿀 수 있는 곳</h3>
+          <h3 className="mb-2.5 px-1 font-display text-lg">바꿀 수 있는 곳</h3>
           <ul className="flex flex-col gap-2">
             {alternatives.map((alt) => (
               <li key={alt.placeId}>
@@ -64,17 +72,20 @@ export default function PlaceReplace({ courseId, placeId }: PlaceReplaceProps) {
                   type="button"
                   aria-pressed={selectedId === alt.placeId}
                   onClick={() => setSelectedId(alt.placeId)}
-                  className={`flex w-full items-center justify-between rounded-xl border p-3 text-left ${
-                    selectedId === alt.placeId ? 'border-primary bg-primary-light' : 'border-line'
+                  className={`flex w-full items-center gap-3 rounded-2xl border-2 p-3 text-left ${
+                    selectedId === alt.placeId ? 'border-primary bg-primary-light' : 'border-line bg-cream'
                   }`}
                 >
-                  <span>
-                    <span className="block font-semibold">{alt.name}</span>
+                  <StickerImage name={CATEGORY_STICKER[alt.category]} className="size-10" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-bold">{alt.name}</span>
                     <span className="text-xs text-neutral-500">
                       {getLegMode(course, alt.transitInfo)} {formatMinutes(alt.travelMinutes)}
                     </span>
                   </span>
-                  <span className={`text-sm font-semibold ${alt.diffMinutes > 0 ? 'text-red-500' : 'text-primary'}`}>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${alt.diffMinutes > 0 ? 'bg-red-100 text-red-600' : 'bg-turtle/40 text-ink'}`}
+                  >
                     총 시간 {alt.diffMinutes > 0 ? '+' : '−'}
                     {formatMinutes(Math.abs(alt.diffMinutes))}
                   </span>
@@ -86,7 +97,7 @@ export default function PlaceReplace({ courseId, placeId }: PlaceReplaceProps) {
       </div>
 
       <BottomActionBar>
-        <Button disabled={selectedId === null} onClick={handleReplace}>
+        <Button variant="pink" disabled={selectedId === null} onClick={handleReplace}>
           이 장소로 교체
         </Button>
       </BottomActionBar>

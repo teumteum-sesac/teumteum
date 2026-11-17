@@ -5,6 +5,7 @@ import Button from '../../../shared/components/Button'
 import Chip from '../../../shared/components/Chip'
 import ChipGroup from '../../../shared/components/ChipGroup'
 import EmptyState from '../../../shared/components/EmptyState'
+import Icon from '../../../shared/components/Icon'
 import Toast from '../../../shared/components/Toast'
 import { CATEGORIES } from '../../../shared/types/domain'
 import { isRandomCondition, useConditionStore } from '../../condition/store'
@@ -60,7 +61,7 @@ export default function RecommendResult() {
       </div>
 
       {filtered.length > 0 ? (
-        <ul className="flex flex-col gap-3 p-4">
+        <ul className="flex flex-col gap-5 p-4 pt-5">
           {filtered.map((course, i) => (
             <li key={course.courseId}>
               <CourseCard course={course} index={i + 1} to={`/results/${course.courseId}`} />
@@ -69,21 +70,23 @@ export default function RecommendResult() {
           <li className="text-center text-xs text-neutral-400">이동·체류시간은 예상값이라 실제와 다를 수 있어요</li>
         </ul>
       ) : (
+        // 목업 '추천 결과 없음': 듀오가 지도 보며 고민하는 장면 + 친근한 문구. 버튼은 아래 고정 바에 있다
         <EmptyState
-          message="조건에 맞는 코스가 없어요. 시간을 늘리거나 카테고리를 줄여보세요."
-          action={
-            <Button variant="secondary" className="w-auto px-6" onClick={() => navigate('/condition')}>
-              조건 바꾸기
-            </Button>
-          }
+          sticker="sceneEmpty"
+          message="조건에 맞는 추천이 없어요"
+          description="시간을 늘리거나 카테고리를 줄이면 새로운 코스를 찾아 올게요!"
         />
       )}
 
       <BottomActionBar>
-        <Button variant="secondary" onClick={() => navigate('/condition')}>
+        <Button variant="secondary" className="flex items-center justify-center gap-1.5" onClick={() => navigate('/condition')}>
+          <Icon name="sliders" className="size-5" />
           조건 바꾸기
         </Button>
-        <Button onClick={handleReload}>다시 추천</Button>
+        <Button className="flex items-center justify-center gap-1.5" onClick={handleReload}>
+          <Icon name="refresh" className="size-5" strokeWidth={2.6} />
+          다시 추천
+        </Button>
       </BottomActionBar>
 
       {toast && <Toast message={toast} onClose={closeToast} />}

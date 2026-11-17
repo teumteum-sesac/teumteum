@@ -17,10 +17,12 @@ const VARIANT_CLASS = {
 }
 
 export default function Button({ variant = 'primary', className = '', type = 'button', ...props }: ButtonProps) {
+  // 기본은 꽉 찬 너비. className 에 w-auto 같은 너비가 있으면 그것을 쓴다 (두 클래스가 겹치면 어느 쪽이 이길지 보장되지 않음)
+  const widthClass = /(^|\s)w-/.test(className) ? '' : 'w-full'
   return (
     <button
       type={type}
-      className={`sticker-edge h-12 w-full rounded-2xl font-display text-[17px] text-ink transition-transform disabled:border-line disabled:bg-paper disabled:text-neutral-400 disabled:shadow-none ${VARIANT_CLASS[variant]} ${className}`}
+      className={`sticker-edge h-12 ${widthClass} rounded-2xl font-display text-[17px] text-ink transition-transform disabled:border-line disabled:bg-paper disabled:text-neutral-400 disabled:shadow-none ${VARIANT_CLASS[variant]} ${className}`}
       {...props}
     />
   )
