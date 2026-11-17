@@ -32,6 +32,11 @@ interface KakaoMapProps {
   fitBounds?: boolean
   /** 범위 맞춤 여백. 없으면 카카오 기본값 */
   boundsPadding?: BoundsPadding
+  /**
+   * 사용자가 지도를 끌거나 확대·축소해 움직임이 끝날 때마다 지도 중심 좌표를 알려 준다 (CON-02 지도 중앙 핀).
+   * 받은 좌표를 다시 center 로 넘기지 않는다 (지도가 이미 그 위치에 있음)
+   */
+  onCenterChange?: (center: LatLng) => void
   className?: string
 }
 
@@ -143,6 +148,7 @@ export default function KakaoMap({
   polyline = false,
   fitBounds = false,
   boundsPadding,
+  onCenterChange,
   className = '',
 }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -243,6 +249,25 @@ export default function KakaoMap({
       cancelAnimationFrame(frame)
     }
   }, [ready])
+
+  // 지도 움직임이 끝날 때(idle) 중심 좌표 알림. onCenterChange 를 넘긴 지도만 이벤트를 등록한다
+  // 콜백은 ref 로 최신 함수를 부르므로, 상위에서 함수를 새로 만들어도 이벤트를 다시 등록하지 않는다
+  const onCenterChangeRef = useRef(onCenterChange)
+  useEffect(() => {
+    onCenterChangeRef.current = onCenterChange
+  })
+  const listensCenter = onCenterChange !== undefined
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!ready || !maps || !map || !listensCenter) return
+    const handleIdle = () => {
+      const c = map.getCenter()
+      onCenterChangeRef.current?.({ lat: c.getLat(), lng: c.getLng() })
+    }
+    maps.event.addListener(map, 'idle', handleIdle)
+    return () => maps.event.removeListener(map, 'idle', handleIdle)
+  }, [ready, listensCenter])
 
   // 매 렌더 마지막에 실행: 범위 맞춤 표시는 그 렌더에서만 유효하게 초기화한다
   // (effect는 선언 순서대로 실행되므로 반드시 위 effect들 다음에 둔다)
