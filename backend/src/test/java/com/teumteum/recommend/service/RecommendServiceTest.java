@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -28,6 +29,7 @@ import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -35,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -51,6 +54,10 @@ class RecommendServiceTest {
 
     @Mock
     private CourseSearchService courseSearchService;
+
+    /** 다시 추천 때 코스 찾기에 넘어간 "제외할 장소 ID" 를 붙잡는다 */
+    @Captor
+    private ArgumentCaptor<Set<String>> excludedCaptor;
 
     private InMemoryRecommendationStore store;
     private RecommendService recommendService;
@@ -134,6 +141,67 @@ class RecommendServiceTest {
 
         assertThrows(CustomException.class,
                 () -> recommendService.recommend(request(CategoryMode.RANDOM, List.of())));
+    }
+
+    // ===================== 다시 추천 =====================
+
+    @Test
+    @DisplayName("다시 추천: 직전 묶음의 장소를 모두 빼고 같은 조건으로 찾아 새 묶음 ID 로 응답한다")
+    void regenerate_excludesPreviousPlaces() {
+        given(courseSearchService.findCourses(any())).willReturn(List.of(plan("101"), plan("102")));
+        RecommendResponse first = recommendService.recommend(request(CategoryMode.RANDOM, List.of()));
+        given(courseSearchService.findCourses(any(), any())).willReturn(List.of(plan("201")));
+
+        RecommendResponse second = recommendService.regenerate(first.recommendationSetId());
+
+        verify(courseSearchService).findCourses(any(), excludedCaptor.capture());
+        assertEquals(Set.of("101", "102"), excludedCaptor.getValue());     // 직전 장소 둘 다 제외
+        assertNotEquals(first.recommendationSetId(), second.recommendationSetId()); // 새 묶음
+        assertEquals("201", second.courses().get(0).places().get(0).placeId());
+        assertEquals(first.condition(), second.condition());                  // 같은 조건
+        assertTrue(store.findSet(second.recommendationSetId()).isPresent());  // 새 묶음도 보관
+    }
+
+    @Test
+    @DisplayName("다시 추천: 제외하고 찾아서 하나도 없으면 한 번만 제외 없이 다시 찾는다 (겹쳐도 됨)")
+    void regenerate_fallsBackWithoutExclusion_whenNothingFound() {
+        given(courseSearchService.findCourses(any())).willReturn(List.of(plan("101")));
+        RecommendResponse first = recommendService.recommend(request(CategoryMode.RANDOM, List.of()));
+        given(courseSearchService.findCourses(any(), any())).willReturn(List.of());
+
+        RecommendResponse second = recommendService.regenerate(first.recommendationSetId());
+
+        verify(courseSearchService, times(2)).findCourses(any()); // 처음 추천 1번 + 제외 없이 다시 1번
+        assertEquals("101", second.courses().get(0).places().get(0).placeId());
+    }
+
+    @Test
+    @DisplayName("다시 추천: 직전 결과가 원래 비어 있었으면 제외할 게 없으니 다시 찾지 않고 빈 결과다")
+    void regenerate_noFallback_whenPreviousWasEmpty() {
+        given(courseSearchService.findCourses(any())).willReturn(List.of());
+        RecommendResponse first = recommendService.recommend(request(CategoryMode.RANDOM, List.of()));
+        given(courseSearchService.findCourses(any(), any())).willReturn(List.of());
+
+        RecommendResponse second = recommendService.regenerate(first.recommendationSetId());
+
+        verify(courseSearchService, times(1)).findCourses(any()); // 처음 추천 때 1번뿐
+        assertTrue(second.courses().isEmpty());
+    }
+
+    @Test
+    @DisplayName("다시 추천: 없는 묶음 ID 면 404, 2시간 지난 묶음이면 410")
+    void regenerate_notFoundAndExpired() {
+        CustomException notFound = assertThrows(CustomException.class,
+                () -> recommendService.regenerate("rs_없는아이디"));
+        assertEquals(RecommendErrorCode.RECOMMENDATION_NOT_FOUND, notFound.getErrorCode());
+
+        given(courseSearchService.findCourses(any())).willReturn(List.of());
+        String setId = recommendService.recommend(request(CategoryMode.RANDOM, List.of())).recommendationSetId();
+        RecommendService twoHoursLater = new RecommendService(courseSearchService, store, new RecommendResponseMapper(),
+                Clock.fixed(NOW.plusHours(2).toInstant(), ZoneOffset.ofHours(9)));
+
+        CustomException expired = assertThrows(CustomException.class, () -> twoHoursLater.regenerate(setId));
+        assertEquals(RecommendErrorCode.RECOMMENDATION_EXPIRED, expired.getErrorCode());
     }
 
     // ===================== 코스 상세 =====================

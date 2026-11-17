@@ -21,7 +21,9 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -76,6 +78,49 @@ public class RecommendService {
         recommendationStore.save(recommendationSet);
 
         return responseMapper.toResponse(recommendationSet);
+    }
+
+    /**
+     * 다시 추천 (POST /api/recommendations/{recommendationSetId}/regenerate, 명세 2장, REQ-026).
+     * <pre>
+     * 1. 보관한 묶음 꺼내기 (없으면 404, 만료면 410)
+     * 2. 같은 조건으로, 직전 묶음에 나온 장소를 빼고 코스 찾기
+     * 3. 하나도 없으면 한 번만 빼지 않고 다시 찾기 ("가능한 한 제외", 겹치는 장소가 나올 수 있음)
+     * 4. 새 묶음 ID(rs_)로 2시간 보관 → 응답 (생성과 같은 RecommendResponse)
+     * </pre>
+     * 직전 묶음은 지우지 않는다. 사용자가 뒤로 가서 예전 코스 상세를 볼 수 있다 (만료되면 자연히 정리).
+     */
+    public RecommendResponse regenerate(String recommendationSetId) {
+        RecommendationSet previous = findValidSet(recommendationSetId);
+        RecommendCondition condition = previous.condition();
+
+        List<CoursePlan> plans = courseSearchService.findCourses(condition.toCourseCondition(), placeIdsIn(previous));
+        if (plans.isEmpty() && !previous.courses().isEmpty()) {
+            plans = courseSearchService.findCourses(condition.toCourseCondition()); // 겹쳐도 되니 다시 찾기
+        }
+
+        RecommendationSet recommendationSet = createSet(condition, plans);
+        recommendationStore.save(recommendationSet);
+        return responseMapper.toResponse(recommendationSet);
+    }
+
+    /** 묶음 꺼내기. 없거나 정리됐으면 404, 2시간 지났으면 410 */
+    private RecommendationSet findValidSet(String recommendationSetId) {
+        RecommendationSet recommendationSet = recommendationStore.findSet(recommendationSetId)
+                .orElseThrow(() -> new CustomException(RecommendErrorCode.RECOMMENDATION_NOT_FOUND));
+        if (recommendationSet.isExpiredAt(OffsetDateTime.now(clock))) {
+            throw new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED);
+        }
+        return recommendationSet;
+    }
+
+    /** 묶음 안 모든 코스의 장소 ID (다시 추천 때 뺄 장소) */
+    private Set<String> placeIdsIn(RecommendationSet recommendationSet) {
+        Set<String> placeIds = new HashSet<>();
+        for (RecommendedCourse course : recommendationSet.courses()) {
+            placeIds.addAll(course.plan().placeIds());
+        }
+        return placeIds;
     }
 
     /**
