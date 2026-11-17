@@ -5,7 +5,7 @@ import BottomNav from '../../../shared/layout/BottomNav'
 import type { CategoryCode } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
 import { useCurrentPosition } from '../hooks/useCurrentPosition'
-import { MOCK_NEARBY } from '../mock'
+import { useNearbyPlaces } from '../hooks/useNearbyPlaces'
 import { MAP_BOTTOM_CLASS, type SheetLevel } from '../sheetLayout'
 import HomeSearchBar from './HomeSearchBar'
 import KakaoMap, { type BoundsPadding, type MapMarker } from './KakaoMap'
@@ -21,8 +21,8 @@ interface HomeScreenProps {
 
 /**
  * 홈 / 바로 추천 (HOM-01) + 주변 장소 탐색 시트 (HOM-02). 지도·검색창·하단바는 고정.
- * 지도는 기본 좌표(서울시청)로 먼저 그리고, 현재 위치를 받으면 현재 위치 점을 표시하고
- * 현재 위치와 장소 마커가 모두 보이게 범위를 맞춘다.
+ * 지도는 기본 좌표(서울시청)로 먼저 그리고, 현재 위치를 받으면 그 위치로 이동해 현재 위치 점을 표시한다.
+ * 홈은 현재 위치 점만, 주변 탐색은 장소 마커와 현재 위치가 모두 보이게 범위를 맞춘다.
  */
 export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const navigate = useNavigate()
@@ -38,30 +38,30 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   // 주변 탐색 시트 높이. 지도 영역도 같은 만큼 줄인다 (HOM-02 ①)
   const [sheetLevel, setSheetLevel] = useState<SheetLevel>('half')
 
-  // 화면에 보여줄 장소 (API 연결 전 목업). 주변 탐색이면 반경 → 대분류 순서로 거른다
-  // TODO(정종일): 주변 장소 API 연동 시 MOCK_NEARBY 대신 API 결과(placeId 포함)를 넣는다
-  const radiusPlaces = useMemo(() => MOCK_NEARBY.filter((p) => !nearby || p.distance <= radius), [nearby, radius])
+  // 주변 탐색(HOM-02) 장소: 실제 API(GET /api/places/nearby). 현재 위치를 받은 뒤(거부되면 서울시청 기준) 부르고,
+  // 반경이 바뀌면 다시 부른다. 홈(HOM-01)에서는 부르지 않는다
+  const nearbyPlaces = useNearbyPlaces(position, radius, nearby && !loading)
+  // 서버에서는 대분류 8개 전체를 받고, 카테고리 칩은 화면에서 거른다 (칩을 바꿀 때 다시 요청하지 않음)
   const places = useMemo(
-    () => radiusPlaces.filter((p) => !nearby || category === null || p.category === category),
-    [radiusPlaces, nearby, category],
+    () => nearbyPlaces.places.filter((p) => category === null || p.category === category),
+    [nearbyPlaces.places, category],
   )
 
   // 장소 마커 + 현재 위치 점
   const markers = useMemo<MapMarker[]>(() => {
-    const placeMarkers: MapMarker[] = places.map((p) => ({
-      id: p.placeId,
-      lat: position.lat + p.offset.lat,
-      lng: position.lng + p.offset.lng,
-      // 주변 탐색에서만 마커를 누르면 목록의 해당 카드를 강조한다 (HOM-02 ①).
-      // 시트가 접혀 있으면 카드가 보이도록 반만 펼친다
-      onClick: nearby
-        ? () => {
-            setSelectedPlaceId(p.placeId)
+    const placeMarkers: MapMarker[] = nearby
+      ? places.map((p) => ({
+          id: p.kakaoPlaceId,
+          lat: p.latitude,
+          lng: p.longitude,
+          // 마커를 누르면 목록의 해당 카드를 강조한다 (HOM-02 ①). 시트가 접혀 있으면 카드가 보이도록 반만 펼친다
+          onClick: () => {
+            setSelectedPlaceId(p.kakaoPlaceId)
             setScrollRequest((n) => n + 1)
             setSheetLevel((current) => (current === 'collapsed' ? 'half' : current))
-          }
-        : undefined,
-    }))
+          },
+        }))
+      : [] // 홈(HOM-01)은 장소 마커 없이 현재 위치 점만 표시한다. 실제 주변 장소는 주변 탐색(HOM-02)에서 보여준다
     // 위치를 실제로 받았을 때만 현재 위치 점을 찍는다. 조회 중·거부·실패 시 position 은 서울시청 기본값이라 표시하지 않음
     if (loading || denied) return placeMarkers
     return [...placeMarkers, { lat: position.lat, lng: position.lng, variant: 'current' }]
@@ -122,9 +122,12 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             category={category}
             onCategoryChange={changeCategory}
             places={places}
+            status={nearbyPlaces.status}
+            errorMessage={nearbyPlaces.errorMessage}
+            onRetry={nearbyPlaces.retry}
             selectedPlaceId={selectedPlaceId}
             scrollRequest={scrollRequest}
-            radiusEmpty={radiusPlaces.length === 0}
+            radiusEmpty={nearbyPlaces.places.length === 0}
             level={sheetLevel}
             onLevelChange={setSheetLevel}
           />

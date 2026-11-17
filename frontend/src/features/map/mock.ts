@@ -25,16 +25,6 @@ export const MOCK_NEARBY: NearbyPlace[] = [
   { placeId: 'p-4', name: '당구장 D', category: 'SPORTS', address: '서울 성동구 ○○로 44', distance: 1800, offset: { lat: 0.0102, lng: 0.0091 } },
 ]
 
-/** 거리 → "320m", "1.8km" */
-export function formatDistance(meters: number): string {
-  return meters < 1000 ? `${meters}m` : `${(meters / 1000).toFixed(1)}km`
-}
-
-/** 도보 시간(분). 분당 67m 기준 */
-export function walkMinutes(meters: number): number {
-  return Math.max(1, Math.round(meters / 67))
-}
-
 /**
  * [임시] 코스 지도 경로선(REQ-041) 확인용 routeLegs 목업. 개발 서버에서 `/results/<courseId>/map?mockRoute` 로만 켠다.
  * 실제 길찾기 결과가 아니라, 구간별 처리를 눈으로 확인하려고 만든 모양이다:

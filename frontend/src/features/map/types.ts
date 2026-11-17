@@ -1,4 +1,33 @@
-// 카카오 지도 JS SDK 중 우리가 쓰는 부분만 최소한으로 타입 정의한다. 필요한 API가 생기면 여기에 추가.
+import type { CategoryCode } from '../../shared/types/domain'
+
+// ── 주변 장소 API 응답 (HOM-02) ──
+
+/**
+ * 주변 장소 1곳. 백엔드 place/dto/NearbyPlaceResult (GET /api/places/nearby) 와 이름·필드를 똑같이 맞춘다.
+ * 서버가 거리 가까운 순으로 보낸다.
+ */
+export interface NearbyPlaceResult {
+  /** 카카오 장소 ID */
+  kakaoPlaceId: string
+  name: string
+  /** 대분류 코드 */
+  category: CategoryCode
+  /** 세분류 이름 (예: '카페', '공원') */
+  subCategory: string
+  /** 지번 주소 */
+  address: string
+  /** 도로명 주소. 없으면 null */
+  roadAddress: string | null
+  latitude: number
+  longitude: number
+  /** 검색 위치에서의 거리(m). 서버가 모르면 null */
+  distance: number | null
+  /** 카카오맵 장소 링크 */
+  placeUrl: string
+}
+
+// ── 카카오 지도 JS SDK ──
+// 우리가 쓰는 부분만 최소한으로 타입 정의한다. 필요한 API가 생기면 여기에 추가.
 
 export interface KakaoLatLng {
   getLat(): number
@@ -43,9 +72,11 @@ export interface KakaoMapsApi {
     strokeOpacity?: number
     map?: KakaoMapInstance
   }) => KakaoOverlay
-  /** 마커 클릭 등 지도 객체 이벤트 */
+  /** 마커 클릭, 지도 이동·확대가 끝남(idle) 등 지도 객체 이벤트 */
   event: {
     addListener(target: KakaoOverlay, type: 'click', handler: () => void): void
+    addListener(target: KakaoMapInstance, type: 'idle', handler: () => void): void
+    removeListener(target: KakaoMapInstance, type: 'idle', handler: () => void): void
   }
 }
 
@@ -53,4 +84,17 @@ declare global {
   interface Window {
     kakao?: { maps: KakaoMapsApi }
   }
+}
+
+// ── 주소 조회 API 응답 (CON-02 지도 중앙 핀) ──
+
+/**
+ * 좌표 → 주소. 백엔드 place/dto/AddressResponse (GET /api/places/address) 와 이름·필드를 똑같이 맞춘다.
+ * 주소를 찾지 못한 좌표면 세 값이 모두 null 이다.
+ */
+export interface AddressResponse {
+  /** 표시용 이름 (건물명 > 도로명 주소 > 지번 주소 순) */
+  displayName: string | null
+  roadAddress: string | null
+  jibunAddress: string | null
 }

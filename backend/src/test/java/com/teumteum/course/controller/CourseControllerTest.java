@@ -30,6 +30,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import com.teumteum.course.dto.CourseDeleteResponse;
 
 // 서버와 DB 없이 실제 요청 매핑, 회원 ID 해석, 공통 응답 및 예외 처리를 검증한다.
 class CourseControllerTest {
@@ -209,5 +211,83 @@ class CourseControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
         verify(courseService).getCourse(7L, courseId);
+    }
+
+    @Test
+    void deletesCourseAndReturns200() throws Exception {
+        // Service가 정상 삭제 결과를 반환하도록 설정한다.
+        given(courseService.deleteCourse(7L, 42L))
+                .willReturn(new CourseDeleteResponse("42", true));
+
+        // 회원 7이 코스 42를 삭제하는 요청을 보낸다.
+        mockMvc.perform(delete("/api/courses/42")
+                        .header("X-Member-Id", "7"))
+                // HTTP 상태와 공통 응답 형식을 확인한다.
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.courseId").value("42"))
+                .andExpect(jsonPath("$.data.deleted").value(true));
+
+        // 회원 ID와 코스 ID가 올바르게 전달됐는지 확인한다.
+        verify(courseService).deleteCourse(7L, 42L);
+    }
+
+    @Test
+    void deleteWithoutMemberReturns401() throws Exception {
+        // 회원 ID 헤더 없이 삭제를 요청한다.
+        mockMvc.perform(delete("/api/courses/42"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+
+        // 회원 확인에 실패했으므로 Service를 호출하면 안 된다.
+        verifyNoInteractions(courseService);
+    }
+
+    @Test
+    void deleteNotFoundReturns404() throws Exception {
+        // 본인 소유의 코스를 찾지 못해 Service가 예외를 던지는 상황이다.
+        given(courseService.deleteCourse(7L, 42L))
+                .willThrow(new CustomException(
+                        CourseErrorCode.COURSE_NOT_FOUND
+                ));
+
+        // 회원 7이 코스 42의 삭제를 요청한다.
+        mockMvc.perform(delete("/api/courses/42")
+                        .header("X-Member-Id", "7"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code")
+                        .value("COURSE_NOT_FOUND"));
+
+        // 요청값이 Service에 올바르게 전달됐는지도 확인한다.
+        verify(courseService).deleteCourse(7L, 42L);
+    }
+
+    @Test
+    void deleteWithInvalidIdReturns400() throws Exception {
+        // 코스 ID는 Long 타입인데 주소에 문자열 abc를 넣는다.
+        mockMvc.perform(delete("/api/courses/abc")
+                        .header("X-Member-Id", "7"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+
+        // Spring이 ID 변환에 실패하므로 Service는 호출되지 않아야 한다.
+        verifyNoInteractions(courseService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L})
+    void deleteWithNonPositiveIdReturns400(long courseId) throws Exception {
+        // 0과 음수로 각각 삭제를 요청한다.
+        mockMvc.perform(delete("/api/courses/" + courseId)
+                        .header("X-Member-Id", "7"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+
+        // @Positive 검증에서 차단되므로 Service는 호출되지 않아야 한다.
+        verifyNoInteractions(courseService);
     }
 }

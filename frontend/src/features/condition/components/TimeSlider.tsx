@@ -7,7 +7,7 @@ interface TimeSliderProps {
 
 const STEP_LABELS = ['0분', '30분', '1h', '2h', '3h', '4h', '5h', '6h']
 
-/** 이용 시간 슬라이더. 단계: 0분·30분·1~6시간 (0분 = 시간 제한 없음, 화면설계서 CON-01) */
+/** 이용 시간 슬라이더. 단계: 0분·30분·1~6시간. 0분은 시작 위치이며 0분이면 추천받기 비활성 (화면설계서 CON-01) */
 export default function TimeSlider({ value, onChange }: TimeSliderProps) {
   const index = Math.max(0, TIME_STEPS.indexOf(value))
 
