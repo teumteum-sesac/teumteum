@@ -4,6 +4,7 @@ import { useAuthStore } from '../../../shared/auth/authStore'
 import type { LoginRedirectState } from '../../../shared/auth/RequireAuth'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
+import StickerImage from '../../../shared/components/StickerImage'
 import TextField from '../../../shared/components/TextField'
 
 const TERMS = [
@@ -56,6 +57,16 @@ export default function SignupForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-1 flex-col" noValidate>
       <div className="flex flex-col gap-4 px-4 py-5">
+        {/* 환영 인사: 토끼·거북이 얼굴 + 제목 */}
+        <div className="flex items-center gap-1 pb-1">
+          <StickerImage name="rabbitHead" className="size-11 -rotate-6" />
+          <StickerImage name="turtleHead" className="size-11 rotate-6" />
+          <p className="ml-1.5 font-display text-xl leading-tight">
+            틈틈에 오신 걸
+            <br />
+            환영해요!
+          </p>
+        </div>
         <div className="flex items-end gap-2">
           <div className="flex-1">
             <TextField
@@ -70,7 +81,7 @@ export default function SignupForm() {
           </div>
           <Button
             variant="secondary"
-            className={`mb-5 w-auto shrink-0 px-4 ${emailChecked ? 'text-primary' : ''}`}
+            className={`mb-5 w-auto shrink-0 px-4 ${emailChecked ? 'bg-turtle/50!' : ''}`}
             disabled={!form.email || Boolean(errors.email)}
             onClick={() => setCheckedEmail(form.email)}
           >
@@ -81,13 +92,13 @@ export default function SignupForm() {
         <TextField label="비밀번호 확인" name="passwordConfirm" type="password" value={form.passwordConfirm} onChange={(e) => set('passwordConfirm')(e.target.value)} error={errors.passwordConfirm} />
         <TextField label="닉네임" name="nickname" value={form.nickname} onChange={(e) => set('nickname')(e.target.value)} />
 
-        <fieldset className="mt-2 flex flex-col gap-2 rounded-xl border border-line p-4 text-sm">
-          <label className="flex items-center gap-2 font-semibold">
+        <fieldset className="paper-card mt-2 flex flex-col gap-2.5 p-4 text-sm">
+          <label className="flex items-center gap-2 border-b-2 border-dashed border-line pb-2.5 font-bold">
             <input
               type="checkbox"
               checked={allAgreed}
               onChange={(e) => setAgreed({ service: e.target.checked, privacy: e.target.checked })}
-              className="accent-primary"
+              className="size-4 accent-primary"
             />
             전체 동의
           </label>
@@ -97,7 +108,7 @@ export default function SignupForm() {
                 type="checkbox"
                 checked={agreed[t.key]}
                 onChange={(e) => setAgreed((a) => ({ ...a, [t.key]: e.target.checked }))}
-                className="accent-primary"
+                className="size-4 accent-primary"
               />
               {t.label}
             </label>
@@ -106,7 +117,7 @@ export default function SignupForm() {
       </div>
 
       <BottomActionBar>
-        <Button type="submit" disabled={!valid || !allAgreed}>
+        <Button type="submit" variant="pink" disabled={!valid || !allAgreed}>
           가입하기
         </Button>
       </BottomActionBar>

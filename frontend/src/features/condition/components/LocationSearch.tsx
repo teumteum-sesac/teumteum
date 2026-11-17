@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError, DEFAULT_ERROR_MESSAGE } from "../../../shared/api/apiError";
 import {getAddress, searchPlaces, toLocationValue} from "../api/conditionApi";
+import Icon from '../../../shared/components/Icon'
 import type { LocationValue } from '../../../shared/types/domain'
 import { useRecentLocationStore } from '../recentLocationStore'
 import { useConditionStore } from '../store'
@@ -101,27 +102,33 @@ export default function LocationSearch({ type }: LocationSearchProps) {
 
   return (
     <div className="flex flex-col gap-4 px-4 py-4">
-      <input
-        type="search"
-        value={keyword}
-        onChange={(e) => setKeyword(e.target.value)}
-        placeholder="🔍 장소, 주소 검색"
-        aria-label="장소, 주소 검색"
-        autoFocus
-        className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
-      />
+      <label className="flex h-12 items-center gap-2 rounded-2xl border-2 border-ink bg-cream px-3.5 shadow-[0_3px_0_var(--color-ink)]">
+        <Icon name="search" className="size-5" />
+        <input
+          type="search"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="장소, 주소 검색"
+          aria-label="장소, 주소 검색"
+          autoFocus
+          className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-neutral-400"
+        />
+      </label>
 
       {keyword.trim() ? (
           <SearchResult search={search} keyword={keyword} onSelect={select} />
       ) : (
           <>
             <button
-                type="button"
-                onClick={selectCurrentLocation}
-                disabled={locating}
-                className="flex h-12 items-center gap-2 text-sm font-semibold text-primary disabled:text-neutral-400"
+              type="button"
+              onClick={selectCurrentLocation}
+              disabled={locating}
+              className="paper-card flex h-12 items-center gap-2 px-3.5 text-sm font-bold active:translate-y-0.5 disabled:text-neutral-400"
             >
-              📍 {locating ? '현재 위치 확인 중…' : '현재 위치 사용'}
+              <span className="flex size-7 items-center justify-center rounded-full bg-primary-light text-primary-dark">
+                <Icon name="location" className="size-4" />
+              </span>
+              {locating ? '현재 위치 확인 중…' : '현재 위치 사용'}
             </button>
           {message && <p className="text-sm text-red-500">{message}</p>}
 
@@ -132,23 +139,28 @@ export default function LocationSearch({ type }: LocationSearchProps) {
                 setDestination(null)
                 navigate(-1)
               }}
-              className="text-left text-sm text-neutral-500"
+              className="px-1 text-left text-sm text-neutral-500 underline decoration-line decoration-2 underline-offset-4"
             >
               도착지 입력 안 함
             </button>
           )}
 
           <section>
-            <h2 className="mb-2 text-xs font-semibold text-neutral-400">최근 검색</h2>
+            <h2 className="mb-2 px-1 font-display text-base">최근 검색</h2>
             {recent.length === 0 ? (
-              <p className="text-sm text-neutral-400">최근 검색한 위치가 없습니다.</p>
+              <p className="px-1 text-sm text-neutral-400">최근 검색한 위치가 없습니다.</p>
             ) : (
               <LocationList locations={recent} onSelect={select} />
             )}
           </section>
 
-          <button type="button" disabled className="h-12 rounded-xl border border-line text-sm font-semibold disabled:text-neutral-400">
-            🗺 지도에서 직접 선택 (준비 중)
+          <button
+            type="button"
+            disabled
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line text-sm font-bold disabled:text-neutral-400"
+          >
+            <Icon name="map" className="size-5" />
+            지도에서 직접 선택 (준비 중)
           </button>
         </>
       )}
@@ -179,12 +191,15 @@ function SearchResult({ search, keyword, onSelect}: SearchResultProps) {
 
 function LocationList({ locations, onSelect }: { locations: LocationValue[]; onSelect: (location: LocationValue) => void }) {
   return (
-    <ul className="flex flex-col">
+    <ul className="paper-card flex flex-col px-3.5">
       {locations.map((location) => (
-        <li key={`${location.name}-${location.lat}-${location.lng}`} className="border-b border-line last:border-0">
-          <button type="button" onClick={() => onSelect(location)} className="w-full py-3 text-left">
-            <p className="text-sm font-semibold">{location.name}</p>
-            {location.address && <p className="text-xs text-neutral-500">{location.address}</p>}
+        <li key={`${location.name}-${location.lat}-${location.lng}`} className="border-b border-dashed border-line last:border-0">
+          <button type="button" onClick={() => onSelect(location)} className="flex w-full items-center gap-3 py-3 text-left">
+            <Icon name="location" className="size-4 text-primary-dark" />
+            <span className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold">{location.name}</p>
+              {location.address && <p className="truncate text-xs text-neutral-500">{location.address}</p>}
+            </span>
           </button>
         </li>
       ))}

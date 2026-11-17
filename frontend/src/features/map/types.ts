@@ -93,6 +93,8 @@ export interface KakaoMapsApi {
     strokeWeight?: number
     strokeColor?: string
     strokeOpacity?: number
+    /** 선 모양 (solid, shortdash 등) */
+    strokeStyle?: string
     map?: KakaoMapInstance
   }) => KakaoOverlay
   /** 마커 클릭, 지도 이동·확대가 끝남(idle) 등 지도 객체 이벤트 */

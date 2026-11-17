@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useAuthStore } from '../../../shared/auth/authStore'
 import Button from '../../../shared/components/Button'
+import StickerImage from '../../../shared/components/StickerImage'
 import TextField from '../../../shared/components/TextField'
 import { useSavedCourseStore } from '../store'
 
@@ -42,6 +43,11 @@ export default function ProfileEdit() {
 
   return (
     <div className="flex flex-col gap-4 px-4 py-5">
+      <div className="flex justify-center pb-1">
+        <span className="flex size-20 items-center justify-center rounded-full border-2 border-ink bg-primary-light">
+          <StickerImage name="rabbitHead" className="size-[72px]" />
+        </span>
+      </div>
       <TextField label="이메일" name="email" value={user?.email ?? ''} disabled hint="이메일은 수정할 수 없어요" />
       <TextField label="닉네임" name="nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} />
       <TextField
@@ -67,14 +73,14 @@ export default function ProfileEdit() {
         저장
       </Button>
 
-      <section className="mt-6 border-t border-line pt-5">
+      <section className="mt-6 border-t-2 border-dashed border-line pt-5">
         {!withdrawOpen ? (
-          <button type="button" onClick={() => setWithdrawOpen(true)} className="text-sm text-neutral-400 underline">
+          <button type="button" onClick={() => setWithdrawOpen(true)} className="px-1 text-sm text-neutral-400 underline underline-offset-4">
             회원 탈퇴
           </button>
         ) : (
-          <div className="flex flex-col gap-3 rounded-xl bg-neutral-100 p-4 text-sm">
-            <p className="font-bold">정말 탈퇴할까요?</p>
+          <div className="flex flex-col gap-3 rounded-2xl border-2 border-dashed border-red-300 bg-red-50/60 p-4 text-sm">
+            <p className="font-display text-lg">정말 탈퇴할까요?</p>
             <p className="text-neutral-600">탈퇴하면 저장한 코스가 즉시 삭제되고 되돌릴 수 없어요.</p>
             <TextField
               label="비밀번호 확인"
@@ -86,7 +92,7 @@ export default function ProfileEdit() {
               hint="비밀번호를 입력하거나 아래에 체크해 주세요"
             />
             <label className="flex items-center gap-2">
-              <input type="checkbox" checked={withdrawAgreed} onChange={(e) => setWithdrawAgreed(e.target.checked)} className="accent-primary" />
+              <input type="checkbox" checked={withdrawAgreed} onChange={(e) => setWithdrawAgreed(e.target.checked)} className="size-4 accent-primary" />
               안내를 확인했고 탈퇴에 동의합니다
             </label>
             <Button variant="secondary" disabled={!withdrawAgreed && withdrawPassword.length === 0} onClick={handleWithdraw}>

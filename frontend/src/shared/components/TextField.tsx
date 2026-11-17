@@ -12,17 +12,17 @@ export default function TextField({ label, error, hint, id, className = '', ...p
   const inputId = id ?? props.name
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={inputId} className="text-sm font-semibold">
+      <label htmlFor={inputId} className="px-1 text-sm font-bold">
         {label}
       </label>
       <input
         id={inputId}
-        className={`h-12 rounded-xl border px-4 text-sm outline-none focus:border-primary disabled:bg-neutral-100 disabled:text-neutral-400 ${
+        className={`h-12 rounded-2xl border-2 bg-cream px-4 text-sm outline-none placeholder:text-neutral-400 focus:border-primary disabled:bg-paper/50 disabled:text-neutral-400 ${
           error ? 'border-red-400' : 'border-line'
         } ${className}`}
         {...props}
       />
-      {error ? <p className="text-xs text-red-500">{error}</p> : hint && <p className="text-xs text-neutral-400">{hint}</p>}
+      {error ? <p className="px-1 text-xs text-red-500">{error}</p> : hint && <p className="px-1 text-xs text-neutral-400">{hint}</p>}
     </div>
   )
 }

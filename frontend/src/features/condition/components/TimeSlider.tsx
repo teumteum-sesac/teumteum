@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { TIME_STEPS } from '../../../shared/types/domain'
 
 interface TimeSliderProps {
@@ -7,12 +8,16 @@ interface TimeSliderProps {
 
 const STEP_LABELS = ['0분', '30분', '1h', '2h', '3h', '4h', '5h', '6h']
 
-/** 이용 시간 슬라이더. 단계: 0분·30분·1~6시간. 0분은 시작 위치이며 0분이면 추천받기 비활성 (화면설계서 CON-01) */
+/**
+ * 이용 시간 슬라이더. 단계: 0분·30분·1~6시간. 0분은 시작 위치이며 0분이면 추천받기 비활성 (화면설계서 CON-01)
+ * 디자인: 잉크 테두리 트랙 + 노란 손잡이 (index.css sticker-range). 고른 곳까지 핑크로 채운다 (--fill)
+ */
 export default function TimeSlider({ value, onChange }: TimeSliderProps) {
   const index = Math.max(0, TIME_STEPS.indexOf(value))
+  const fill = `${(index / (TIME_STEPS.length - 1)) * 100}%`
 
   return (
-    <div>
+    <div className="px-1">
       <input
         type="range"
         min={0}
@@ -21,11 +26,14 @@ export default function TimeSlider({ value, onChange }: TimeSliderProps) {
         value={index}
         onChange={(e) => onChange(TIME_STEPS[Number(e.target.value)])}
         aria-label="이용 시간"
-        className="w-full accent-primary"
+        style={{ '--fill': fill } as CSSProperties}
+        className="sticker-range w-full"
       />
-      <div className="mt-1 flex justify-between text-[11px] text-neutral-400">
-        {STEP_LABELS.map((label) => (
-          <span key={label}>{label}</span>
+      <div className="mt-2 flex justify-between text-[11px]">
+        {STEP_LABELS.map((label, i) => (
+          <span key={label} className={i === index ? 'font-bold text-primary-dark' : 'text-neutral-400'}>
+            {label}
+          </span>
         ))}
       </div>
     </div>

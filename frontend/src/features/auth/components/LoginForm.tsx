@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { useAuthStore } from '../../../shared/auth/authStore'
 import type { LoginRedirectState } from '../../../shared/auth/RequireAuth'
 import Button from '../../../shared/components/Button'
+import StickerImage from '../../../shared/components/StickerImage'
 import TextField from '../../../shared/components/TextField'
 
 /**
@@ -39,10 +40,12 @@ export default function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-4 px-6 py-8" noValidate>
-      <div className="mb-4 text-center">
-        <p className="text-3xl font-extrabold text-primary">틈틈</p>
-        <p className="mt-2 text-sm text-neutral-500">
+    <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-4 px-6 pt-2 pb-8" noValidate>
+      {/* 목업 스플래시 느낌: 로고 엠블럼 + 쉬는 듀오 */}
+      <div className="mb-2 flex flex-col items-center text-center">
+        <StickerImage name="brandLogo" alt="틈틈" className="w-44" ratio="aspect-[4/3]" />
+        <StickerImage name="sceneRelax" className="-mt-2 w-56" ratio="aspect-[3/2]" />
+        <p className="mt-1 text-sm text-neutral-500">
           {redirect?.pendingAction === 'save' ? '코스를 저장하려면 로그인이 필요해요' : '로그인하고 코스를 저장해 보세요'}
         </p>
       </div>
@@ -54,7 +57,7 @@ export default function LoginForm() {
         로그인
       </Button>
 
-      <div className="flex justify-center gap-4 text-sm text-neutral-500">
+      <div className="flex justify-center gap-4 text-sm font-bold text-neutral-500">
         <Link to="/signup" state={redirect}>
           회원가입
         </Link>
@@ -64,7 +67,7 @@ export default function LoginForm() {
         </button>
       </div>
 
-      <button type="button" onClick={() => navigate(-1)} className="mt-auto text-sm text-neutral-400 underline">
+      <button type="button" onClick={() => navigate(-1)} className="mt-auto text-sm text-neutral-400 underline underline-offset-4">
         로그인 없이 돌아가기
       </button>
     </form>

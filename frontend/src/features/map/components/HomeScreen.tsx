@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
+import { PAPER_STYLE, type StickerKey } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
+import Icon from '../../../shared/components/Icon'
+import StickerImage from '../../../shared/components/StickerImage'
 import BottomNav from '../../../shared/layout/BottomNav'
 import type { CategoryCode } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
@@ -11,8 +14,19 @@ import HomeSearchBar from './HomeSearchBar'
 import KakaoMap, { type BoundsPadding, type MapMarker } from './KakaoMap'
 import NearbySheet from './NearbySheet'
 
-/** 홈(HOM-01) 하단 패널('지금 외출 추천' 등) 높이 + 여유. 범위 맞춤 시 이 아래로 마커가 숨지 않게 한다 */
-const HOME_PANEL_PADDING = 200
+/** 홈(HOM-01) 하단 패널(헤드라인·듀오 장면·추천 버튼·바로가기) 높이 + 여유. 범위 맞춤 시 이 아래로 마커가 숨지 않게 한다 */
+const HOME_PANEL_PADDING = 330
+
+/** 홈 하단 패널의 바로가기 카드 (목업: 스티커 + 짧은 라벨) */
+function QuickLink({ to, sticker, label }: { to: string; sticker: StickerKey; label: string }) {
+  return (
+    <Link to={to} className="paper-card flex items-center gap-2 px-3 py-2.5 active:translate-y-0.5">
+      <StickerImage name={sticker} className="size-8" />
+      <span className="flex-1 text-[13px] font-bold">{label}</span>
+      <Icon name="chevronRight" className="size-4 text-neutral-400" />
+    </Link>
+  )
+}
 
 interface HomeScreenProps {
   /** true면 주변 장소 탐색 시트(HOM-02)를 연다 */
@@ -109,7 +123,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
         <div className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
           <HomeSearchBar />
           {denied && (
-            <p className="rounded-lg bg-white/95 px-3 py-2 text-xs text-neutral-600 shadow">
+            <p className="paper-card px-3 py-2 text-xs text-neutral-600">
               위치를 사용할 수 없어 서울시청 기준으로 보여드려요. 위치를 직접 설정해 주세요.
             </p>
           )}
@@ -132,12 +146,36 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             onLevelChange={setSheetLevel}
           />
         ) : (
-          <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 rounded-t-2xl bg-white p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
-            <p className="mb-1 text-center font-bold">남는 시간, 어디로 가볼까요?</p>
-            <Button onClick={startRecommend}>지금 외출 추천</Button>
-            <Button variant="secondary" onClick={() => navigate('/nearby')}>
-              주변 장소 탐색
-            </Button>
+          // 홈 하단 패널 (목업 HOM-01): 찢은 종이 위에 헤드라인 + 듀오 장면 + 노란 추천 버튼 + 바로가기 카드
+          // 그림자는 바깥 div, 물결 자르기는 안쪽 div (같은 요소에 주면 그림자가 잘린다)
+          <div className="absolute inset-x-0 bottom-0 z-10 drop-shadow-[0_-4px_10px_rgba(32,32,32,0.12)]">
+            <div className="torn-top bg-cream px-5 pt-6 pb-4" style={PAPER_STYLE}>
+              <div className="flex items-end">
+                <div className="min-w-0 flex-1 pb-1">
+                  <h2 className="font-display text-[26px] leading-[1.2]">
+                    지금,
+                    <br />
+                    <span className="marker-pink">몇 시간</span> 비었나요?
+                  </h2>
+                  <p className="mt-2 text-[13px] leading-snug text-neutral-600">
+                    남은 시간과 취향에 맞춰
+                    <br />
+                    가볍게 다녀올 코스를 추천해 드려요
+                  </p>
+                </div>
+                <StickerImage name="sceneHome" className="-mr-3 w-40 shrink-0" ratio="aspect-[3/2]" />
+              </div>
+
+              <Button className="mt-3 flex items-center justify-center gap-1" onClick={startRecommend}>
+                외출 코스 추천하기
+                <Icon name="chevronRight" className="size-5" strokeWidth={2.8} />
+              </Button>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <QuickLink to="/nearby" sticker="navNearby" label="주변 장소 둘러보기" />
+                <QuickLink to="/mypage/courses" sticker="navSaved" label="저장한 코스 보기" />
+              </div>
+            </div>
           </div>
         )}
       </div>

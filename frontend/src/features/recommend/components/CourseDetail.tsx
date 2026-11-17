@@ -4,6 +4,7 @@ import { useAuthStore } from '../../../shared/auth/authStore'
 import type { LoginRedirectState } from '../../../shared/auth/RequireAuth'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
+import Icon from '../../../shared/components/Icon'
 import Toast from '../../../shared/components/Toast'
 import { useSavedCourseStore } from '../../mypage/store'
 import { useCourse, useRecommendExpired } from '../store'
@@ -58,8 +59,8 @@ export default function CourseDetail({ courseId }: { courseId: string }) {
     <>
       <CourseSummary course={course} />
 
-      <section className="px-4 py-5">
-        <h3 className="mb-4 text-sm font-bold">코스 일정</h3>
+      <section className="px-4 pt-2 pb-6">
+        <h3 className="mb-3 px-1 font-display text-lg">코스 타임라인</h3>
         <CourseSchedule
           course={course}
           onReplace={(place) => navigate(`/results/${course.courseId}/replace/${place.placeId}`)}
@@ -68,11 +69,17 @@ export default function CourseDetail({ courseId }: { courseId: string }) {
       </section>
 
       <BottomActionBar>
-        <Button variant="secondary" onClick={() => navigate(`/results/${course.courseId}/map`)}>
-          지도에서 보기
+        <Button
+          variant="secondary"
+          className="flex w-auto shrink-0 items-center justify-center gap-1 px-4"
+          onClick={() => navigate(`/results/${course.courseId}/map`)}
+        >
+          <Icon name="map" className="size-5" />
+          지도
         </Button>
-        <Button onClick={handleSave} disabled={saved}>
-          {saved ? '저장됨' : '이 코스 저장'}
+        <Button variant="pink" className="flex items-center justify-center gap-1.5" onClick={handleSave} disabled={saved}>
+          <Icon name="bookmark" className="size-5" strokeWidth={2.6} />
+          {saved ? '저장됨' : '이 코스 저장하기'}
         </Button>
       </BottomActionBar>
 

@@ -2,7 +2,10 @@ import { getCategoryLabel, getTransportLabel } from '../../../shared/types/domai
 import { formatTimeRange } from '../../../shared/utils/format'
 import { isRandomCondition, useConditionStore } from '../../condition/store'
 
-/** 조건 요약 칩: 위치 · 시간 · 이동수단 · 카테고리 (RES-01 ①). 랜덤이면 '랜덤 추천' 칩 */
+/**
+ * 조건 요약 칩: 위치 · 시간 · 이동수단 · 카테고리 (RES-01 ①). 랜덤이면 '랜덤 추천' 칩
+ * 디자인: 종이 라벨 스티커처럼 크림 바탕 + 종이색 테두리
+ */
 export default function ConditionSummary() {
   const condition = useConditionStore()
   const { origin, destination, startTime, availableMinutes, transportType, categories } = condition
@@ -17,7 +20,7 @@ export default function ConditionSummary() {
   return (
     <div className="flex flex-wrap gap-1.5">
       {labels.map((label) => (
-        <span key={label} className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-600">
+        <span key={label} className="rounded-lg border-2 border-line bg-cream px-2 py-0.5 text-xs font-bold text-neutral-600">
           {label}
         </span>
       ))}

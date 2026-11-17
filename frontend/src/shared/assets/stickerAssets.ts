@@ -110,3 +110,7 @@ export const TRANSPORT_STICKER: Record<TransportType, StickerKey> = {
   WALK: 'transportWalk',
   CAR: 'transportCar',
 }
+
+/** 종이 질감 배경 style. 화면 배경·하단 패널·하단바처럼 크림색 면에 같이 쓴다 (질감 파일이 없으면 undefined → 단색 크림) */
+const paperUrl = getStickerUrl('texturePaper')
+export const PAPER_STYLE = paperUrl ? { backgroundImage: `url(${paperUrl})`, backgroundSize: '256px' } : undefined
