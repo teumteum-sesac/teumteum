@@ -11,13 +11,15 @@ interface CourseSummaryProps {
   meta?: string
   /** 요약 아래 추가 줄 (MY-03: 저장 시점 정보 안내) */
   children?: ReactNode
+  /** 코스명. 없으면 장소 이름을 이어 붙인다 (MY-03 은 저장 당시 courseName 을 그대로 넘긴다) */
+  title?: string
 }
 
 /**
  * 코스 요약: 코스명, 총 예상 소요시간, 장소 수, 이동수단 (DET-01 ①, MY-03 ①)
  * 디자인 (목업 코스 상세): 듀오 장면 배너 → 그 아래로 겹쳐 붙인 초록 코스명 라벨 → 시간 칩 줄
  */
-export default function CourseSummary({ course, meta, children }: CourseSummaryProps) {
+export default function CourseSummary({ course, meta, children, title }: CourseSummaryProps) {
   const travel = getTotalTravelMinutes(course)
   const stay = course.places.reduce((sum, p) => sum + p.stayMinutes, 0)
 
@@ -27,7 +29,7 @@ export default function CourseSummary({ course, meta, children }: CourseSummaryP
 
       {/* 배너 아래쪽에 살짝 겹쳐 붙인 라벨 (스티커 위에 이름표를 붙인 느낌) */}
       <h2 className="relative mx-auto -mt-7 w-fit max-w-full -rotate-1 rounded-2xl border-2 border-ink bg-turtle px-4 py-1.5 text-center font-display text-lg leading-snug shadow-[0_3px_0_var(--color-ink)]">
-        {getCourseName(course)}
+        {title ?? getCourseName(course)}
       </h2>
 
       <div className="mt-4 flex flex-wrap justify-center gap-1.5">

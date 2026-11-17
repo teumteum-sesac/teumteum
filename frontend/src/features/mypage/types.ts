@@ -1,3 +1,5 @@
+import type { CategoryCode, TransportType } from '../../shared/types/domain'
+
 // 백엔드 CourseSummaryResponse에 대응하는 코스 요약 타입이다.
 export interface CourseSummaryResponse {
     courseId: string
@@ -36,4 +38,55 @@ export interface CourseDeleteResponse {
 
     // 삭제 성공 여부
     deleted: boolean
+}
+
+export interface CourseCoordinateResponse {
+  latitude: number
+  longitude: number
+}
+
+export interface CourseLocationResponse extends CourseCoordinateResponse {
+  name: string | null
+  address: string | null
+}
+
+export interface CoursePlaceResponse extends CourseCoordinateResponse {
+  coursePlaceId: string
+  placeId: string
+  visitOrder: number
+  placeName: string
+  category: CategoryCode
+  subCategory: string
+  address: string | null
+  imageUrl: string | null
+  description: string | null
+  openingHours: string | null
+  stayMinutes: number
+  travelMinutes: number
+  transitInfo: string | null
+}
+
+export interface CourseRouteLegResponse {
+  fromVisitOrder: number
+  toVisitOrder: number
+  pathType: 'ACTUAL' | 'STRAIGHT'
+  coordinates: CourseCoordinateResponse[]
+}
+
+// 저장 당시 상세·지도 정보. 최신 장소 정보와 합치지 않는다.
+export interface CourseResponse {
+  courseId: string
+  sourceRecommendationId: string
+  courseName: string
+  createdAt: string
+  origin: CourseLocationResponse
+  destination: CourseLocationResponse | null
+  transportType: TransportType
+  startTime: string
+  totalMinutes: number
+  totalTravelMinutes: number
+  finalTravelMinutes: number
+  estimated: boolean
+  places: CoursePlaceResponse[]
+  routeLegs: CourseRouteLegResponse[]
 }

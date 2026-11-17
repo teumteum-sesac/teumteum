@@ -5,7 +5,7 @@ import Button from '../../../shared/components/Button'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import Icon, { type IconName } from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
-import { useSavedCourseStore } from '../store'
+import { useSavedCourseCount } from '../hooks/useSavedCourse'
 
 /**
  * 마이페이지 (MY-01)
@@ -16,7 +16,9 @@ import { useSavedCourseStore } from '../store'
 export default function MyPageContent() {
   const navigate = useNavigate()
   const { isLoggedIn, user, logout } = useAuthStore()
-  const savedCount = useSavedCourseStore((s) => s.savedCourses.length)
+  // 저장 건수: GET /api/courses?page=0&size=1 의 totalElements. 비회원이면 회원 전용 API 를 부르지 않는다
+  const { data, loading, error, retry } = useSavedCourseCount(isLoggedIn && user !== null)
+  const savedCount = data?.totalElements
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   if (!isLoggedIn || !user) {
@@ -53,8 +55,16 @@ export default function MyPageContent() {
             <StickerImage name="navSaved" className="size-7" />
             저장한 코스
           </span>
-          <span className="font-display text-2xl text-primary-dark">{savedCount}</span>
+          <span className="font-display text-2xl text-primary-dark">{loading ? '…' : (savedCount ?? '-')}</span>
         </Link>
+        {error && (
+          <p role="alert" className="mt-2 flex items-center justify-between gap-2 px-1 text-xs text-red-600">
+            {error}
+            <button type="button" onClick={retry} className="shrink-0 font-bold underline underline-offset-2">
+              다시 조회
+            </button>
+          </p>
+        )}
       </section>
 
       {/* 메뉴 카드. 오른쪽 아래 모서리에서 거북이가 고개를 내민다 (카드 위로 겹쳐 그림) */}
