@@ -121,7 +121,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
         </div>
 
         <div className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
-          <HomeSearchBar />
+          <HomeSearchBar center={loading || denied ? null : position} />
           {denied && (
             <p className="paper-card px-3 py-2 text-xs text-neutral-600">
               위치를 사용할 수 없어 서울시청 기준으로 보여드려요. 위치를 직접 설정해 주세요.
