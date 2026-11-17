@@ -74,6 +74,21 @@ class RecommendServiceTest {
     }
 
     @Test
+    @DisplayName("만료 시각은 초 단위로 잘라서 소수점 초가 붙지 않는다")
+    void recommend_expiresAtTruncatedToSeconds() {
+        // 13:00:07.503 에 요청한 것처럼 시계를 맞춘다
+        OffsetDateTime withNanos = NOW.plusSeconds(7).plusNanos(503_033_800);
+        RecommendService service = new RecommendService(courseSearchService, store, new RecommendResponseMapper(),
+                Clock.fixed(withNanos.toInstant(), ZoneOffset.ofHours(9)));
+        given(courseSearchService.findCourses(any())).willReturn(List.of());
+
+        RecommendResponse response = service.recommend(request(CategoryMode.RANDOM, List.of()));
+
+        assertEquals(NOW.plusSeconds(7).plusHours(2), response.expiresAt());   // 15:00:07 (소수점 없음)
+        assertEquals(0, response.expiresAt().getNano());
+    }
+
+    @Test
     @DisplayName("응답의 묶음 ID·코스 ID 로 보관소에서 다시 찾을 수 있다 (상세·다시 추천·저장 대비)")
     void recommend_savesToStore() {
         given(courseSearchService.findCourses(any())).willReturn(List.of(plan("101")));

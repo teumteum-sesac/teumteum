@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -92,7 +93,8 @@ public class RecommendService {
 
     /** 코스마다 ID 를 붙이고 같은 만료 시각으로 묶는다 */
     private RecommendationSet createSet(RecommendCondition condition, List<CoursePlan> plans) {
-        OffsetDateTime now = OffsetDateTime.now(clock);
+        // 초 단위로 자른다: 응답이 "15:00:00+09:00" 처럼 나가게 (소수점 아래 나노초 제거)
+        OffsetDateTime now = OffsetDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         OffsetDateTime expiresAt = now.plus(RETENTION);
         String recommendationSetId = newId("rs_");
 
