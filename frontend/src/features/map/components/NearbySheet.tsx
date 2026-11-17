@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import Button from '../../../shared/components/Button'
 import Chip from '../../../shared/components/Chip'
 import ChipGroup from '../../../shared/components/ChipGroup'
 import EmptyState from '../../../shared/components/EmptyState'
 import { CATEGORIES, getCategoryIcon, getCategoryLabel, type CategoryCode } from '../../../shared/types/domain'
 import { formatDistance, walkMinutes } from '../format'
-import type { NearbyPlace } from '../mock'
+import type { NearbyPlacesStatus } from '../hooks/useNearbyPlaces'
 import { clampSheetHeight, SHEET_HEIGHT_CLASS, snapSheetLevel, tapSheetLevel, type SheetLevel } from '../sheetLayout'
+import type { NearbyPlaceResult } from '../types'
 
 const RADIUS_OPTIONS = [500, 1000, 3000]
 
@@ -34,8 +36,14 @@ interface NearbySheetProps {
   /** 대분류 필터 (null = 전체). 지도 마커와 같은 값을 쓰도록 HomeScreen 이 관리한다 */
   category: CategoryCode | null
   onCategoryChange: (category: CategoryCode | null) => void
-  /** 반경·대분류로 거른 장소 목록 (HomeScreen 에서 계산) */
-  places: NearbyPlace[]
+  /** 대분류로 거른 장소 목록 (HomeScreen 에서 계산). 서버가 반경 안의 장소를 가까운 순으로 보낸다 */
+  places: NearbyPlaceResult[]
+  /** 주변 장소 불러오기 상태 (useNearbyPlaces) */
+  status: NearbyPlacesStatus
+  /** 불러오기에 실패했을 때 보여 줄 문구 */
+  errorMessage: string | null
+  /** '다시 시도' 버튼 */
+  onRetry: () => void
   /** 지도 마커로 고른 장소. 해당 카드를 강조하고 목록에서 보이게 스크롤한다 */
   selectedPlaceId: string | null
   /** 마커를 누를 때마다 바뀌는 값. 같은 마커를 다시 눌러도 해당 카드로 다시 스크롤한다 */
@@ -53,7 +61,7 @@ interface NearbySheetProps {
  * - 끌면 시트가 손가락을 따라 움직이고, 놓으면 가까운 단계로 정착한다 (길게 끌면 두 단계도 한 번에)
  * 끝까지 내려도 홈으로 가지 않고 접힘 상태로 주변 탐색을 유지한다.
  * 장소 카드를 누르면 장소 1곳짜리 상세(DET-01)로 이동한다. 마커를 누르면 해당 카드를 강조한다.
- * 장소 데이터는 HomeScreen 에서 받는다 (주변 장소 API 연동 TODO 는 HomeScreen 참고)
+ * 장소 데이터는 HomeScreen 이 주변 장소 API(useNearbyPlaces)로 받아 넘긴다. 불러오는 중·실패·결과 없음은 목록 자리에 안내한다
  */
 export default function NearbySheet({
   radius,
@@ -61,6 +69,9 @@ export default function NearbySheet({
   category,
   onCategoryChange,
   places,
+  status,
+  errorMessage,
+  onRetry,
   selectedPlaceId,
   scrollRequest,
   radiusEmpty,
@@ -202,38 +213,75 @@ export default function NearbySheet({
 
       {/* 목록만 스크롤된다. 끝까지 스크롤해도 바깥(페이지)으로 넘기지 않는다. 시트 끌기는 위 손잡이·제목 줄에서만 */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
-        {places.length === 0 ? (
-          <EmptyState
-            message={
-              radiusEmpty ? '이 반경에 장소가 없어요. 반경을 넓혀보세요.' : '이 카테고리의 장소가 없어요. 다른 카테고리를 골라보세요.'
-            }
-          />
-        ) : (
-          <ul ref={listRef} className="flex flex-col gap-2">
-            {places.map((place) => (
-              <li key={place.placeId} data-place-id={place.placeId}>
-                <Link
-                  to={`/results/place-${place.placeId}`}
-                  aria-current={place.placeId === selectedPlaceId ? 'true' : undefined}
-                  className={`flex gap-3 rounded-xl border p-3 ${
-                    place.placeId === selectedPlaceId ? 'border-primary bg-primary-light' : 'border-line'
-                  }`}
-                >
-                  <div aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-2xl">
-                    {getCategoryIcon(place.category)}
-                  </div>
-                  <div className="flex flex-col justify-center">
-                    <p className="font-semibold">{place.name}</p>
-                    <p className="text-xs text-neutral-500">
-                      {getCategoryLabel(place.category)} · {formatDistance(place.distance)} · 도보 {walkMinutes(place.distance)}분
-                    </p>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
+        {listNotice(status, errorMessage, onRetry, places.length, radiusEmpty) ?? (
+          <>
+            {/* 반경을 바꿔 다시 불러오는 동안에는 이전 목록을 그대로 두고 작게 알린다 */}
+            {status === 'loading' && (
+              <p role="status" className="pb-2 text-xs text-neutral-400">
+                새로 불러오는 중…
+              </p>
+            )}
+            <ul ref={listRef} className="flex flex-col gap-2">
+              {places.map((place) => (
+                <li key={place.kakaoPlaceId} data-place-id={place.kakaoPlaceId}>
+                  <Link
+                    to={`/results/place-${place.kakaoPlaceId}`}
+                    aria-current={place.kakaoPlaceId === selectedPlaceId ? 'true' : undefined}
+                    className={`flex gap-3 rounded-xl border p-3 ${
+                      place.kakaoPlaceId === selectedPlaceId ? 'border-primary bg-primary-light' : 'border-line'
+                    }`}
+                  >
+                    <div aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-2xl">
+                      {getCategoryIcon(place.category)}
+                    </div>
+                    <div className="flex flex-col justify-center">
+                      <p className="font-semibold">{place.name}</p>
+                      <p className="text-xs text-neutral-500">
+                        {getCategoryLabel(place.category)}
+                        {/* 서버가 거리를 모르면(null) 거리·도보 시간은 빼고 대분류만 보여 준다 */}
+                        {place.distance !== null && ` · ${formatDistance(place.distance)} · 도보 ${walkMinutes(place.distance)}분`}
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * 목록 대신 보여 줄 안내. null 이면 목록을 그린다.
+ * 실패 → 서버 문구 + 다시 시도 / 목록이 비었을 때: 위치 확인 중 · 처음 불러오는 중 · 결과 없음(반경 / 카테고리 구분)
+ */
+function listNotice(
+  status: NearbyPlacesStatus,
+  errorMessage: string | null,
+  onRetry: () => void,
+  count: number,
+  radiusEmpty: boolean,
+): ReactNode {
+  if (status === 'error') {
+    return (
+      <EmptyState
+        message={errorMessage ?? '주변 장소를 불러오지 못했어요.'}
+        action={
+          <Button variant="secondary" onClick={onRetry}>
+            다시 시도
+          </Button>
+        }
+      />
+    )
+  }
+  if (count > 0) return null
+  if (status === 'idle') return <EmptyState message="현재 위치를 확인하고 있어요." />
+  if (status === 'loading') return <EmptyState message="주변 장소를 불러오고 있어요." />
+  return (
+    <EmptyState
+      message={radiusEmpty ? '이 반경에 장소가 없어요. 반경을 넓혀보세요.' : '이 카테고리의 장소가 없어요. 다른 카테고리를 골라보세요.'}
+    />
   )
 }
