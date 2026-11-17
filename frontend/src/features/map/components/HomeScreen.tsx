@@ -6,7 +6,6 @@ import type { CategoryCode } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
 import { useCurrentPosition } from '../hooks/useCurrentPosition'
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces'
-import { MOCK_NEARBY } from '../mock'
 import { MAP_BOTTOM_CLASS, type SheetLevel } from '../sheetLayout'
 import HomeSearchBar from './HomeSearchBar'
 import KakaoMap, { type BoundsPadding, type MapMarker } from './KakaoMap'
@@ -22,8 +21,8 @@ interface HomeScreenProps {
 
 /**
  * 홈 / 바로 추천 (HOM-01) + 주변 장소 탐색 시트 (HOM-02). 지도·검색창·하단바는 고정.
- * 지도는 기본 좌표(서울시청)로 먼저 그리고, 현재 위치를 받으면 현재 위치 점을 표시하고
- * 현재 위치와 장소 마커가 모두 보이게 범위를 맞춘다.
+ * 지도는 기본 좌표(서울시청)로 먼저 그리고, 현재 위치를 받으면 그 위치로 이동해 현재 위치 점을 표시한다.
+ * 홈은 현재 위치 점만, 주변 탐색은 장소 마커와 현재 위치가 모두 보이게 범위를 맞춘다.
  */
 export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const navigate = useNavigate()
@@ -62,8 +61,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             setSheetLevel((current) => (current === 'collapsed' ? 'half' : current))
           },
         }))
-      : // 홈(HOM-01)은 아직 목업 마커 그대로 (홈 장소 마커를 어떻게 할지는 팀 결정 후)
-        MOCK_NEARBY.map((p) => ({ id: p.placeId, lat: position.lat + p.offset.lat, lng: position.lng + p.offset.lng }))
+      : [] // 홈(HOM-01)은 장소 마커 없이 현재 위치 점만 표시한다. 실제 주변 장소는 주변 탐색(HOM-02)에서 보여준다
     // 위치를 실제로 받았을 때만 현재 위치 점을 찍는다. 조회 중·거부·실패 시 position 은 서울시청 기본값이라 표시하지 않음
     if (loading || denied) return placeMarkers
     return [...placeMarkers, { lat: position.lat, lng: position.lng, variant: 'current' }]
