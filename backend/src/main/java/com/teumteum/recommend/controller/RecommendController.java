@@ -1,12 +1,15 @@
 package com.teumteum.recommend.controller;
 
 import com.teumteum.global.common.ApiResponse;
+import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendRequest;
 import com.teumteum.recommend.dto.RecommendResponse;
 import com.teumteum.recommend.service.RecommendService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,5 +33,12 @@ public class RecommendController {
     @PostMapping
     public ResponseEntity<ApiResponse<RecommendResponse>> recommend(@Valid @RequestBody RecommendRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(recommendService.recommend(request)));
+    }
+
+    /** 추천 코스 상세 (RES-01 코스 카드 → DET-01 일정, DET-02 지도). 없으면 404, 만료면 410 */
+    @GetMapping("/courses/{recommendationId}")
+    public ResponseEntity<ApiResponse<RecommendCourseDetailResponse>> getCourseDetail(
+            @PathVariable String recommendationId) {
+        return ResponseEntity.ok(ApiResponse.ok(recommendService.getCourseDetail(recommendationId)));
     }
 }
