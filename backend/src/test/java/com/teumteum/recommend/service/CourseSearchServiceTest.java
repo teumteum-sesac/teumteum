@@ -144,7 +144,7 @@ class CourseSearchServiceTest {
     }
 
     @Test
-    @DisplayName("장소 결과를 후보로 바꿀 때 대분류는 이름으로 바꾸고, 주소는 도로명을 먼저 쓴다")
+    @DisplayName("장소 결과를 후보로 바꿀 때 대분류는 이름으로 바꾸고, 주소는 도로명을 먼저 쓰고, 카카오맵 링크도 담는다")
     void toPlaceCandidate_convertsFields() {
         PlaceCandidate candidate = courseSearchService.toPlaceCandidate(
                 nearby("101", "서울 성동구 왕십리로 1", "서울 성동구 성수동 1"));
@@ -154,6 +154,7 @@ class CourseSearchServiceTest {
         assertEquals("당구", candidate.subCategory());
         assertEquals("서울 성동구 왕십리로 1", candidate.address());
         assertEquals(37.545, candidate.latitude());
+        assertEquals("https://place.map.kakao.com/101", candidate.placeUrl());
     }
 
     @Test

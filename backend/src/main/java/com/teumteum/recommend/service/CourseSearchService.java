@@ -97,7 +97,7 @@ public class CourseSearchService {
 
     /**
      * 장소 쪽 후보(NearbyPlaceResult) → 추천 쪽 후보(PlaceCandidate).
-     * 주소는 도로명을 먼저 쓰고, 없으면 지번 주소를 쓴다.
+     * 주소는 도로명을 먼저 쓰고, 없으면 지번 주소를 쓴다. 카카오맵 링크는 코스 상세에서 쓰려고 함께 담는다.
      */
     PlaceCandidate toPlaceCandidate(NearbyPlaceResult result) {
         String address = (result.roadAddress() != null) ? result.roadAddress() : result.address();
@@ -108,6 +108,7 @@ public class CourseSearchService {
                 result.subCategory(),
                 address,
                 result.latitude(),
-                result.longitude());
+                result.longitude(),
+                result.placeUrl());
     }
 }

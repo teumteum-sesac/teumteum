@@ -14,6 +14,7 @@ package com.teumteum.recommend.domain;
  * @param address     주소 (도로명 우선, 없으면 지번)
  * @param latitude    위도
  * @param longitude   경도
+ * @param placeUrl    카카오맵 장소 링크 (코스 상세의 '카카오맵에서 보기'). 없으면 null
  */
 public record PlaceCandidate(
         String placeId,
@@ -22,6 +23,17 @@ public record PlaceCandidate(
         String subCategory,
         String address,
         double latitude,
-        double longitude
+        double longitude,
+        String placeUrl
 ) {
+
+    /**
+     * 카카오맵 링크 없이 만드는 생성자 (placeUrl null).
+     * TravelRoute 와 같은 방법: placeUrl 을 나중에 추가해서, 이 생성자 덕분에
+     * 기존 테스트의 new PlaceCandidate(7개) 코드를 고치지 않아도 된다.
+     */
+    public PlaceCandidate(String placeId, String placeName, CategoryCode category, String subCategory,
+                          String address, double latitude, double longitude) {
+        this(placeId, placeName, category, subCategory, address, latitude, longitude, null);
+    }
 }
