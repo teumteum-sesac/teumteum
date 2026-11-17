@@ -4,7 +4,8 @@ import Chip from '../../../shared/components/Chip'
 import ChipGroup from '../../../shared/components/ChipGroup'
 import EmptyState from '../../../shared/components/EmptyState'
 import { CATEGORIES, getCategoryIcon, getCategoryLabel, type CategoryCode } from '../../../shared/types/domain'
-import { formatDistance, walkMinutes, type NearbyPlace } from '../mock'
+import { formatDistance, walkMinutes } from '../format'
+import type { NearbyPlace } from '../mock'
 import { clampSheetHeight, SHEET_HEIGHT_CLASS, snapSheetLevel, tapSheetLevel, type SheetLevel } from '../sheetLayout'
 
 const RADIUS_OPTIONS = [500, 1000, 3000]
