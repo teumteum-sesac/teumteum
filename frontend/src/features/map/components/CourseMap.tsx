@@ -39,7 +39,10 @@ export default function CourseMap({ course, backLabel, routeLegs }: CourseMapPro
           title: `${p.name} · 체류 ${formatMinutes(p.stayMinutes)}${next !== null ? ` · 다음 이동 ${formatMinutes(next)}` : ''}`,
         }
       }),
-      ...(destination ? [{ lat: destination.lat, lng: destination.lng, label: 'E', tone: 'dark' as const, title: destination.name }] : []),
+      // 도착지(E)는 설정했을 때만, 지도에서는 깃발 스티커로 그린다 (목록 번호는 'E')
+      ...(destination
+        ? [{ lat: destination.lat, lng: destination.lng, label: 'E', icon: 'flag' as const, tone: 'dark' as const, title: destination.name }]
+        : []),
     ]
   }, [course])
 
