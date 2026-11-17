@@ -1,15 +1,19 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
+import { ApiError, DEFAULT_ERROR_MESSAGE } from '../../../shared/api/apiError'
 import { useAuthStore } from '../../../shared/auth/authStore'
 import type { LoginRedirectState } from '../../../shared/auth/RequireAuth'
 import Button from '../../../shared/components/Button'
 import StickerImage from '../../../shared/components/StickerImage'
 import TextField from '../../../shared/components/TextField'
+import { login } from '../api/authApi'
 
 /**
  * 로그인 (AUT-01): 이메일·비밀번호. 로그인 후 진입 전 화면으로 복귀
  * - 코스 저장 중이었으면 저장 완료 후 DET-01, 하단바 로그인이면 홈, 마이페이지였으면 MY-01
- * TODO(김용현): 로그인 API 연동 (현재 입력값으로 임시 로그인), 비밀번호 찾기
+ * - POST /api/auth/login 성공 → 받은 토큰을 authStore 에 저장 (이후 모든 요청에 자동으로 붙음)
+ * - 실패 → 서버가 준 문구를 폼 아래에 표시 (이메일·비밀번호 중 무엇이 틀렸는지는 알려주지 않는다: 보안)
+ * TODO(김용현): 비밀번호 찾기 (REQ-054)
  */
 export default function LoginForm() {
   const navigate = useNavigate()
@@ -20,17 +24,30 @@ export default function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<{ email?: string; password?: string }>({})
+  // 서버 응답 오류 (로그인 실패·서버 꺼짐 등). 입력칸 아래가 아니라 버튼 위에 한 줄로 보여 준다
+  const [formError, setFormError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (submitting) return
     const next: typeof error = {}
     if (!/^\S+@\S+\.\S+$/.test(email)) next.email = '이메일 형식을 확인해 주세요.'
     if (password.length === 0) next.password = '비밀번호를 입력해 주세요.'
     setError(next)
+    setFormError(null)
     if (Object.keys(next).length > 0) return
 
-    // [임시] API 연동 전: 입력한 이메일로 로그인 처리
-    setLogin('mock-token', { email, nickname: email.split('@')[0] })
+    setSubmitting(true)
+    try {
+      const res = await login({ email: email.trim(), password })
+      setLogin(res.accessToken, { memberId: res.memberId, email: res.email, nickname: res.nickname })
+    } catch (err) {
+      // 401 LOGIN_FAILED: "이메일 또는 비밀번호가 맞지 않아요." / 서버 꺼짐: NETWORK_ERROR 안내 문구
+      setFormError(err instanceof ApiError ? err.message : DEFAULT_ERROR_MESSAGE)
+      setSubmitting(false)
+      return
+    }
 
     if (redirect?.pendingAction === 'save') {
       navigate(redirect.from, { replace: true, state: { afterLogin: 'save' } })
@@ -53,8 +70,14 @@ export default function LoginForm() {
       <TextField label="이메일" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} error={error.email} />
       <TextField label="비밀번호" name="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} error={error.password} />
 
-      <Button type="submit" className="mt-2">
-        로그인
+      {formError && (
+        <p role="alert" className="rounded-xl border-2 border-dashed border-red-300 bg-red-50/70 px-3 py-2 text-center text-sm text-red-600">
+          {formError}
+        </p>
+      )}
+
+      <Button type="submit" className="mt-2" disabled={submitting}>
+        {submitting ? '로그인 중…' : '로그인'}
       </Button>
 
       <div className="flex justify-center gap-4 text-sm font-bold text-neutral-500">
