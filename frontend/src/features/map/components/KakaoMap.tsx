@@ -54,6 +54,17 @@ const TONE_COLOR = {
   dark: '#404040',
 }
 
+/** 경로선 색을 못 읽었을 때 쓰는 값 (index.css 의 --color-primary 와 같은 메인 핑크) */
+const ROUTE_COLOR_FALLBACK = '#f26fa8'
+
+/**
+ * 경로선 색. 카카오 Polyline 은 CSS 클래스를 못 쓰므로 디자인 토큰 --color-primary(index.css @theme)를 실제 값으로 읽어 넘긴다.
+ * 토큰이 바뀌면 경로선 색도 같이 바뀐다
+ */
+function getRouteColor(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || ROUTE_COLOR_FALLBACK
+}
+
 // ── 지도 스티커 (docs/design-sticker.md 지도 핀: map-pin · map-flag · map-me) ──
 // 기준점 = 이미지 안에서 마커 좌표에 놓일 위치. 512×512 원본에서 측정한 픽셀을 비율로 둔다.
 // 이미지가 늦게 떠도 좌표가 밀리지 않도록 표시 크기를 모두 고정한다 (CustomOverlay·MarkerImage 모두 처음 크기로 기준점을 잡음)
@@ -184,7 +195,7 @@ function drawOverlays(maps: KakaoMapsApi, map: KakaoMapInstance, markers: MapMar
       new maps.Polyline({
         path: path.map((p) => new maps.LatLng(p.lat, p.lng)),
         strokeWeight: 4,
-        strokeColor: TONE_COLOR.primary,
+        strokeColor: getRouteColor(),
         strokeOpacity: 0.8,
         map,
       }),
