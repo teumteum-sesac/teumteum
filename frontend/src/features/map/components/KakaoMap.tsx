@@ -2,7 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { getStickerUrl } from '../../../shared/assets/stickerAssets'
 import type { LatLng } from '../../../shared/types/domain'
 import { loadKakaoMap } from '../api/loadKakaoMap'
-import type { KakaoCustomOverlay, KakaoMapInstance, KakaoMapsApi, KakaoMarkerImage, KakaoOverlay } from '../types'
+import type {
+  KakaoCircle,
+  KakaoCustomOverlay,
+  KakaoLatLngBounds,
+  KakaoMapInstance,
+  KakaoMapsApi,
+  KakaoMarker,
+  KakaoMarkerClusterer,
+  KakaoMarkerImage,
+  KakaoOverlay,
+} from '../types'
 
 /**
  * 지도 마커. label이 있으면 S·순번 같은 라벨 마커(핀 스티커 + 글자)로, 없으면 장소 핀 마커로 그린다.
@@ -16,8 +26,11 @@ export interface MapMarker extends LatLng {
   icon?: 'flag'
   /** 누르면 뜨는 말풍선 문구 */
   title?: string
-  /** 'current'면 현재 위치 스티커로 그린다 (label·tone·title 무시) */
-  variant?: 'current'
+  /**
+   * 'current'면 현재 위치 스티커로 그린다 (label·tone·title 무시).
+   * 'selected'면 고른 장소를 크게 강조한 핀으로 그린다 (주변 탐색·검색에서 고른 장소. 다른 마커·클러스터보다 위)
+   */
+  variant?: 'current' | 'selected'
   /** 마커를 구분하는 값 (예: 장소 placeId). 렌더링에는 쓰지 않는다 */
   id?: string
   /** 마커를 눌렀을 때 실행 (기본 마커·라벨 마커) */
@@ -56,7 +69,31 @@ interface KakaoMapProps {
   onLevelChange?: (level: number) => void
   /** 지도가 만들어지면 확대·이동 손잡이를 넘긴다 (홈 지도 컨트롤) */
   onReady?: (controller: KakaoMapController) => void
+  /**
+   * 클러스터로 묶어 그릴 장소 마커 (주변 탐색 HOM-02). 기존 핑크 핀 스티커 이미지를 그대로 쓰고,
+   * 가까운 마커는 확대 수준에 따라 숫자 원으로 묶였다 풀린다. id 가 같은 마커는 다시 만들지 않고 재사용한다.
+   * 배열은 useMemo 로 넘긴다
+   */
+  clusterMarkers?: ClusterMarker[]
+  /** 탐색 반경 원 (중심·반지름 m). null 이면 그리지 않는다 */
+  circle?: { center: LatLng; radius: number } | null
   className?: string
+}
+
+/** 클러스터로 묶이는 장소 마커 */
+export interface ClusterMarker extends LatLng {
+  id: string
+  /** true면 흐리게 (검색 결과 중 반경 밖) */
+  dimmed?: boolean
+  onClick?: () => void
+}
+
+/** 지도 가장자리에서 비울 여백(px) */
+export interface MapPadding {
+  top: number
+  right: number
+  bottom: number
+  left: number
 }
 
 /** 바깥(홈 지도 컨트롤)에서 지도를 움직이는 손잡이 */
@@ -68,7 +105,42 @@ export interface KakaoMapController {
    * 시트·검색창에 가리지 않는 영역의 가운데에 맞출 때 쓴다
    */
   panToVisible(target: LatLng, targetY: number): void
+  /**
+   * 반경 원(center·radius m)이 padding 을 뺀 영역에 들어오도록 맞춘다.
+   * 다만 maxLevel 보다 멀리 축소하지는 않는다 (넓은 반경은 원 일부가 화면 밖으로 나가도 된다)
+   */
+  fitCircle(center: LatLng, radius: number, padding: MapPadding, maxLevel: number): void
 }
+
+// ── 주변 탐색(HOM-02) 클러스터 · 반경 원 ──
+/** 이 레벨 이상(멀리 볼 때)에서만 마커를 묶는다. 더 확대하면 모두 개별 마커 */
+const CLUSTER_MIN_LEVEL = 3
+/** 묶는 격자 크기(px) */
+const CLUSTER_GRID = 60
+/** 검색 결과 중 반경 밖 마커의 투명도 */
+const DIMMED_OPACITY = 0.45
+/** 클러스터 원: 메인 핑크 + 흰 숫자 + 흰 외곽선 + 약한 그림자. 묶인 개수(10 미만 / 30 미만 / 그 이상)에 따라 38·44·50px */
+function clusterStyle(size: number): Partial<CSSStyleDeclaration> {
+  return {
+    width: `${size}px`,
+    height: `${size}px`,
+    lineHeight: `${size - 4}px`,
+    boxSizing: 'border-box',
+    borderRadius: '9999px',
+    border: '2px solid #fff',
+    background: '#F26FA8',
+    color: '#fff',
+    fontSize: '14px',
+    fontWeight: '800',
+    textAlign: 'center',
+    boxShadow: '0 2px 6px rgba(0,0,0,.25)',
+  }
+}
+const CLUSTER_STYLES = [clusterStyle(38), clusterStyle(44), clusterStyle(50)]
+/** 반경 원: 메인 핑크 얇은 선 + 아주 연한 안쪽 */
+const CIRCLE_STYLE = { strokeWeight: 1.5, strokeColor: '#F26FA8', strokeOpacity: 0.9, fillColor: '#F26FA8', fillOpacity: 0.07 }
+/** 위도 1도의 거리(m) */
+const METERS_PER_DEGREE = 111_320
 
 // 기본값을 바깥에 둬야 매 렌더마다 새 배열이 생겨 지도 effect가 다시 도는 것을 막는다
 const NO_MARKERS: MapMarker[] = []
@@ -103,6 +175,7 @@ const FLAG_BASE = { x: 135 / STICKER_PX, y: 449 / STICKER_PX }
 const LABEL_PIN_SIZE = 48 // 코스 지도 S·순번
 const FLAG_SIZE = 44 // 코스 지도 도착 E
 const PLACE_PIN_SIZE = 36 // 주변 탐색 장소 (개수가 많아 작게)
+const SELECTED_PIN_SIZE = 52 // 주변 탐색·검색에서 고른 장소 (크게 강조)
 const ME_SIZE = 54 // 현재 위치 스티커 (흰 원 60px 안)
 
 /** 스티커 이미지 한 장을 고정 크기로 */
@@ -123,6 +196,10 @@ const BUBBLE_EDGE_GAP = 12
 const Z_LABEL = 1
 const Z_SELECTED = 10
 const Z_CURRENT = 20
+/** 주변 탐색 클러스터 숫자 원 (현재 위치 위) */
+const Z_CLUSTER = 25
+/** 주변 탐색·검색에서 고른 장소 핀 (가장 위) */
+const Z_FOCUSED = 30
 /** 현재 위치: 바깥 핑크 후광 · 흰 원 지름(px) */
 const ME_HALO_SIZE = 76
 const ME_RING_SIZE = 60
@@ -264,6 +341,18 @@ function createCurrentLocationElement(): HTMLElement {
   return el
 }
 
+/** 고른 장소 핀 (주변 탐색·검색): 같은 핑크 핀 스티커를 크게 + 흰 테두리·핑크 빛. 스티커 파일이 없으면 null */
+function createSelectedPinElement(): HTMLElement | null {
+  const url = getStickerUrl('mapPin')
+  if (!url) return null
+  const el = document.createElement('div')
+  el.setAttribute('role', 'img')
+  el.setAttribute('aria-label', '선택한 장소')
+  el.style.cssText = `width:${SELECTED_PIN_SIZE}px;height:${SELECTED_PIN_SIZE}px;pointer-events:none;filter:drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 7px rgba(242,111,168,.9)) drop-shadow(0 3px 6px rgba(0,0,0,.25))`
+  el.append(createStickerImage(url, SELECTED_PIN_SIZE))
+  return el
+}
+
 /** 장소 핀 마커 이미지 (주변 탐색). 모든 장소 마커가 이 이미지 하나를 함께 쓴다. 파일이 없으면 null → 카카오 기본 마커 */
 function createPlacePinImage(maps: KakaoMapsApi): KakaoMarkerImage | null {
   const url = getStickerUrl('mapPin')
@@ -291,6 +380,12 @@ function drawOverlays(
     // 현재 위치는 좌표가 그림 정중앙에 오도록 yAnchor 0.5, 다른 마커보다 위에 둔다
     if (m.variant === 'current') {
       return new maps.CustomOverlay({ position, content: createCurrentLocationElement(), map, yAnchor: 0.5, zIndex: Z_CURRENT })
+    }
+    // 고른 장소: 클러스터·다른 마커·현재 위치보다 위에 크게 강조한 핀 (스티커 파일이 없으면 카카오 기본 마커)
+    if (m.variant === 'selected') {
+      const content = createSelectedPinElement()
+      if (content) return new maps.CustomOverlay({ position, content, map, xAnchor: PIN_TIP.x, yAnchor: PIN_TIP.y, zIndex: Z_FOCUSED })
+      return new maps.Marker({ position, map, zIndex: Z_FOCUSED })
     }
     if (m.label) {
       const { content, pin, bubble, xAnchor, yAnchor, setSelected } = createLabelOverlay(m)
@@ -366,6 +461,11 @@ function fitToMarkers(
 ) {
   const bounds = new maps.LatLngBounds()
   markers.forEach((m) => bounds.extend(new maps.LatLng(m.lat, m.lng)))
+  fitToBounds(map, bounds, padding, container)
+}
+
+/** 범위에 맞춘다. 여백을 빼고 남는 공간이 MIN_FIT_SPACE 보다 작으면 여백 없이 맞춘다 */
+function fitToBounds(map: KakaoMapInstance, bounds: KakaoLatLngBounds, padding: BoundsPadding | undefined, container: HTMLElement | null) {
   const usable =
     padding &&
     container &&
@@ -389,6 +489,8 @@ export default function KakaoMap({
   maxLevel,
   onLevelChange,
   onReady,
+  clusterMarkers,
+  circle,
   className = '',
 }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -604,8 +706,126 @@ export default function KakaoMap({
         const dy = height / 2 - targetY
         map.panTo(new maps.LatLng(target.lat - dy * latPerPx, target.lng))
       },
+      fitCircle: (center, radius, padding, maxLevel) => {
+        // 원을 감싸는 사각형(남서·북동)으로 범위를 맞춘다. 남는 공간이 너무 작으면 여백 없이 맞춘다
+        const dLat = radius / METERS_PER_DEGREE
+        const dLng = radius / (METERS_PER_DEGREE * Math.cos((center.lat * Math.PI) / 180))
+        const bounds = new maps.LatLngBounds()
+        bounds.extend(new maps.LatLng(center.lat - dLat, center.lng - dLng))
+        bounds.extend(new maps.LatLng(center.lat + dLat, center.lng + dLng))
+        fitToBounds(map, bounds, padding, container)
+        // 넓은 반경 때문에 과하게 축소하지 않는다. 범위 맞춤으로 정한 중심(원 중심이 보이는 영역 가운데)은 그대로 두고 레벨만 줄인다
+        if (map.getLevel() > maxLevel) map.setLevel(maxLevel)
+      },
     })
   }, [ready])
+
+  // ── 클러스터 장소 마커 (주변 탐색 HOM-02) ──
+  // 마커는 id 별로 한 번만 만들어 두고, 목록이 바뀌면 빠진 것만 빼고 새로 생긴 것만 더한다 (카테고리를 바꿔도 다시 만들지 않음)
+  const clustererRef = useRef<KakaoMarkerClusterer | null>(null)
+  const clusterMarkersRef = useRef(new Map<string, KakaoMarker>())
+  const clusterClicksRef = useRef(new Map<string, () => void>())
+  const placePinImageRef = useRef<KakaoMarkerImage | null | undefined>(undefined)
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!ready || !maps || !map || !clusterMarkers) return
+    // 클러스터러 라이브러리를 못 불렀으면 묶지 않고 지도에 바로 올린다
+    if (!clustererRef.current && maps.MarkerClusterer) {
+      clustererRef.current = new maps.MarkerClusterer({
+        map,
+        averageCenter: true,
+        minLevel: CLUSTER_MIN_LEVEL,
+        gridSize: CLUSTER_GRID,
+        // 누르면 한 단계 확대 (카카오 기본 동작). 같은 좌표만 남은 묶음은 끝까지 확대해도 풀리지 않는다 (좌표는 옮기지 않음)
+        disableClickZoom: false,
+        calculator: [10, 30],
+        styles: CLUSTER_STYLES,
+      })
+      // 숫자 원은 현재 위치 스티커보다 위에 둔다 (가운데 큰 묶음이 스티커에 가려 개수가 안 보이는 것을 막음). 고른 장소 핀은 그보다 위
+      maps.event.addListener(clustererRef.current, 'clustered', (clusters) => {
+        clusters.forEach((cluster) => cluster.getClusterMarker().setZIndex(Z_CLUSTER))
+      })
+    }
+    const clusterer = clustererRef.current
+    if (placePinImageRef.current === undefined) placePinImageRef.current = createPlacePinImage(maps)
+    const image = placePinImageRef.current
+
+    const current = clusterMarkersRef.current
+    const nextIds = new Set(clusterMarkers.map((m) => m.id))
+    const removed: KakaoMarker[] = []
+    for (const [id, marker] of current) {
+      if (!nextIds.has(id)) {
+        removed.push(marker)
+        current.delete(id)
+      }
+    }
+    const added: KakaoMarker[] = []
+    const clicks = new Map<string, () => void>()
+    for (const m of clusterMarkers) {
+      if (m.onClick) clicks.set(m.id, m.onClick)
+      let marker = current.get(m.id)
+      if (!marker) {
+        const position = new maps.LatLng(m.lat, m.lng)
+        marker = image ? new maps.Marker({ position, image }) : new maps.Marker({ position })
+        const id = m.id
+        maps.event.addListener(marker, 'click', () => clusterClicksRef.current.get(id)?.())
+        current.set(id, marker)
+        added.push(marker)
+      }
+      marker.setOpacity(m.dimmed ? DIMMED_OPACITY : 1)
+    }
+    clusterClicksRef.current = clicks
+    if (clusterer) {
+      // 한 번에 빼고 더한 뒤 한 번만 다시 그린다
+      if (removed.length) clusterer.removeMarkers(removed, true)
+      if (added.length) clusterer.addMarkers(added, true)
+      clusterer.redraw()
+    } else {
+      removed.forEach((marker) => marker.setMap(null))
+      added.forEach((marker) => marker.setMap(map))
+    }
+  }, [ready, clusterMarkers])
+
+  // 지도가 사라질 때 클러스터·마커 정리
+  useEffect(() => {
+    const markers = clusterMarkersRef.current
+    return () => {
+      clustererRef.current?.clear()
+      markers.forEach((marker) => marker.setMap(null))
+      markers.clear()
+    }
+  }, [])
+
+  // ── 탐색 반경 원 ──
+  // 원은 지도 도형이라 마커·지도 끌기를 막지 않는다. 중심·반지름이 바뀌면 같은 원을 고친다
+  const circleRef = useRef<KakaoCircle | null>(null)
+  const circleLat = circle?.center.lat
+  const circleLng = circle?.center.lng
+  const circleRadius = circle?.radius
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!ready || !maps || !map) return
+    if (circleLat === undefined || circleLng === undefined || circleRadius === undefined) {
+      circleRef.current?.setMap(null)
+      circleRef.current = null
+      return
+    }
+    const center = new maps.LatLng(circleLat, circleLng)
+    if (!circleRef.current) {
+      circleRef.current = new maps.Circle({ center, radius: circleRadius, ...CIRCLE_STYLE, zIndex: 0, map })
+    } else {
+      circleRef.current.setPosition(center)
+      circleRef.current.setRadius(circleRadius)
+    }
+  }, [ready, circleLat, circleLng, circleRadius])
+  useEffect(
+    () => () => {
+      circleRef.current?.setMap(null)
+    },
+    [],
+  )
 
   // 매 렌더 마지막에 실행: 범위 맞춤 표시는 그 렌더에서만 유효하게 초기화한다
   // (effect는 선언 순서대로 실행되므로 반드시 위 effect들 다음에 둔다)

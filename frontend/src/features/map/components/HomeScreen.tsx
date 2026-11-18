@@ -5,20 +5,26 @@ import Button from '../../../shared/components/Button'
 import Icon from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
 import BottomNav from '../../../shared/layout/BottomNav'
-import { DEFAULT_POSITION, type CategoryCode } from '../../../shared/types/domain'
+import { DEFAULT_POSITION, type CategoryCode, type LatLng } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
 import { requestCurrentPosition, useCurrentPosition } from '../hooks/useCurrentPosition'
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces'
 import { MAP_BOTTOM_CLASS, type SheetLevel } from '../sheetLayout'
 import NoticeBanner from '../../admin/components/NoticeBanner'
 import HomeSearchBar from './HomeSearchBar'
-import KakaoMap, { type BoundsPadding, type KakaoMapController, type MapMarker } from './KakaoMap'
+import KakaoMap, { type ClusterMarker, type KakaoMapController, type MapMarker, type MapPadding } from './KakaoMap'
 import LocationGuide from './LocationGuide'
 import MapControls, { LocateButton, MAP_CONTROLS_HEIGHT, type LocateStatus } from './MapControls'
 import NearbySheet from './NearbySheet'
 
-/** 홈(HOM-01) 하단 패널(헤드라인·듀오 장면·추천 버튼·바로가기) 높이 + 여유. 범위 맞춤 시 이 아래로 마커가 숨지 않게 한다 */
-const HOME_PANEL_PADDING = 330
+// ── 주변 탐색 (HOM-02) 반경 맞춤 ──
+/** 반경 원에 맞출 때 지도 가장자리 여백(px). 위쪽은 검색창 묶음 아래끝 + 이 값 */
+const RADIUS_FIT_GAP = 12
+/**
+ * 반경 원에 맞출 때 이보다 멀리 축소하지 않는다. 3km 원은 일부가 화면 밖으로 나가도 된다
+ * (카카오 레벨: 숫자가 클수록 넓게. 375px 화면에서 500m → 5, 1km → 6, 3km → 7 에서 멈춤)
+ */
+const RADIUS_FIT_MAX_LEVEL = 7
 
 // ── 홈 지도 컨트롤 (HOM-01 내 위치 · 확대/축소) ──
 /** 홈 지도 첫 확대 수준 = 가장 멀리 볼 수 있는 수준 (카카오는 숫자가 작을수록 확대) */
@@ -89,33 +95,42 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     [nearbyPlaces.places, category],
   )
 
-  // 장소 마커 + 현재 위치 점
-  const markers = useMemo<MapMarker[]>(() => {
-    const placeMarkers: MapMarker[] = nearby
-      ? places.map((p) => ({
-          id: p.kakaoPlaceId,
-          lat: p.latitude,
-          lng: p.longitude,
-          // 마커를 누르면 목록의 해당 카드를 강조한다 (HOM-02 ①). 시트가 접혀 있으면 카드가 보이도록 반만 펼친다
-          onClick: () => {
-            setSelectedPlaceId(p.kakaoPlaceId)
-            setScrollRequest((n) => n + 1)
-            setSheetLevel((current) => (current === 'collapsed' ? 'half' : current))
-          },
-        }))
-      : [] // 홈(HOM-01)은 장소 마커 없이 현재 위치 점만 표시한다. 실제 주변 장소는 주변 탐색(HOM-02)에서 보여준다
-    // 위치를 실제로 받았을 때만 현재 위치 점을 찍는다. 조회 중·거부·실패 시 position 은 서울시청 기본값이라 표시하지 않음
-    if (loading || denied) return placeMarkers
-    return [...placeMarkers, { lat: position.lat, lng: position.lng, variant: 'current' }]
-  }, [position, places, nearby, loading, denied])
-
-  // 범위 맞춤 여백: 지도 위에 떠 있는 검색창(약 80px, 위치 안내 문구가 있으면 375px 기준 약 136px)과
-  // 홈 하단 패널에 마커가 가리지 않게 한다. 카카오 기본 마커는 아래 끝이 좌표라 위쪽에 마커 높이(약 42px)를 더한다.
-  // 주변 탐색은 지도 영역이 시트 위에서 끝나므로 아래 여백만 작게 둔다
-  const boundsPadding = useMemo<BoundsPadding>(
-    () => ({ top: denied ? 188 : 132, right: 24, bottom: nearby ? 24 : HOME_PANEL_PADDING, left: 24 }),
-    [denied, nearby],
+  // ── 주변 탐색 지도 표시 ──
+  // 장소 마커는 클러스터로 묶는다 (기존 핑크 핀 이미지 그대로). 고른 장소는 클러스터에서 빼서 크게 강조한 핀으로 따로 그려
+  // 묶여 있어도 항상 보이게 한다. 마커를 누르면 목록의 해당 카드를 강조한다 (시트가 접혀 있으면 반만 펼침)
+  const clusterMarkers = useMemo<ClusterMarker[] | undefined>(() => {
+    if (!nearby) return undefined
+    return places
+      .filter((p) => p.kakaoPlaceId !== selectedPlaceId)
+      .map((p) => ({
+        id: p.kakaoPlaceId,
+        lat: p.latitude,
+        lng: p.longitude,
+        onClick: () => {
+          setSelectedPlaceId(p.kakaoPlaceId)
+          setScrollRequest((n) => n + 1)
+          setSheetLevel((current) => (current === 'collapsed' ? 'half' : current))
+        },
+      }))
+  }, [nearby, places, selectedPlaceId])
+  const selectedPlace = useMemo(
+    () => (nearby && selectedPlaceId ? (places.find((p) => p.kakaoPlaceId === selectedPlaceId) ?? null) : null),
+    [nearby, places, selectedPlaceId],
   )
+
+  // 클러스터 밖에 따로 그리는 것: 고른 장소 강조 핀 + 현재 위치 스티커 (홈은 현재 위치만)
+  const markers = useMemo<MapMarker[]>(() => {
+    const list: MapMarker[] = []
+    if (selectedPlace) {
+      list.push({ id: selectedPlace.kakaoPlaceId, lat: selectedPlace.latitude, lng: selectedPlace.longitude, variant: 'selected' })
+    }
+    // 위치를 실제로 받았을 때만 현재 위치를 찍는다. 조회 중·거부·실패 시 position 은 서울시청 기본값이라 표시하지 않음
+    if (!loading && !denied) list.push({ lat: position.lat, lng: position.lng, variant: 'current' })
+    return list
+  }, [selectedPlace, position, loading, denied])
+
+  // 탐색 반경 원: 실제 주변 장소 조회 기준 좌표(position)가 중심. 지도를 끌어도 기준은 바뀌지 않는다
+  const circle = useMemo(() => (nearby && !loading ? { center: position, radius } : null), [nearby, loading, position, radius])
 
   // 반경·대분류를 바꾸면 목록이 달라지므로 이전 선택은 해제한다
   const changeRadius = (next: number) => {
@@ -185,29 +200,53 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const locateStatus: LocateStatus = (nearby ? (nearbyLocated === null ? denied : !nearbyLocated) : denied) ? 'off' : 'default'
   const [guideTop, setGuideTop] = useState(0)
 
-  // 위치 안내 카드: 검색창 묶음(검색창 + 공지 + 위치 안내 문구) 바로 아래 + 12px
-  const openGuide = () => {
+  // 지금 화면에서 검색창 묶음(검색창 + 공지 + 위치 안내 문구) 아래끝 (지도 영역 위쪽 기준 px)
+  const readSearchBottom = useCallback((): number | null => {
     const area = areaRef.current
     const top = topOverlayRef.current
-    if (area && top) {
-      setGuideTop(top.getBoundingClientRect().bottom - area.getBoundingClientRect().top - TOP_OVERLAY_PADDING + GUIDE_GAP)
-    }
+    if (!area || !top) return null
+    return top.getBoundingClientRect().bottom - area.getBoundingClientRect().top - TOP_OVERLAY_PADDING
+  }, [])
+
+  // 주변 탐색: 좌표를 검색창 아래 ~ 시트 위(보이는 지도 영역)의 가운데로 부드럽게 옮긴다. 확대 수준은 그대로
+  const panNearbyTo = useCallback(
+    (target: LatLng) => {
+      const searchBottom = readSearchBottom()
+      const map = mapWrapRef.current
+      if (!controller || searchBottom === null || !map) return
+      controller.panToVisible(target, (searchBottom + map.clientHeight) / 2)
+    },
+    [controller, readSearchBottom],
+  )
+
+  // 주변 탐색: 반경을 정했을 때(처음 진입·반경 변경)만 반경 원이 보이는 영역에 들어오게 맞춘다.
+  // 사용자가 지도를 끌거나 확대·축소한 뒤에는 다시 맞추지 않고, 시트 높이가 바뀌어도 맞추지 않는다
+  const fittedRadiusRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!nearby || !controller || loading) return
+    const key = `${position.lat},${position.lng},${radius}`
+    if (fittedRadiusRef.current === key) return
+    const searchBottom = readSearchBottom()
+    if (searchBottom === null) return
+    fittedRadiusRef.current = key
+    const padding: MapPadding = { top: searchBottom + RADIUS_FIT_GAP, right: RADIUS_FIT_GAP, bottom: RADIUS_FIT_GAP, left: RADIUS_FIT_GAP }
+    controller.fitCircle(position, radius, padding, RADIUS_FIT_MAX_LEVEL)
+  }, [nearby, controller, loading, position, radius, readSearchBottom])
+
+  // 위치 안내 카드: 검색창 묶음 바로 아래 + 12px
+  const openGuide = () => {
+    const searchBottom = readSearchBottom()
+    if (searchBottom !== null) setGuideTop(searchBottom + GUIDE_GAP)
     setGuideOpen(true)
   }
 
-  // 주변 탐색: 현재 위치를 받아 지도 중심만 옮긴다 (검색창 아래 ~ 시트 위, 보이는 지도 영역의 가운데). 요청 중 중복 탭은 무시
+  // 주변 탐색: 현재 위치를 받아 지도 중심만 옮긴다 (보이는 지도 영역의 가운데). 요청 중 중복 탭은 무시
   const locateNearby = useCallback((): Promise<boolean> => {
     if (nearbyRequestRef.current) return nearbyRequestRef.current
     const request = requestCurrentPosition()
       .then((found) => {
         setNearbyLocated(found !== null)
-        const area = areaRef.current
-        const top = topOverlayRef.current
-        const map = mapWrapRef.current
-        if (found && controller && area && top && map) {
-          const searchBottom = top.getBoundingClientRect().bottom - area.getBoundingClientRect().top - TOP_OVERLAY_PADDING
-          controller.panToVisible(found, (searchBottom + map.clientHeight) / 2)
-        }
+        if (found) panNearbyTo(found)
         return found !== null
       })
       .finally(() => {
@@ -215,7 +254,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
       })
     nearbyRequestRef.current = request
     return request
-  }, [controller])
+  }, [panNearbyTo])
 
   // 버튼: 기본이면 위치를 다시 받아 이동, 실패하거나 꺼짐이면 안내 카드 (지도는 움직이지 않음)
   const handleLocate = async () => {
@@ -245,12 +284,14 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
         {/* 주변 탐색이면 지도 아래쪽을 시트 높이만큼 비워 시트와 겹치지 않게 한다. 위·아래가 정해진 absolute 라 높이가 0이 되지 않는다 */}
         <div ref={mapWrapRef} className={`absolute inset-x-0 top-0 ${nearby ? MAP_BOTTOM_CLASS[sheetLevel] : 'bottom-0'}`}>
           {nearby ? (
+            // 주변 탐색: 지도 이동·확대는 반경 맞춤(fitCircle)·카드 선택·현재 위치 버튼으로만 한다 (center·level 은 처음 값 고정).
+            // 반경 선택과 지도 확대 수준은 서로 독립 (확대·축소해도 탐색 반경은 그대로)
             <KakaoMap
-              center={position}
+              center={DEFAULT_POSITION}
               markers={markers}
-              level={radius > 1000 ? 6 : HOME_LEVEL}
-              fitBounds
-              boundsPadding={boundsPadding}
+              level={HOME_LEVEL}
+              clusterMarkers={clusterMarkers}
+              circle={circle}
               onReady={setController}
               className="size-full"
             />
