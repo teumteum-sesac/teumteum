@@ -38,8 +38,10 @@ export function getRouteStops(course: Course): RouteStop[] {
   ]
 }
 
-function isValidCoordinate(c: CoordinateResponse): boolean {
+/** 서버 응답이 어긋나 좌표 자리에 null 이 와도 오류 없이 걸러 낸다 */
+function isValidCoordinate(c: CoordinateResponse | null | undefined): c is CoordinateResponse {
   return (
+    c != null &&
     Number.isFinite(c.latitude) &&
     Number.isFinite(c.longitude) &&
     Math.abs(c.latitude) <= 90 &&
@@ -55,10 +57,12 @@ function samePoint(a: LatLng, b: LatLng): boolean {
  * 지점 순서대로 이어지는 경로선 좌표를 만든다.
  * - 구간이 `ACTUAL` 이고 유효한 좌표가 2개 이상이면 그 좌표를 따라 그린다.
  *   길찾기 좌표는 도로 위로 맞춰져 마커와 조금 떨어질 수 있어, 구간 앞뒤에 마커 좌표를 붙여 선이 마커에 닿게 한다
- * - `STRAIGHT`, 구간 없음, 좌표 부족·오류는 두 지점을 직선으로 잇는다 (기존 표시와 같음)
+ * - `STRAIGHT`, 구간 없음, 좌표 부족·오류·누락(null)은 두 지점을 직선으로 잇는다 (기존 표시와 같음)
  * - 이어지는 같은 좌표는 한 번만 넣는다
  */
-export function buildRoutePath(stops: RouteStop[], legs: RouteLegResponse[] = []): LatLng[] {
+export function buildRoutePath(stops: RouteStop[], routeLegs?: RouteLegResponse[] | null): LatLng[] {
+  // 구간 목록이 없거나(null) 배열이 아니면 전부 직선으로 그린다
+  const legs = Array.isArray(routeLegs) ? routeLegs : []
   const path: LatLng[] = []
   const push = (p: LatLng) => {
     const last = path[path.length - 1]
@@ -69,8 +73,8 @@ export function buildRoutePath(stops: RouteStop[], legs: RouteLegResponse[] = []
     const to = stops[i + 1]
     push(from)
     if (!to) return
-    const leg = legs.find((l) => l.fromVisitOrder === from.visitOrder && l.toVisitOrder === to.visitOrder)
-    if (leg?.pathType === 'ACTUAL') {
+    const leg = legs.find((l) => l?.fromVisitOrder === from.visitOrder && l.toVisitOrder === to.visitOrder)
+    if (leg?.pathType === 'ACTUAL' && Array.isArray(leg.coordinates)) {
       const coords = leg.coordinates.filter(isValidCoordinate)
       if (coords.length >= 2) coords.forEach((c) => push({ lat: c.latitude, lng: c.longitude }))
     }
