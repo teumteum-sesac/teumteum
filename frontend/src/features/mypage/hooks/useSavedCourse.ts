@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../../shared/api/apiError'
+import { useAuthStore } from '../../../shared/auth/authStore'
 import { getCourse, getCourses } from '../api/courseApi'
 
 // 화면을 떠난 뒤 도착한 응답이나 이전 코스 ID의 데이터를 표시하지 않는다.
@@ -30,11 +31,13 @@ function useCourseQuery<T>(key: string, load: () => Promise<T>, enabled = true) 
 }
 
 export function useSavedCourse(courseId: string) {
+  const token = useAuthStore((s) => s.accessToken)
   const load = useCallback(() => getCourse(courseId), [courseId])
-  return useCourseQuery(`detail:${courseId}`, load)
+  return useCourseQuery(`detail:${token ?? ''}:${courseId}`, load, token !== null)
 }
 
 export function useSavedCourseCount(enabled: boolean) {
+  const token = useAuthStore((s) => s.accessToken)
   const load = useCallback(() => getCourses(0, 1), [])
-  return useCourseQuery('count', load, enabled)
+  return useCourseQuery(`count:${token ?? ''}`, load, enabled && token !== null)
 }

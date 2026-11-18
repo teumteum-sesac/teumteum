@@ -36,8 +36,9 @@ client.interceptors.response.use(
 
     const { status, data } = error.response
 
-    // 2) 401: 토큰이 없거나 만료됨 → 로그인 상태 정리. 화면 이동은 RequireAuth·각 화면이 판단한다
-    if (status === 401 && useAuthStore.getState().isLoggedIn) {
+    // 2) 현재 토큰의 401만 로그인 상태를 정리한다. 이전 계정의 늦은 응답은 새 로그인을 지우지 않는다.
+    const currentToken = useAuthStore.getState().accessToken
+    if (status === 401 && currentToken && error.config?.headers.Authorization === `Bearer ${currentToken}`) {
       useAuthStore.getState().logout()
     }
 

@@ -50,8 +50,8 @@ export async function apiPatch<T>(url: string, body?: unknown): Promise<T> {
   return unwrap(res.data, res.status)
 }
 
-/** DELETE. 돌려줄 data 가 없으면 apiDelete<void>(...) */
-export async function apiDelete<T>(url: string): Promise<T> {
-  const res = await client.delete<ApiResponse<T>>(url)
+/** DELETE. 탈퇴 확인 등 필요한 경우 body를 전달한다. 돌려줄 data가 없으면 apiDelete<void>(...) */
+export async function apiDelete<T>(url: string, body?: unknown): Promise<T> {
+  const res = await client.delete<ApiResponse<T>>(url, { data: body })
   return unwrap(res.data, res.status)
 }
