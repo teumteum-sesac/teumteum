@@ -3,6 +3,7 @@ package com.teumteum.global.config;
 import com.teumteum.global.auth.JwtAuthenticationFilter;
 import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.global.auth.SecurityErrorHandler;
+import com.teumteum.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,6 +37,7 @@ public class SecurityConfig {
 
     private final JwtProvider jwtProvider;
     private final SecurityErrorHandler securityErrorHandler;
+    private final MemberService memberService;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -55,7 +57,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(securityErrorHandler)
                 )
                 // Spring 기본 로그인 필터보다 앞에서 토큰을 확인한다
-                .addFilterBefore(new JwtAuthenticationFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtAuthenticationFilter(jwtProvider, memberService), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

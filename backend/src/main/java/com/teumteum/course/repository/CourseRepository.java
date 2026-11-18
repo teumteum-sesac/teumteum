@@ -5,6 +5,9 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 // Course 엔티티를 다루고 PK 타입은 Long이다. Spring Data JPA가 실행 시 구현 객체를 제공한다.
 // JpaRepository에서 기본 저장(save), 조회(findById), 삭제(delete) 등의 기능을 상속받는다.
@@ -18,4 +21,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     // 해당 회원의 코스를 페이지 단위로 조회한다. Pageable로 페이지 번호(0부터), 크기, 정렬을 전달한다.
     // Page<Course>는 Course 목록과 전체 건수·페이지 수를 담는다. 조회 결과가 없으면 목록이 비어 있다.
     Page<Course> findByMemberId(Long memberId, Pageable pageable);
+
+    // 저장 장소·경로는 기존 DDL의 ON DELETE CASCADE로 함께 삭제한다.
+    @Modifying(flushAutomatically = true)
+    @Query("delete from Course c where c.memberId = :memberId")
+    int deleteAllByMemberId(@Param("memberId") Long memberId);
 }

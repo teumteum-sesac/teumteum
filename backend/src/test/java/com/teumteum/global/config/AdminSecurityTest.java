@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.teumteum.admin.controller.AdminMemberController;
 import com.teumteum.admin.dto.PageResponse;
 import com.teumteum.admin.service.AdminMemberService;
+import com.teumteum.member.service.MemberService;
 import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.global.auth.SecurityErrorHandler;
 import com.teumteum.global.exception.GlobalExceptionHandler;
@@ -46,6 +47,8 @@ class AdminSecurityTest {
 
     @MockitoBean
     private AdminMemberService adminMemberService;
+    @MockitoBean
+    private MemberService memberService;
 
     @Test
     @DisplayName("토큰 없이 관리자 API → 401")
@@ -59,6 +62,7 @@ class AdminSecurityTest {
     @Test
     @DisplayName("일반 회원 토큰으로 관리자 API → 403 FORBIDDEN 공통 응답")
     void memberToken() throws Exception {
+        given(memberService.isActiveMember(7L)).willReturn(true);
         String token = jwtProvider.createAccessToken(7L, false);
 
         mockMvc.perform(get("/api/admin/members").header("Authorization", "Bearer " + token))
@@ -72,6 +76,7 @@ class AdminSecurityTest {
     @Test
     @DisplayName("관리자 토큰 → 200")
     void adminToken() throws Exception {
+        given(memberService.isActiveMember(1L)).willReturn(true);
         given(adminMemberService.getMembers(any(), anyInt(), anyInt()))
                 .willReturn(new PageResponse<>(List.of(), 0, 20, 0, 0, false));
         String token = jwtProvider.createAccessToken(1L, true);
