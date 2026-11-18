@@ -2,7 +2,7 @@ package com.teumteum.recommend.service;
 
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.place.exception.PlaceErrorCode;
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
@@ -141,12 +141,12 @@ class RecommendServiceTest {
     void recommend_passesNormalizedCondition() {
         given(courseSearchService.findCourses(any())).willReturn(result());
 
-        recommendService.recommend(request(CategoryMode.DIRECT, List.of(CategoryCode.CAFE, CategoryCode.CAFE)));
+        recommendService.recommend(request(CategoryMode.DIRECT, List.of(Category.CAFE, Category.CAFE)));
 
         // ArgumentCaptor: 가짜에게 "실제로 무슨 값이 넘어왔는지" 붙잡아서 꺼내 본다
         ArgumentCaptor<CourseCondition> captor = ArgumentCaptor.forClass(CourseCondition.class);
         verify(courseSearchService).findCourses(captor.capture());
-        assertEquals(List.of(CategoryCode.CAFE), captor.getValue().categories());
+        assertEquals(List.of(Category.CAFE), captor.getValue().categories());
         assertEquals(180, captor.getValue().availableMinutes());
     }
 
@@ -276,7 +276,7 @@ class RecommendServiceTest {
 
     // ===================== 도우미 =====================
 
-    private RecommendRequest request(CategoryMode mode, List<CategoryCode> categories) {
+    private RecommendRequest request(CategoryMode mode, List<Category> categories) {
         LocationRequest origin = new LocationRequest("성수역", null, 37.5446, 127.0559);
         return new RecommendRequest(origin, null, "13:00", 180, TransportType.WALK, mode, categories);
     }
@@ -287,7 +287,7 @@ class RecommendServiceTest {
     }
 
     private PlaceCandidate candidate(String placeId) {
-        return new PlaceCandidate(placeId, "장소" + placeId, CategoryCode.CAFE, "카페", "서울", 37.545, 127.056);
+        return new PlaceCandidate(placeId, "장소" + placeId, Category.CAFE, "카페", "서울", 37.545, 127.056);
     }
 
     /** 코스 찾기 결과 (후보는 비워 둔다. 후보 보관은 recommend_storesCandidates 에서 따로 확인) */

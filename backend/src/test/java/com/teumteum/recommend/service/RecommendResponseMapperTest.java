@@ -1,6 +1,6 @@
 package com.teumteum.recommend.service;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
@@ -77,7 +77,7 @@ class RecommendResponseMapperTest {
         RecommendPlaceResponse first = mapper.toCourseResponse(twoPlaceCourse(), "13:00").places().get(0);
 
         assertEquals("101", first.placeId());
-        assertEquals(CategoryCode.SPORTS, first.category());
+        assertEquals(Category.SPORTS, first.category());
         assertEquals("당구", first.subCategory());
         assertEquals(90, first.stayMinutes());
         assertEquals(15, first.travelMinutes());
@@ -116,12 +116,12 @@ class RecommendResponseMapperTest {
     @Test
     @DisplayName("직접 선택이면 고른 대분류 순서대로, 그 대분류의 세분류 전체를 묶는다")
     void filters_direct_allSubCategoriesOfChosenCategories() {
-        RecommendCondition condition = conditionOf(CategoryMode.DIRECT, List.of(CategoryCode.SPORTS, CategoryCode.SHOPPING));
+        RecommendCondition condition = conditionOf(CategoryMode.DIRECT, List.of(Category.SPORTS, Category.SHOPPING));
 
         List<SubCategoryFilterResponse> filters = mapper.toSubCategoryFilters(condition, List.of());
 
         assertEquals(2, filters.size());
-        assertEquals(CategoryCode.SPORTS, filters.get(0).category());
+        assertEquals(Category.SPORTS, filters.get(0).category());
         assertEquals("스포츠활동", filters.get(0).categoryName());
         assertEquals(List.of("당구", "볼링", "클라이밍"), filters.get(0).subCategories());
         assertEquals(List.of("소품샵", "팝업스토어", "시장", "백화점"), filters.get(1).subCategories());
@@ -136,9 +136,9 @@ class RecommendResponseMapperTest {
         List<SubCategoryFilterResponse> filters = mapper.toSubCategoryFilters(condition, List.of(twoPlaceCourse()));
 
         assertEquals(2, filters.size());
-        assertEquals(CategoryCode.SHOPPING, filters.get(0).category()); // 대분류 표에서 SHOPPING 이 SPORTS 보다 앞
+        assertEquals(Category.SHOPPING, filters.get(0).category()); // 대분류 표에서 SHOPPING 이 SPORTS 보다 앞
         assertEquals(List.of("소품샵"), filters.get(0).subCategories());
-        assertEquals(CategoryCode.SPORTS, filters.get(1).category());
+        assertEquals(Category.SPORTS, filters.get(1).category());
         assertEquals(List.of("당구"), filters.get(1).subCategories());
     }
 
@@ -215,7 +215,7 @@ class RecommendResponseMapperTest {
     @Test
     @DisplayName("교체 후보: 바꿀 장소 요약(방문 순서 1부터)과 후보(이미지·노선 null, 추정 true)를 담는다")
     void alternatives_fields() {
-        PlaceCandidate shop = new PlaceCandidate("201", "소품샵 C", CategoryCode.SHOPPING, "소품샵", "서울 성동구 ○○로 3",
+        PlaceCandidate shop = new PlaceCandidate("201", "소품샵 C", Category.SHOPPING, "소품샵", "서울 성동구 ○○로 3",
                 37.5462, 127.0430);
         PlaceAlternative alternative = new PlaceAlternative(shop, 40, 9, 1, false);
 
@@ -248,11 +248,11 @@ class RecommendResponseMapperTest {
         List<Coordinate> walkPath = List.of(
                 new Coordinate(37.5446, 127.0559), new Coordinate(37.5458, 127.0530), new Coordinate(37.5470, 127.0500));
         CourseStop billiards = new CourseStop(
-                new PlaceCandidate("101", "당구장 A", CategoryCode.SPORTS, "당구", "서울 성동구 ○○로 1", 37.5470, 127.0500,
+                new PlaceCandidate("101", "당구장 A", Category.SPORTS, "당구", "서울 성동구 ○○로 1", 37.5470, 127.0500,
                         "https://place.map.kakao.com/101"),
                 90, new TravelRoute(15, walkPath));
         CourseStop propShop = new CourseStop(
-                new PlaceCandidate("102", "소품샵 B", CategoryCode.SHOPPING, "소품샵", "서울 성동구 ○○로 2", 37.5460, 127.0420),
+                new PlaceCandidate("102", "소품샵 B", Category.SHOPPING, "소품샵", "서울 성동구 ○○로 2", 37.5460, 127.0420),
                 40, TravelRoute.estimated(8));
         CoursePlan plan = new CoursePlan(List.of(billiards, propShop), new TravelRoute(7, List.of()), 160, 30, true);
         return new RecommendedCourse("rc_2", "rs_1", plan, EXPIRES_AT);
@@ -268,16 +268,16 @@ class RecommendResponseMapperTest {
     /** 명세 1.3 예시와 같은 코스: 당구장 A(버스 15분) → 소품샵 B(8분) → 도착지(7분) */
     private RecommendedCourse twoPlaceCourse() {
         CourseStop billiards = new CourseStop(
-                new PlaceCandidate("101", "당구장 A", CategoryCode.SPORTS, "당구", "서울 성동구 ○○로 1", 37.5470, 127.0500),
+                new PlaceCandidate("101", "당구장 A", Category.SPORTS, "당구", "서울 성동구 ○○로 1", 37.5470, 127.0500),
                 90, new TravelRoute(15, List.of(), "버스 721 · 환승 0회"));
         CourseStop propShop = new CourseStop(
-                new PlaceCandidate("102", "소품샵 B", CategoryCode.SHOPPING, "소품샵", "서울 성동구 ○○로 2", 37.5460, 127.0420),
+                new PlaceCandidate("102", "소품샵 B", Category.SHOPPING, "소품샵", "서울 성동구 ○○로 2", 37.5460, 127.0420),
                 40, TravelRoute.estimated(8));
         CoursePlan plan = new CoursePlan(List.of(billiards, propShop), new TravelRoute(7, List.of()), 160, 30, true);
         return new RecommendedCourse("rc_1", "rs_1", plan, EXPIRES_AT);
     }
 
-    private RecommendCondition conditionOf(CategoryMode mode, List<CategoryCode> categories) {
+    private RecommendCondition conditionOf(CategoryMode mode, List<Category> categories) {
         return new RecommendCondition(ORIGIN, null, "13:00", 180, TransportType.TRANSIT, mode, categories);
     }
 

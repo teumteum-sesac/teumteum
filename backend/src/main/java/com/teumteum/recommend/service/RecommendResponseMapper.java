@@ -1,6 +1,6 @@
 package com.teumteum.recommend.service;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
 import com.teumteum.recommend.domain.PathType;
@@ -10,7 +10,7 @@ import com.teumteum.recommend.domain.RecommendCondition;
 import com.teumteum.recommend.domain.RecommendCondition.Location;
 import com.teumteum.recommend.domain.RecommendationSet;
 import com.teumteum.recommend.domain.RecommendedCourse;
-import com.teumteum.recommend.domain.SubCategory;
+import com.teumteum.global.common.category.SubCategory;
 import com.teumteum.recommend.domain.TravelRoute;
 import com.teumteum.recommend.domain.TravelRoute.Coordinate;
 import com.teumteum.recommend.dto.AlternativePlaceListResponse;
@@ -276,14 +276,14 @@ public class RecommendResponseMapper {
         List<SubCategoryFilterResponse> filters = new ArrayList<>();
 
         if (!condition.categories().isEmpty()) {
-            for (CategoryCode category : condition.categories()) {
+            for (Category category : condition.categories()) {
                 filters.add(filterOf(category, SubCategory.of(category)));
             }
             return filters;
         }
 
         Set<SubCategory> appeared = subCategoriesIn(courses);
-        for (CategoryCode category : CategoryCode.values()) {
+        for (Category category : Category.values()) {
             List<SubCategory> subs = new ArrayList<>(SubCategory.of(category));
             subs.retainAll(appeared); // 결과에 나온 것만 남긴다 (retainAll = 교집합)
             if (!subs.isEmpty()) {
@@ -304,7 +304,7 @@ public class RecommendResponseMapper {
         return result;
     }
 
-    private SubCategoryFilterResponse filterOf(CategoryCode category, List<SubCategory> subs) {
+    private SubCategoryFilterResponse filterOf(Category category, List<SubCategory> subs) {
         List<String> names = subs.stream().map(SubCategory::getDisplayName).toList();
         return new SubCategoryFilterResponse(category, category.getDisplayName(), names);
     }

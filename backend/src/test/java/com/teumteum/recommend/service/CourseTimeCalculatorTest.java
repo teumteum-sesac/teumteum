@@ -1,6 +1,6 @@
 package com.teumteum.recommend.service;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
 import com.teumteum.recommend.domain.PlaceCandidate;
@@ -126,6 +126,6 @@ class CourseTimeCalculatorTest {
     }
 
     private PlaceCandidate place(String id) {
-        return new PlaceCandidate(id, "장소" + id, CategoryCode.CAFE, "카페", "서울", 37.545, 127.056);
+        return new PlaceCandidate(id, "장소" + id, Category.CAFE, "카페", "서울", 37.545, 127.056);
     }
 }

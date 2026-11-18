@@ -4,7 +4,7 @@ import com.teumteum.global.exception.CustomException;
 import com.teumteum.place.domain.PlaceCategory;
 import com.teumteum.place.dto.NearbyPlaceResult;
 import com.teumteum.place.service.NearbyPlaceService;
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseSearchResult;
@@ -157,14 +157,14 @@ public class CourseSearchService {
     }
 
     /**
-     * 추천 쪽 대분류(CategoryCode) → 장소 쪽 대분류(PlaceCategory).
+     * 추천 쪽 대분류(Category) → 장소 쪽 대분류(PlaceCategory).
      * 두 enum 은 값 이름이 같아서 이름(name())으로 바꾼다. 랜덤이면 빈 Set (장소 쪽에서 "전체 대분류" 로 검색).
      * <p>
      * 이름이 다르게 바뀌면 valueOf 에서 바로 오류가 나서 알아챌 수 있다 (조용히 틀린 값이 들어가지 않음).
      */
     Set<PlaceCategory> toPlaceCategories(CourseCondition condition) {
         Set<PlaceCategory> result = EnumSet.noneOf(PlaceCategory.class);
-        for (CategoryCode category : condition.categories()) {
+        for (Category category : condition.categories()) {
             result.add(PlaceCategory.valueOf(category.name()));
         }
         return result;
@@ -179,7 +179,7 @@ public class CourseSearchService {
         return new PlaceCandidate(
                 result.kakaoPlaceId(),
                 result.name(),
-                CategoryCode.valueOf(result.category().name()),
+                Category.valueOf(result.category().name()),
                 result.subCategory(),
                 address,
                 result.latitude(),

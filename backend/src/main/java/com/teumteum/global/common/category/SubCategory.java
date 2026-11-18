@@ -1,4 +1,4 @@
-package com.teumteum.recommend.domain;
+package com.teumteum.global.common.category;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -7,24 +7,27 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import static com.teumteum.recommend.domain.CategoryCode.CULTURE;
-import static com.teumteum.recommend.domain.CategoryCode.ENTERTAINMENT;
-import static com.teumteum.recommend.domain.CategoryCode.FOOD;
-import static com.teumteum.recommend.domain.CategoryCode.NATURE;
-import static com.teumteum.recommend.domain.CategoryCode.SHOPPING;
-import static com.teumteum.recommend.domain.CategoryCode.SPORTS;
-import static com.teumteum.recommend.domain.CategoryCode.TOURISM;
+import static com.teumteum.global.common.category.Category.CULTURE;
+import static com.teumteum.global.common.category.Category.ENTERTAINMENT;
+import static com.teumteum.global.common.category.Category.FOOD;
+import static com.teumteum.global.common.category.Category.NATURE;
+import static com.teumteum.global.common.category.Category.SHOPPING;
+import static com.teumteum.global.common.category.Category.SPORTS;
+import static com.teumteum.global.common.category.Category.TOURISM;
 
 /**
- * 세분류 29개와 예상 체류시간(분) (화면설계서 RES-01 체류시간표).
+ * 세분류 29개: 소속 대분류 · 이름 · 예상 체류시간 (화면설계서 RES-01 표). 추천·장소·코스가 모두 이 enum 하나를 쓴다 (#174).
  * <p>
- * category: 이 세분류가 속한 대분류. 세분류 필터를 대분류별로 묶을 때 쓴다 (REQ-050).
- * 맨 위 import static 덕분에 CategoryCode.CULTURE 대신 CULTURE 만 써도 된다.
+ * 여기에는 "이 세분류가 무엇인지" 만 둔다.
+ * "카카오에서 어떻게 찾는지"(검색 키워드·카카오 분류 코드)는 장소 검색에만 쓰는 정보라
+ * 장소 쪽 {@code place.domain.SubCategorySearchRule} 에 따로 둔다.
+ * <p>
+ * 다른 곳(DB category_name, 응답의 subCategory)에는 enum 이름이 아니라 displayName("카페")이 들어간다.
+ * 순서는 화면설계서 표 순서이고, 세분류 필터 칩도 이 순서로 나온다.
  */
 @Getter
 @RequiredArgsConstructor
 public enum SubCategory {
-    // 1. 값 목록 (소속 대분류, 이름, 체류시간)
     // 문화생활
     EXHIBITION(CULTURE, "전시", 40),
     MOVIE(CULTURE, "영화", 150),
@@ -32,10 +35,10 @@ public enum SubCategory {
     BOOKSTORE(CULTURE, "책방", 40),
     // 카페/디저트
     // 이 enum 안에서 CAFE 라고만 쓰면 대분류가 아니라 세분류 SubCategory.CAFE(자기 자신)를 가리킨다.
-    // 그래서 카페/디저트 줄만 CategoryCode.CAFE 로 이름을 다 적는다.
-    CAFE(CategoryCode.CAFE, "카페", 40),
-    BAKERY(CategoryCode.CAFE, "베이커리", 40),
-    DESSERT(CategoryCode.CAFE, "디저트", 40),
+    // 그래서 카페/디저트 줄만 Category.CAFE 로 이름을 다 적는다.
+    CAFE(Category.CAFE, "카페", 40),
+    BAKERY(Category.CAFE, "베이커리", 40),
+    DESSERT(Category.CAFE, "디저트", 40),
     // 음식/맛집
     KOREAN(FOOD, "한식", 40),
     WESTERN(FOOD, "양식", 40),
@@ -65,31 +68,31 @@ public enum SubCategory {
     PALACE(TOURISM, "고궁", 40),
     OBSERVATORY(TOURISM, "전망대", 40);
 
-    private final CategoryCode category;
+    /** 소속 대분류 */
+    private final Category category;
+    /** 세분류 이름 (예: "카페"). DB·응답에는 이 값이 들어간다 */
     private final String displayName;
+    /** 예상 체류시간(분). 영화·공연 150분, 나머지 40분 (2026-11-18 팀 결정) */
     private final int stayMinutes;
 
+    /** 이름("카페")으로 세분류를 찾는다. 없거나 null 이면 빈 값 */
     public static Optional<SubCategory> fromDisplayName(String name) {
-        // ① name 이 null 이면 → 바로 "없음" 돌려주기
-        if (name == null) return Optional.empty();
-
-        // ② values() 로 29개를 하나씩 돌면서
-        //    getDisplayName() 이 name 과 같으면 → 그 값을 Optional 에 담아 돌려주기
+        if (name == null) {
+            return Optional.empty();
+        }
         for (SubCategory sub : values()) {
             if (sub.getDisplayName().equals(name)) {
                 return Optional.of(sub);
             }
         }
-        // ③ 끝까지 못 찾으면 → "없음" 돌려주기
         return Optional.empty();
-
     }
 
     /**
      * 한 대분류에 속한 세분류들을 선언 순서대로 돌려준다.
      * 예) SPORTS → [당구, 볼링, 클라이밍]
      */
-    public static List<SubCategory> of(CategoryCode category) {
+    public static List<SubCategory> of(Category category) {
         List<SubCategory> result = new ArrayList<>();
         for (SubCategory sub : values()) {
             if (sub.getCategory() == category) {

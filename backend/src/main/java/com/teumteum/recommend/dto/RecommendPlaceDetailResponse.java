@@ -1,6 +1,6 @@
 package com.teumteum.recommend.dto;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 
 /**
  * 코스 상세(DET-01)의 장소 1곳. RecommendPlaceResponse 의 모든 필드 + 소개·카카오맵 링크.
@@ -15,7 +15,7 @@ public record RecommendPlaceDetailResponse(
         String placeId,           // 장소 ID
         int visitOrder,           // 방문 순서, 1부터
         String placeName,         // 장소명
-        CategoryCode category,    // 대분류 코드
+        Category category,    // 대분류 코드
         String subCategory,       // 세분류 이름
         String address,           // 주소, 없으면 null
         double latitude,          // 위도

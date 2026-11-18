@@ -1,6 +1,6 @@
 package com.teumteum.recommend.dto;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 
 /**
  * 장소 교체 후보 1곳 (DET-03 목록의 한 줄, "당구장 H · 도보 20분 · 총 시간 +5분").
@@ -21,7 +21,7 @@ import com.teumteum.recommend.domain.CategoryCode;
 public record AlternativePlaceResponse(
         String placeId,                  // 장소 ID
         String placeName,                // 장소명
-        CategoryCode category,           // 대분류 코드
+        Category category,           // 대분류 코드
         String subCategory,              // 세분류 이름
         String address,                  // 주소, 없으면 null
         double latitude,                 // 위도

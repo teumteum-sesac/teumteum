@@ -1,6 +1,6 @@
 package com.teumteum.recommend.service;
 
-import com.teumteum.recommend.domain.SubCategory;
+import com.teumteum.global.common.category.SubCategory;
 import org.springframework.stereotype.Component;
 
 @Component

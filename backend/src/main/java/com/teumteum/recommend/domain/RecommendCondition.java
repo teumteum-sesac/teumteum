@@ -1,5 +1,7 @@
 package com.teumteum.recommend.domain;
 
+import com.teumteum.global.common.category.Category;
+
 import com.teumteum.recommend.domain.TravelRoute.Coordinate;
 
 import java.util.LinkedHashSet;
@@ -28,7 +30,7 @@ public record RecommendCondition(
         int availableMinutes,
         TransportType transportType,
         CategoryMode categoryMode,
-        List<CategoryCode> categories
+        List<Category> categories
 ) {
 
     /**
@@ -38,7 +40,7 @@ public record RecommendCondition(
      * - 대분류 중복은 하나로 (순서 유지)
      */
     public RecommendCondition {
-        List<CategoryCode> distinct = (categories == null) ? List.of() : List.copyOf(new LinkedHashSet<>(categories));
+        List<Category> distinct = (categories == null) ? List.of() : List.copyOf(new LinkedHashSet<>(categories));
         if (categoryMode == CategoryMode.RANDOM || distinct.isEmpty()) {
             categoryMode = CategoryMode.RANDOM;
             distinct = List.of();

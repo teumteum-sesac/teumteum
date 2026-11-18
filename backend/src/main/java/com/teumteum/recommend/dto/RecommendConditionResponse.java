@@ -1,6 +1,6 @@
 package com.teumteum.recommend.dto;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.TransportType;
 
@@ -26,6 +26,6 @@ public record RecommendConditionResponse(
         int availableMinutes,              // 이용 시간(분)
         TransportType transportType,       // 이동수단
         CategoryMode categoryMode,         // 실제 적용한 카테고리 선택 방식
-        List<CategoryCode> categories      // 실제 적용한 대분류 (중복 제거 후). RANDOM 이면 빈 목록
+        List<Category> categories      // 실제 적용한 대분류 (중복 제거 후). RANDOM 이면 빈 목록
 ) {
 }

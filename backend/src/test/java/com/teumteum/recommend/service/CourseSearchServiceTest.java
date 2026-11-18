@@ -5,7 +5,7 @@ import com.teumteum.place.domain.PlaceCategory;
 import com.teumteum.place.dto.NearbyPlaceResult;
 import com.teumteum.place.exception.PlaceErrorCode;
 import com.teumteum.place.service.NearbyPlaceService;
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseSearchResult;
@@ -198,7 +198,7 @@ class CourseSearchServiceTest {
     @DisplayName("랜덤이면 장소 쪽에 빈 대분류를 넘기고, 직접 선택이면 같은 이름의 장소 대분류로 바꾼다")
     void toPlaceCategories_convertsByName() {
         CourseCondition direct = new CourseCondition(ORIGIN, null, 180, TransportType.WALK,
-                List.of(CategoryCode.CAFE, CategoryCode.SPORTS));
+                List.of(Category.CAFE, Category.SPORTS));
 
         assertTrue(courseSearchService.toPlaceCategories(randomCondition).isEmpty());
         assertEquals(EnumSet.of(PlaceCategory.CAFE, PlaceCategory.SPORTS),
@@ -212,7 +212,7 @@ class CourseSearchServiceTest {
                 nearby("101", "서울 성동구 왕십리로 1", "서울 성동구 성수동 1"));
 
         assertEquals("101", candidate.placeId());
-        assertEquals(CategoryCode.SPORTS, candidate.category());
+        assertEquals(Category.SPORTS, candidate.category());
         assertEquals("당구", candidate.subCategory());
         assertEquals("서울 성동구 왕십리로 1", candidate.address());
         assertEquals(37.545, candidate.latitude());
@@ -302,7 +302,7 @@ class CourseSearchServiceTest {
 
     /** 장소 1곳짜리 가짜 코스 (장소 ID 로 서로 구분) */
     private CoursePlan course(String placeId) {
-        PlaceCandidate place = new PlaceCandidate(placeId, "장소" + placeId, CategoryCode.CAFE, "카페",
+        PlaceCandidate place = new PlaceCandidate(placeId, "장소" + placeId, Category.CAFE, "카페",
                 "서울", 37.545, 127.056);
         CourseStop stop = new CourseStop(place, 60, new TravelRoute(10, List.of()));
         return new CoursePlan(List.of(stop), null, 70, 10, false);
