@@ -3,14 +3,7 @@ package com.teumteum.course.service;
 import com.teumteum.course.domain.Course;
 import com.teumteum.course.domain.CoursePlace;
 import com.teumteum.course.domain.CourseRouteLeg;
-import com.teumteum.course.dto.CourseCoordinateResponse;
-import com.teumteum.course.dto.CourseDeleteResponse;
-import com.teumteum.course.dto.CourseListResponse;
-import com.teumteum.course.dto.CourseLocationResponse;
-import com.teumteum.course.dto.CoursePlaceResponse;
-import com.teumteum.course.dto.CourseResponse;
-import com.teumteum.course.dto.CourseRouteLegResponse;
-import com.teumteum.course.dto.CourseSummaryResponse;
+import com.teumteum.course.dto.*;
 import com.teumteum.course.exception.CourseErrorCode;
 import com.teumteum.course.repository.CoursePlaceCount;
 import com.teumteum.course.repository.CoursePlaceRepository;
@@ -23,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,6 +24,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.teumteum.recommend.service.RecommendService;
+import com.teumteum.recommend.dto.RouteLegResponse;
+
 
 @Service // Spring이 관리하는 서비스 객체로 등록한다.
 @RequiredArgsConstructor // final 필드를 받는 생성자를 만들고 Repository를 주입받는다.
@@ -39,6 +36,8 @@ public class CourseService {
     private final CourseRepository courseRepository;
     private final CoursePlaceRepository coursePlaceRepository;
     private final CourseRouteLegRepository courseRouteLegRepository;
+    private final RecommendService recommendService;
+    private final CourseSaveWriter courseSaveWriter;
 
     // memberId는 요청 파라미터가 아니라 Controller가 인증 정보에서 확인한 회원 ID여야 한다.
     public CourseListResponse getCourses(Long memberId, int page, int size) {
@@ -269,5 +268,36 @@ public class CourseService {
 
         // 트랜잭션 커밋에 실패하면 정상 응답 대신 예외가 전달된다.
         return new CourseDeleteResponse(course.getCourseId().toString(), true);
+    }
+
+    // 실패한 쓰기 트랜잭션 밖에서 중복 저장본을 다시 읽을 수 있도록 기존 트랜잭션을 중단한다.
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    public CourseSaveResponse saveCourse(Long memberId, String recommendationId) {
+        if (memberId == null || memberId <= 0) {
+            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+        }
+        if (recommendationId == null || recommendationId.isBlank() || recommendationId.length() > 128) {
+            throw new CustomException(CommonErrorCode.INVALID_REQUEST);
+        }
+        // 중복 확인을 추천 조회보다 먼저 수행한다. 원래 추천이 만료돼도 저장본을 반환한다.
+        var existing = courseRepository.findByMemberIdAndSourceRecommendationId(memberId, recommendationId);
+        if (existing.isPresent()) return CourseSnapshotMapper.response(existing.get(), false);
+
+        var detail = recommendService.getCourseDetail(recommendationId); // 없는 추천 404, 만료 410
+        CourseSnapshotMapper.validate(detail, recommendationId);
+        try {
+            return courseSaveWriter.save(memberId, detail);
+        } catch (org.springframework.dao.DataIntegrityViolationException conflict) {
+            // 별도 쓰기 트랜잭션은 이미 롤백됐다. 다른 요청이 저장했다면 새 조회로 반환한다.
+            // 중복과 무관한 FK·컬럼 제약 오류는 숨기지 않고 원래 예외를 다시 던진다.
+            return courseRepository.findByMemberIdAndSourceRecommendationId(memberId, recommendationId)
+                    .map(course -> CourseSnapshotMapper.response(course, false))
+                    .orElseThrow(() -> conflict);
+        }
+    }
+
+    // 저장 전에 추천의 경로를 순서대로 복사한다. DB 저장은 CourseSaveWriter가 담당한다.
+    List<CourseRouteLeg> createRouteLegs(Course course, List<RouteLegResponse> routeLegs) {
+        return CourseSnapshotMapper.routes(course, routeLegs);
     }
 }

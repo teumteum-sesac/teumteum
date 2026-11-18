@@ -7,6 +7,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import com.teumteum.course.dto.CourseDeleteResponse;
 import com.teumteum.course.dto.CourseListResponse;
 import com.teumteum.course.dto.CourseResponse;
+import com.teumteum.course.dto.CourseSaveRequest;
+import com.teumteum.course.dto.CourseSaveResponse;
+import jakarta.validation.Valid;
+import java.net.URI;
 import com.teumteum.course.service.CourseService;
 import com.teumteum.global.auth.LoginMember;
 import com.teumteum.global.common.ApiResponse;
@@ -15,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,6 +34,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class CourseController {
 
     private final CourseService courseService;
+
+    @Operation(summary = "🔒 추천 코스 저장", description = "선택한 추천 버전의 장소·일정·경로를 저장한다. 신규 201, 동일 추천 기존 저장본 200. 추천 없음 404, 만료 410, 저장할 수 없는 정보 409.")
+    @PostMapping
+    public ResponseEntity<ApiResponse<CourseSaveResponse>> saveCourse(
+            @Parameter(hidden = true) @LoginMember Long memberId,
+            @Valid @RequestBody CourseSaveRequest request
+    ) {
+        CourseSaveResponse response = courseService.saveCourse(memberId, request.recommendationId());
+        if (response.created()) {
+            return ResponseEntity.created(URI.create("/api/courses/" + response.courseId()))
+                    .body(ApiResponse.ok(response));
+        }
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
 
     // GET /api/courses?page=0&size=20: 본인의 저장 코스를 페이지 단위로 조회한다.
     @Operation(summary = "🔒 내 저장 코스 목록", description = "로그인 필요. 최신 저장순, 페이지 단위. totalElements 가 전체 저장 수 (마이페이지 건수는 size=1 로 조회)")

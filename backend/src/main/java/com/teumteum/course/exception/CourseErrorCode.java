@@ -15,7 +15,9 @@ public enum CourseErrorCode implements ErrorCode {
             HttpStatus.NOT_FOUND,
             "COURSE_NOT_FOUND",
             "저장한 코스를 찾을 수 없어요."
-    );
+    ),
+    RECOMMENDATION_NOT_SAVEABLE(HttpStatus.CONFLICT, "RECOMMENDATION_NOT_SAVEABLE",
+            "추천 코스 정보를 저장할 수 없어요. 다시 추천해 주세요.");
 
     private final HttpStatus status;
     private final String code;
