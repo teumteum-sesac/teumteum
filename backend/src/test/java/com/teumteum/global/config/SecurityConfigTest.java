@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.teumteum.course.controller.CourseController;
 import com.teumteum.course.dto.CourseListResponse;
 import com.teumteum.course.service.CourseService;
+import com.teumteum.member.service.MemberService;
 import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.global.auth.SecurityErrorHandler;
 import com.teumteum.global.exception.GlobalExceptionHandler;
@@ -54,6 +55,8 @@ class SecurityConfigTest {
 
     @MockitoBean
     private CourseService courseService;
+    @MockitoBean
+    private MemberService memberService;
 
     @Test
     @DisplayName("토큰 없이 회원 전용 API → 401 UNAUTHORIZED 공통 응답")
@@ -69,6 +72,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("진짜 토큰 → 200, 토큰 속 회원 ID 가 @LoginMember 로 들어간다")
     void validToken() throws Exception {
+        given(memberService.isActiveMember(7L)).willReturn(true);
         given(courseService.getCourses(anyLong(), anyInt(), anyInt()))
                 .willReturn(new CourseListResponse(List.of(), 0, 20, 0L, 0, false));
         String token = jwtProvider.createAccessToken(7L);
@@ -76,6 +80,19 @@ class SecurityConfigTest {
         mockMvc.perform(get("/api/courses").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+        verify(courseService).getCourses(7L, 0, 20);
+    }
+
+    @Test
+    void previouslyIssuedTokenIsRejectedAfterWithdrawal() throws Exception {
+        given(memberService.isActiveMember(7L)).willReturn(true, false);
+        given(courseService.getCourses(anyLong(), anyInt(), anyInt()))
+                .willReturn(new CourseListResponse(List.of(), 0, 20, 0L, 0, false));
+        String token = jwtProvider.createAccessToken(7L);
+        mockMvc.perform(get("/api/courses").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/courses").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
         verify(courseService).getCourses(7L, 0, 20);
     }
 

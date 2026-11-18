@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,6 +24,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.service.MemberService;
+import com.teumteum.member.service.MemberWithdrawalService;
+import com.teumteum.member.dto.MemberWithdrawRequest;
+import com.teumteum.member.dto.MemberWithdrawResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,11 +56,13 @@ class MemberControllerTest {
 
     private MockMvc mockMvc;
     private MemberService memberService;
+    private MemberWithdrawalService withdrawalService;
 
     @BeforeEach
     void setUp() {
         memberService = mock(MemberService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new MemberController(memberService))
+        withdrawalService = mock(MemberWithdrawalService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new MemberController(memberService, withdrawalService))
                 .setCustomArgumentResolvers(new LoginMemberArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())   // 예외 → 공통 응답 변환도 실제처럼 붙인다
                 .build();
@@ -116,6 +122,38 @@ class MemberControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"nickname\":\"새닉네임\"}"))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(memberService);
+    }
+
+    @Test
+    void withdrawsAuthenticatedMemberWithConsent() throws Exception {
+        given(withdrawalService.withdrawMyAccount(7L, new MemberWithdrawRequest(null, true)))
+                .willReturn(new MemberWithdrawResponse(true));
+        mockMvc.perform(delete("/api/members/me")
+                        .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
+                        .param("memberId", "99")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"agreed\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.withdrawn").value(true));
+        verify(withdrawalService).withdrawMyAccount(7L, new MemberWithdrawRequest(null, true));
+    }
+
+    @Test
+    void rejectsWithdrawalWithoutConfirmation() throws Exception {
+        mockMvc.perform(delete("/api/members/me")
+                        .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+        verifyNoInteractions(withdrawalService);
+    }
+
+    @Test
+    void rejectsWithdrawalWithoutAuthentication() throws Exception {
+        mockMvc.perform(delete("/api/members/me")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"agreed\":true}"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(withdrawalService);
     }
 
     @Test

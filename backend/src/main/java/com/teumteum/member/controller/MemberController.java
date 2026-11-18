@@ -4,6 +4,9 @@ import com.teumteum.global.auth.LoginMember;
 import com.teumteum.global.config.OpenApiConfig;
 import com.teumteum.member.dto.MemberResponse;
 import com.teumteum.member.dto.MemberUpdateRequest;
+import com.teumteum.member.dto.MemberWithdrawRequest;
+import com.teumteum.member.dto.MemberWithdrawResponse;
+import com.teumteum.member.service.MemberWithdrawalService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,6 +51,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class MemberController {
 
     private final MemberService memberService;
+    private final MemberWithdrawalService memberWithdrawalService;
+
+    @Operation(summary = "🔒 회원 탈퇴", description = "비밀번호 확인 또는 agreed=true로 탈퇴한다. 저장 코스·장소 스냅샷·경로를 삭제하고 회원을 탈퇴 상태로 변경한다. 성공 후 프론트는 토큰을 지우고 홈으로 이동한다.")
+    @DeleteMapping("/me")
+    public ResponseEntity<ApiResponse<MemberWithdrawResponse>> withdrawMyAccount(
+            @Parameter(hidden = true) @LoginMember Long memberId,
+            @Valid @RequestBody MemberWithdrawRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(memberWithdrawalService.withdrawMyAccount(memberId, request)));
+    }
 
     /**
      * 회원가입.

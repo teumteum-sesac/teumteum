@@ -16,7 +16,7 @@
 | 회원 | 이메일 중복 확인 | GET | `/api/members/email-exists?email=` | 🔓 | ✅ | 김용현 | AUT-02 | [2.3](#23-이메일-중복-확인) |
 | 회원 | 내 정보 조회 | GET | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-01·MY-04 | [2.4](#24-내-회원-정보-조회) |
 | 회원 | 내 정보 수정 | PATCH | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-04 | [2.5](#25-내-회원-정보-수정) |
-| 회원 | 회원 탈퇴 | DELETE | `/api/members/me` | 🔒 | ⬜ | 김하윤 | MY-04 | 명세 작성 전 |
+| 회원 | 회원 탈퇴 | DELETE | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-04 | [2.6](#26-회원-탈퇴) |
 | 장소 | 장소·주소 검색 | GET | `/api/places/search?query=&lat=&lng=` | 🔓 | ✅ | 정종일 | HOM-01, CON-02 | [3.1](#31-장소주소-검색) |
 | 장소 | 좌표 → 주소 | GET | `/api/places/address?lat=&lng=` | 🔓 | ✅ | 정종일 | CON-02, 지도 핀 | [3.2](#32-좌표--주소) |
 | 장소 | 주변 장소 | GET | `/api/places/nearby?lat=&lng=&categories=&radius=` | 🔓 | ✅ | 정종일 | HOM-02 | [3.3](#33-주변-장소) |
@@ -185,6 +185,39 @@
 | 400 | `INVALID_REQUEST` | 닉네임·비밀번호 검증 실패 (DTO 검증은 `fieldErrors` 포함) |
 | 401 | `UNAUTHORIZED` | 인증 실패, 회원 없음·탈퇴 상태 |
 
+### 2.6 회원 탈퇴
+`DELETE /api/members/me` · 🔒 · 화면 MY-04 · REQ-006
+
+요청 (`MemberWithdrawRequest`). JWT로 인증한 본인만 탈퇴한다. 아래 두 방식 중 하나를 사용한다.
+```json
+{ "agreed": true }
+```
+또는 현재 비밀번호로 확인:
+```json
+{ "password": "abc12345", "agreed": false }
+```
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| agreed | boolean | 기본 false. true면 동의 확인으로 탈퇴 가능 |
+| password | string 또는 null | agreed=false면 현재 비밀번호 필수. 최대 64자 |
+
+성공 200 (`MemberWithdrawResponse`, 공통 응답의 `data`):
+```json
+{ "withdrawn": true }
+```
+
+- 저장 코스와 하위 장소 스냅샷·경로를 삭제하고 회원 상태를 WITHDRAWN으로 변경한다. 회원 행·공용 장소·다른 회원 데이터는 유지한다.
+- 모든 변경은 한 트랜잭션으로 처리하며 실패 시 전체 롤백한다. 하위 삭제는 기존 DB의 ON DELETE CASCADE를 사용한다.
+- 탈퇴 후 로그인은 실패하며, JWT 인증 시 회원 상태를 확인하므로 기존 토큰도 회원 전용·관리자 API에 사용할 수 없다. 공개 API는 비회원으로 이용할 수 있다.
+- 프론트는 성공 응답 확인 후 토큰·로그인 상태를 비우고 홈으로 이동한다.
+
+| HTTP | code | 언제 |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | 탈퇴 의사 미확인, 입력 길이 위반, 본문 누락 |
+| 400 | `WITHDRAWAL_PASSWORD_MISMATCH` | agreed=false이고 현재 비밀번호가 틀린 경우 |
+| 401 | `UNAUTHORIZED` | 인증 실패, 없는 회원·이미 탈퇴한 회원 |
+
 ## 3. 장소 (정종일)
 
 ### 3.1 장소·주소 검색
@@ -243,6 +276,7 @@
 | 날짜 | 내용 |
 |---|---|
 | 2026-11-18 | 내 회원 정보 수정(PATCH /api/members/me) 요청·응답·비밀번호 유지 정책 추가 (#153) |
+| 2026-11-18 | 회원 탈퇴 요청·응답·저장 코스 삭제·탈퇴 토큰 차단 정책 추가 (#155) |
 | 2026-11-18 | 내 회원 정보 조회(GET /api/members/me) 응답·인증·오류 명세 추가 (#142) |
 | 2026-11-18 | 첫 취합 (인증·회원·장소 상세, 추천·코스는 도메인 문서 연결, 구현 상태 표시) |
 | 2026-11-18 | 추천 API 4개(다시 추천·코스 상세·장소 교체 후보·장소 교체) 구현 상태 ✅ 로 변경 (나혜빈) |

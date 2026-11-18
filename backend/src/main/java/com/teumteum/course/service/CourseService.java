@@ -248,6 +248,15 @@ public class CourseService {
         );
     }
 
+    // 탈퇴 시 호출된다. 호출한 회원 서비스의 트랜잭션에 참여하며 공용 장소는 삭제하지 않는다.
+    @Transactional
+    public void deleteMemberCourses(Long memberId) {
+        if (memberId == null || memberId <= 0) {
+            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+        }
+        courseRepository.deleteAllByMemberId(memberId);
+    }
+
     // 클래스의 읽기 전용 설정을 덮어써서 삭제를 쓰기 트랜잭션으로 실행한다.
     @Transactional
     public CourseDeleteResponse deleteCourse(Long memberId, Long courseId) {

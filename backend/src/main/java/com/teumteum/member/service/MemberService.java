@@ -119,6 +119,12 @@ public class MemberService {
         return memberRepository.findById(memberId);
     }
 
+    /** JWT 서명이 맞아도 삭제·탈퇴한 회원이면 인증하지 않는다. */
+    public boolean isActiveMember(Long memberId) {
+        return memberId != null && memberId > 0
+                && findMember(memberId).filter(Member::isActive).isPresent();
+    }
+
     /** 탈퇴 처리 (상태만 WITHDRAWN 으로). 바뀐 회원을 돌려준다 */
     @Transactional
     public Member withdraw(Member member) {
