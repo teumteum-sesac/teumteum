@@ -4,11 +4,25 @@ import Chip from '../../../shared/components/Chip'
 import ChipGroup from '../../../shared/components/ChipGroup'
 import EmptyState from '../../../shared/components/EmptyState'
 import { CATEGORIES, getCategoryIcon, getCategoryLabel, type CategoryCode } from '../../../shared/types/domain'
-import { formatDistance, walkMinutes } from '../format'
+import { formatDistance, formatDistanceForRadius, walkMinutes } from '../format'
 import type { NearbyPlacesStatus } from '../hooks/useNearbyPlaces'
 import { clampSheetHeight, SHEET_HEIGHT_CLASS, snapSheetLevel, tapSheetLevel, type SheetLevel } from '../sheetLayout'
+import type { NearbySearchItem } from '../hooks/useNearbySearch'
 import type { NearbyPlaceResult } from '../types'
-import PlaceCard from './PlaceCard'
+import { KAKAO_GROUP_CATEGORY } from '../kakaoCategory'
+import PlaceCard, { PlaceCardSkeletonList } from './PlaceCard'
+
+/** 주변 탐색 검색 모드에서 시트에 보여 줄 것 (HomeScreen 이 검색 상태로 만든다) */
+export interface NearbySearchView {
+  query: string
+  status: 'loading' | 'done' | 'error'
+  errorMessage: string | null
+  /** 검색 API 순서(정확도순) 그대로. 반경 안팎은 inRadius */
+  items: NearbySearchItem[]
+  selectedId: string | null
+  onSelect: (item: NearbySearchItem) => void
+  onRetry: () => void
+}
 
 const RADIUS_OPTIONS = [500, 1000, 3000]
 
@@ -55,6 +69,8 @@ interface NearbySheetProps {
   /** 시트 높이 단계. 지도 영역도 같은 값으로 줄이도록 HomeScreen 이 관리한다 */
   level: SheetLevel
   onLevelChange: (level: SheetLevel) => void
+  /** 화면 안 검색 중이면 검색 결과를 보여 준다 (카테고리 칩은 숨기고 반경 선택은 그대로). null 이면 주변 장소 목록 */
+  search?: NearbySearchView | null
 }
 
 /**
@@ -81,9 +97,13 @@ export default function NearbySheet({
   radiusEmpty,
   level,
   onLevelChange,
+  search = null,
 }: NearbySheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null)
-  const listRef = useRef<HTMLUListElement>(null)
+  // 목록 스크롤 영역 (주변 장소·검색 결과 공통). 고른 카드를 여기서 찾아 보이게 스크롤한다
+  const listRef = useRef<HTMLDivElement>(null)
+  // 강조·스크롤할 카드: 검색 중이면 검색 결과에서 고른 것, 아니면 주변 장소에서 고른 것
+  const focusId = search ? search.selectedId : selectedPlaceId
   const drag = useRef<DragState | null>(null)
   // 끌기 중 시트 높이(px). null 이면 단계(level) 높이를 쓴다
   const [dragHeight, setDragHeight] = useState<number | null>(null)
@@ -91,10 +111,10 @@ export default function NearbySheet({
   // 마커로 고른 카드가 목록 밖에 있으면 보이는 위치까지 스크롤한다.
   // 접힘에서 펼쳐지는 중이면 목록 높이가 아직 작으므로, 높이 애니메이션이 끝나면(transitionend) 한 번 더 맞춘다
   useEffect(() => {
-    if (!selectedPlaceId) return
+    if (!focusId) return
     const sheet = sheetRef.current
     const scroll = () => {
-      const card = listRef.current?.querySelector(`[data-place-id="${CSS.escape(selectedPlaceId)}"]`)
+      const card = listRef.current?.querySelector(`[data-place-id="${CSS.escape(focusId)}"]`)
       card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
     const onTransitionEnd = (e: TransitionEvent) => {
@@ -107,7 +127,7 @@ export default function NearbySheet({
       clearTimeout(timer)
       sheet?.removeEventListener('transitionend', onTransitionEnd)
     }
-  }, [selectedPlaceId, scrollRequest])
+  }, [focusId, scrollRequest])
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return
@@ -182,7 +202,7 @@ export default function NearbySheet({
         </button>
 
         <div className="flex h-10 items-center justify-between px-4 pb-2">
-          <h2 className="font-bold">내 주변 장소</h2>
+          <h2 className="min-w-0 truncate font-bold">{search ? `‘${search.query}’ 검색 결과` : '내 주변 장소'}</h2>
           {level === 'collapsed' ? (
             <span className="text-xs text-neutral-500">펼치기 ▲</span>
           ) : (
@@ -202,22 +222,28 @@ export default function NearbySheet({
         </div>
       </div>
 
-      <div className="px-4 pb-2">
-        <ChipGroup>
-          <Chip selected={category === null} onClick={() => onCategoryChange(null)}>
-            전체
-          </Chip>
-          {CATEGORIES.map((c) => (
-            <Chip key={c.code} selected={category === c.code} onClick={() => onCategoryChange(c.code)}>
-              {c.label}
+      {/* 카테고리 칩은 검색 중에는 숨긴다 (검색 결과는 우리 8개 대분류로 정확히 나뉘지 않음). 검색어를 지우면 고르던 칩 그대로 */}
+      {!search && (
+        <div className="px-4 pb-2">
+          <ChipGroup>
+            <Chip selected={category === null} onClick={() => onCategoryChange(null)}>
+              전체
             </Chip>
-          ))}
-        </ChipGroup>
-      </div>
+            {CATEGORIES.map((c) => (
+              <Chip key={c.code} selected={category === c.code} onClick={() => onCategoryChange(c.code)}>
+                {c.label}
+              </Chip>
+            ))}
+          </ChipGroup>
+        </div>
+      )}
 
       {/* 목록만 스크롤된다. 끝까지 스크롤해도 바깥(페이지)으로 넘기지 않는다. 시트 끌기는 위 손잡이·제목 줄에서만 */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
-        {listNotice(status, errorMessage, onRetry, places.length, radiusEmpty) ?? (
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+        {search ? (
+          <SearchResults search={search} radius={radius} />
+        ) : (
+          listNotice(status, errorMessage, onRetry, places.length, radiusEmpty) ?? (
           <>
             {/* 반경을 바꿔 다시 불러오는 동안에는 이전 목록을 그대로 두고 작게 알린다 */}
             {status === 'loading' && (
@@ -225,7 +251,7 @@ export default function NearbySheet({
                 새로 불러오는 중…
               </p>
             )}
-            <ul ref={listRef} className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-2">
               {places.map((place) => (
                 <PlaceCard
                   key={place.kakaoPlaceId}
@@ -247,9 +273,81 @@ export default function NearbySheet({
               ))}
             </ul>
           </>
+          )
         )}
       </div>
     </div>
+  )
+}
+
+/** 반경 안팎 표시 (검색 결과). 반경 밖도 고를 수 있으므로 흐리게 만들지 않고 라벨 색만 다르게 */
+function RadiusBadge({ inRadius }: { inRadius: boolean }) {
+  return inRadius ? (
+    <span className="shrink-0 rounded-full bg-primary-light px-1.5 py-0.5 text-[10px] font-bold text-primary-dark">반경 내</span>
+  ) : (
+    <span className="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold text-neutral-500">반경 밖</span>
+  )
+}
+
+/**
+ * 검색 결과 목록: '반경 내' / '반경 밖' 두 묶음. 묶음 안에서는 검색 API 순서(정확도순)를 그대로 둔다.
+ * 반경은 결과를 거르는 조건이 아니라 탐색 범위를 알려 주는 기준이므로, 반경 밖 장소도 같은 카드로 보여 주고 고를 수 있다
+ */
+function SearchResults({ search, radius }: { search: NearbySearchView; radius: number }) {
+  if (search.status === 'loading') return <PlaceCardSkeletonList label={`‘${search.query}’ 찾는 중…`} count={3} />
+  if (search.status === 'error') {
+    return (
+      <EmptyState
+        message={search.errorMessage ?? '검색하지 못했어요.'}
+        action={
+          <Button variant="secondary" onClick={search.onRetry}>
+            다시 검색
+          </Button>
+        }
+      />
+    )
+  }
+  if (search.items.length === 0) return <EmptyState message={`‘${search.query}’ 검색 결과가 없어요.`} />
+
+  const groups = [
+    { key: 'in', title: '반경 내', items: search.items.filter((i) => i.inRadius), dot: 'bg-primary' },
+    { key: 'out', title: '반경 밖', items: search.items.filter((i) => !i.inRadius), dot: 'bg-neutral-300' },
+  ].filter((g) => g.items.length > 0)
+
+  return (
+    <>
+      <p className="pb-2 text-xs text-neutral-500">
+        반경 {formatDistance(radius)} 기준 · 거리는 탐색 위치에서 잰 직선거리예요. 반경 밖 장소도 함께 보여요.
+      </p>
+      {groups.map((group) => (
+        <section key={group.key} aria-label={`${group.title} ${group.items.length}곳`} className="pb-3">
+          <h3 className="flex items-center gap-1.5 pb-2 text-sm font-bold">
+            <span aria-hidden className={`size-2 rounded-full ${group.dot}`} />
+            {group.title} <span className="font-normal text-neutral-500">{group.items.length}</span>
+          </h3>
+          <ul className="flex flex-col gap-2">
+            {group.items.map((item) => {
+              const category = item.categoryGroupCode ? KAKAO_GROUP_CATEGORY[item.categoryGroupCode] : undefined
+              const kind = item.categoryLabel ?? (item.type === 'ADDRESS' ? '주소' : '장소')
+              return (
+                <PlaceCard
+                  key={item.id}
+                  id={item.id}
+                  icon={category ? getCategoryIcon(category) : '📍'}
+                  name={item.name}
+                  badge={<RadiusBadge inRadius={item.inRadius} />}
+                  meta={[kind, `직선 ${formatDistanceForRadius(item.distance)}`, item.address !== item.name ? item.address : null].filter(Boolean).join(' · ')}
+                  selected={item.id === search.selectedId}
+                  onSelect={() => search.onSelect(item)}
+                  detailTo={item.kakaoPlaceId ? `/results/place-${item.kakaoPlaceId}` : null}
+                  detailState={{ name: item.name, lat: item.lat, lng: item.lng }}
+                />
+              )
+            })}
+          </ul>
+        </section>
+      ))}
+    </>
   )
 }
 

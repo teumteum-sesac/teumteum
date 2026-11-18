@@ -15,8 +15,10 @@ import HomeSearchBar from './HomeSearchBar'
 import KakaoMap, { type ClusterMarker, type KakaoMapController, type MapMarker, type MapPadding } from './KakaoMap'
 import LocationGuide from './LocationGuide'
 import MapControls, { LocateButton, MAP_CONTROLS_HEIGHT, type LocateStatus } from './MapControls'
-import NearbySheet from './NearbySheet'
+import NearbySheet, { type NearbySearchView } from './NearbySheet'
 import type { NearbyPlaceResult } from '../types'
+import { straightDistance } from '../format'
+import { useNearbySearch, type NearbySearchItem } from '../hooks/useNearbySearch'
 
 // ── 주변 탐색 (HOM-02) 반경 맞춤 ──
 /** 반경 원에 맞출 때 지도 가장자리 여백(px). 위쪽은 검색창 묶음 아래끝 + 이 값 */
@@ -96,11 +98,58 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     [nearbyPlaces.places, category],
   )
 
+  // ── 주변 탐색 화면 안 검색 (HOM-02) ──
+  // 검색 기준 좌표는 탐색 기준(position) 그대로. 검색해도 반경·카테고리·주변 장소 목록은 바뀌지 않고, 검색어를 지우면 그대로 돌아간다
+  const { state: searchState, search: runSearch, clear: resetSearch } = useNearbySearch(position)
+  const searching = nearby && searchState.status !== 'idle'
+  // 검색 결과에서 고른 장소 id (주변 장소 선택과 따로 둔다)
+  const [searchSelectedId, setSearchSelectedId] = useState<string | null>(null)
+  // 검색 결과 → 화면용: 탐색 기준에서의 직선거리, 지금 반경 안인지. 반경을 바꾸면 다시 검색하지 않고 판정만 다시 한다
+  const searchItems = useMemo<NearbySearchItem[]>(() => {
+    if (searchState.status !== 'done') return []
+    return searchState.results.map((r) => {
+      const distance = straightDistance(position, { lat: r.latitude, lng: r.longitude })
+      return {
+        id: r.kakaoPlaceId ?? `addr-${r.latitude},${r.longitude}`,
+        kakaoPlaceId: r.kakaoPlaceId,
+        type: r.type,
+        name: r.name,
+        lat: r.latitude,
+        lng: r.longitude,
+        address: r.roadAddress ?? r.address,
+        categoryGroupCode: r.categoryGroupCode,
+        categoryLabel: r.categoryName?.split(' > ').pop() ?? null,
+        distance,
+        inRadius: distance <= radius,
+      }
+    })
+  }, [searchState, position, radius])
+  const selectedSearchItem = useMemo(
+    () => (searching && searchSelectedId ? (searchItems.find((i) => i.id === searchSelectedId) ?? null) : null),
+    [searching, searchItems, searchSelectedId],
+  )
+
   // ── 주변 탐색 지도 표시 ──
   // 장소 마커는 클러스터로 묶는다 (기존 핑크 핀 이미지 그대로). 고른 장소는 클러스터에서 빼서 크게 강조한 핀으로 따로 그려
   // 묶여 있어도 항상 보이게 한다. 마커를 누르면 목록의 해당 카드를 강조한다 (시트가 접혀 있으면 반만 펼침)
+  // 검색 중에는 주변 장소 대신 검색 결과를 같은 방식으로 그리고, 반경 밖 결과는 흐리게 한다 (빼지 않음)
   const clusterMarkers = useMemo<ClusterMarker[] | undefined>(() => {
     if (!nearby) return undefined
+    if (searching) {
+      return searchItems
+        .filter((i) => i.id !== searchSelectedId)
+        .map((i) => ({
+          id: i.id,
+          lat: i.lat,
+          lng: i.lng,
+          dimmed: !i.inRadius,
+          onClick: () => {
+            setSearchSelectedId(i.id)
+            setScrollRequest((n) => n + 1)
+            setSheetLevel((current) => (current === 'collapsed' ? 'half' : current))
+          },
+        }))
+    }
     return places
       .filter((p) => p.kakaoPlaceId !== selectedPlaceId)
       .map((p) => ({
@@ -113,22 +162,25 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
           setSheetLevel((current) => (current === 'collapsed' ? 'half' : current))
         },
       }))
-  }, [nearby, places, selectedPlaceId])
+  }, [nearby, searching, searchItems, searchSelectedId, places, selectedPlaceId])
   const selectedPlace = useMemo(
     () => (nearby && selectedPlaceId ? (places.find((p) => p.kakaoPlaceId === selectedPlaceId) ?? null) : null),
     [nearby, places, selectedPlaceId],
   )
+  // 지금 강조할 장소: 검색 중이면 검색 결과에서, 아니면 주변 장소에서 고른 것
+  const focused = useMemo(() => {
+    if (searching) return selectedSearchItem ? { id: selectedSearchItem.id, lat: selectedSearchItem.lat, lng: selectedSearchItem.lng } : null
+    return selectedPlace ? { id: selectedPlace.kakaoPlaceId, lat: selectedPlace.latitude, lng: selectedPlace.longitude } : null
+  }, [searching, selectedSearchItem, selectedPlace])
 
   // 클러스터 밖에 따로 그리는 것: 고른 장소 강조 핀 + 현재 위치 스티커 (홈은 현재 위치만)
   const markers = useMemo<MapMarker[]>(() => {
     const list: MapMarker[] = []
-    if (selectedPlace) {
-      list.push({ id: selectedPlace.kakaoPlaceId, lat: selectedPlace.latitude, lng: selectedPlace.longitude, variant: 'selected' })
-    }
+    if (focused) list.push({ ...focused, variant: 'selected' })
     // 위치를 실제로 받았을 때만 현재 위치를 찍는다. 조회 중·거부·실패 시 position 은 서울시청 기본값이라 표시하지 않음
     if (!loading && !denied) list.push({ lat: position.lat, lng: position.lng, variant: 'current' })
     return list
-  }, [selectedPlace, position, loading, denied])
+  }, [focused, position, loading, denied])
 
   // 탐색 반경 원: 실제 주변 장소 조회 기준 좌표(position)가 중심. 지도를 끌어도 기준은 바뀌지 않는다
   const circle = useMemo(() => (nearby && !loading ? { center: position, radius } : null), [nearby, loading, position, radius])
@@ -229,6 +281,42 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     [panNearbyTo],
   )
 
+  // 검색 결과 선택: 반경 안팎과 관계없이 그 장소로 지도를 옮기고 강조한다 (반경 값·탐색 기준 좌표는 그대로)
+  const selectSearchItem = useCallback(
+    (item: NearbySearchItem) => {
+      setSearchSelectedId(item.id)
+      panNearbyTo({ lat: item.lat, lng: item.lng })
+    },
+    [panNearbyTo],
+  )
+  // 검색어 제출: 이전 검색 선택은 지우고, 결과가 보이게 시트를 반만 펼친다
+  const submitSearch = useCallback(
+    (query: string) => {
+      setSearchSelectedId(null)
+      setSheetLevel((current) => (current === 'collapsed' ? 'half' : current))
+      void runSearch(query)
+    },
+    [runSearch],
+  )
+  // 검색어 지우기: 검색 전 주변 탐색으로 (반경·카테고리·주변 장소 선택은 그대로, 주변 장소는 다시 부르지 않음)
+  const clearSearch = useCallback(() => {
+    setSearchSelectedId(null)
+    resetSearch()
+  }, [resetSearch])
+  const searchView = useMemo<NearbySearchView | null>(() => {
+    // searching 이면 searchState 는 idle 이 아니다 (TypeScript 가 함께 좁혀 준다)
+    if (!searching) return null
+    return {
+      query: searchState.query,
+      status: searchState.status,
+      errorMessage: searchState.status === 'error' ? searchState.message : null,
+      items: searchItems,
+      selectedId: searchSelectedId,
+      onSelect: selectSearchItem,
+      onRetry: () => submitSearch(searchState.query),
+    }
+  }, [searching, searchState, searchItems, searchSelectedId, selectSearchItem, submitSearch])
+
   // 주변 탐색: 반경을 정했을 때(처음 진입·반경 변경)만 반경 원이 보이는 영역에 들어오게 맞춘다.
   // 사용자가 지도를 끌거나 확대·축소한 뒤에는 다시 맞추지 않고, 시트 높이가 바뀌어도 맞추지 않는다
   const fittedRadiusRef = useRef<string | null>(null)
@@ -322,7 +410,12 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
         </div>
 
         <div ref={topOverlayRef} className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
-          <HomeSearchBar center={loading || denied ? null : position} />
+          {nearby ? (
+            // 주변 탐색: 결과는 이 화면 바텀시트에 보여 주고 다른 화면으로 가지 않는다
+            <HomeSearchBar center={position} onSubmitQuery={submitSearch} onClearQuery={clearSearch} />
+          ) : (
+            <HomeSearchBar center={loading || denied ? null : position} />
+          )}
           {/* 전체 알림(REQ-053): 가장 최근 공지 1건. 주변 탐색 시트가 열려 있으면 지도를 가리지 않게 숨긴다 */}
           {!nearby && <NoticeBanner />}
           {denied && (
@@ -385,6 +478,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             radiusEmpty={nearbyPlaces.places.length === 0}
             level={sheetLevel}
             onLevelChange={setSheetLevel}
+            search={searchView}
           />
         ) : (
           // 홈 하단 패널 (목업 HOM-01): 찢은 종이 위에 헤드라인 + 듀오 장면 + 노란 추천 버튼 + 바로가기 카드

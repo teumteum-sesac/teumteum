@@ -30,6 +30,29 @@ interface PlaceCardProps {
 }
 
 /**
+ * 불러오는 중 자리표시: 장소 카드와 같은 크기의 회색 카드 몇 장 (움직임 줄이기 설정이면 깜빡이지 않음).
+ * label 은 화면 읽기 프로그램용 진행 문구
+ */
+export function PlaceCardSkeletonList({ label, count = 4 }: { label: string; count?: number }) {
+  return (
+    <div role="status" aria-label={label}>
+      <p className="pb-2 text-xs text-neutral-500">{label}</p>
+      <ul aria-hidden className="flex flex-col gap-2">
+        {Array.from({ length: count }, (_, i) => (
+          <li key={i} className="flex items-center gap-3 rounded-xl border border-line p-3 motion-safe:animate-pulse">
+            <span className="size-14 shrink-0 rounded-lg bg-neutral-100" />
+            <span className="flex flex-1 flex-col gap-2">
+              <span className="h-4 w-2/5 rounded bg-neutral-100" />
+              <span className="h-3 w-3/5 rounded bg-neutral-100" />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/**
  * 주변 탐색(HOM-02) 장소 카드. 주변 장소 목록과 검색 결과가 함께 쓴다.
  * 카드 선택(지도 이동·강조)과 상세 이동('상세 보기' 버튼)을 나눠, 카드를 눌러도 화면을 떠나지 않는다
  */
