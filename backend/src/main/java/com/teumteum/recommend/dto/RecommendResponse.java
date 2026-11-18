@@ -11,7 +11,7 @@ import java.util.List;
  *   "recommendationSetId": "rs_8f2a",
  *   "expiresAt": "2026-11-13T15:00:00+09:00",
  *   "condition": { RecommendConditionResponse },
- *   "subCategoryFilters": ["당구", "볼링", "소품샵"],
+ *   "subCategoryFilters": [ { "category": "SPORTS", "categoryName": "스포츠활동", "subCategories": ["당구", "볼링"] }, ... ],
  *   "courses": [ { RecommendCourseResponse }, ... ]
  * }
  * </pre>
@@ -23,7 +23,7 @@ public record RecommendResponse(
         String recommendationSetId,               // 이번 추천 묶음 ID. 다시 추천에 쓴다
         OffsetDateTime expiresAt,                 // 보관 만료 시각 (생성 + 2시간). JSON 에는 "2026-11-13T15:00:00+09:00" 형식
         RecommendConditionResponse condition,     // 실제로 적용한 조건
-        List<String> subCategoryFilters,          // 세분류 필터 칩 (REQ-050). '전체' 칩은 프론트가 붙인다
+        List<SubCategoryFilterResponse> subCategoryFilters, // 세분류 필터, 대분류별로 묶음 (REQ-050). '전체' 칩은 프론트가 붙인다
         List<RecommendCourseResponse> courses     // 추천 코스 0 ~ 3개, 정렬 없음
 ) {
 }
