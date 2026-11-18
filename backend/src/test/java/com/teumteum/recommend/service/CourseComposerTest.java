@@ -337,6 +337,90 @@ class CourseComposerTest {
         assertEquals(Set.of("a", "b"), firsts); // 둘 다 1등을 해 본 적이 있다
     }
 
+    // ===================== 한 코스에 넣지 않을 조합 (#170) =====================
+
+    @Test
+    @DisplayName("음식/맛집은 한 코스에 1곳만: 한식 → 일식 같은 '밥 두 번' 코스는 없다")
+    void compose_foodOnlyOnce() {
+        List<PlaceCandidate> candidates = List.of(
+                place("1", CategoryCode.FOOD, "한식", 0.001),
+                place("2", CategoryCode.FOOD, "일식", 0.002),
+                place("3", CategoryCode.FOOD, "중식", 0.003),
+                place("4", CategoryCode.NATURE, "공원", 0.002));
+
+        List<CoursePlan> courses = composer.compose(randomCondition(300), candidates); // 5시간: 3곳까지 가능
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertTrue(countOf(course, CategoryCode.FOOD) <= 1, "음식점이 두 번: " + subCategoriesOf(course));
+        }
+    }
+
+    @Test
+    @DisplayName("카페/디저트도 한 코스에 1곳만, 음식점 → 카페 는 함께 들어갈 수 있다")
+    void compose_cafeOnlyOnce_butFoodAndCafeTogether() {
+        List<PlaceCandidate> candidates = List.of(
+                place("1", CategoryCode.CAFE, "카페", 0.001),
+                place("2", CategoryCode.CAFE, "디저트", 0.002),
+                place("3", CategoryCode.FOOD, "한식", 0.001));
+
+        List<CoursePlan> courses = composer.compose(directCondition(300, CategoryCode.FOOD, CategoryCode.CAFE), candidates);
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertTrue(countOf(course, CategoryCode.CAFE) <= 1, "카페가 두 번: " + subCategoriesOf(course));
+        }
+        assertTrue(courses.stream().anyMatch(c -> countOf(c, CategoryCode.FOOD) == 1 && countOf(c, CategoryCode.CAFE) == 1),
+                "음식점 + 카페 코스가 하나도 없음");
+    }
+
+    @Test
+    @DisplayName("음식/맛집만 골랐으면 시간이 남아도 1곳짜리 코스다")
+    void compose_foodOnly_makesOnePlaceCourse() {
+        List<PlaceCandidate> candidates = List.of(
+                place("1", CategoryCode.FOOD, "한식", 0.001),
+                place("2", CategoryCode.FOOD, "일식", 0.002));
+
+        List<CoursePlan> courses = composer.compose(directCondition(300, CategoryCode.FOOD), candidates);
+
+        assertFalse(courses.isEmpty());
+        courses.forEach(course -> assertEquals(1, course.stops().size()));
+    }
+
+    @Test
+    @DisplayName("같은 브랜드(체인)는 두 번 넣지 않는다: 메가커피 성수역점 → 메가커피 뚝섬점 X")
+    void compose_skipsSameBrand() {
+        PlaceCandidate megaA = named("1", "메가MGC커피 성수역점", CategoryCode.CAFE, "카페", 0.001);
+        PlaceCandidate megaB = named("2", "메가MGC커피 뚝섬점", CategoryCode.SHOPPING, "소품샵", 0.002); // 대분류가 달라도 같은 브랜드
+        PlaceCandidate park = named("3", "성수동구두테마공원", CategoryCode.NATURE, "공원", 0.003);
+
+        List<CoursePlan> courses = composer.compose(randomCondition(300), List.of(megaA, megaB, park));
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertFalse(course.placeIds().containsAll(Set.of("1", "2")), "같은 브랜드가 두 번: " + course.placeIds());
+        }
+    }
+
+    @Test
+    @DisplayName("브랜드 이름: 마지막 단어가 '점' 으로 끝나면 지점명으로 보고 뗀다")
+    void brandOf() {
+        assertEquals("메가MGC커피", composer.brandOf("메가MGC커피 성수역점"));
+        assertEquals("프랑스루브르바게트", composer.brandOf("프랑스루브르바게트 성수점"));
+        assertEquals("성수동구두테마공원", composer.brandOf("성수동구두테마공원"));        // 지점명 없음
+        assertEquals("자연과의만남추구 정원", composer.brandOf("자연과의만남추구 정원"));  // '점' 으로 안 끝남
+        assertEquals("", composer.brandOf(null));
+    }
+
+    private long countOf(CoursePlan course, CategoryCode category) {
+        return course.stops().stream().filter(stop -> stop.place().category() == category).count();
+    }
+
+    private PlaceCandidate named(String id, String name, CategoryCode category, String subCategory, double latOffset) {
+        return new PlaceCandidate(id, name, category, subCategory, "서울 성동구",
+                ORIGIN.latitude() + latOffset, ORIGIN.longitude());
+    }
+
     // ===================== 경로 모드: 도착지 방향 (#170) =====================
     // 도착지는 출발지에서 북쪽으로 0.03도(약 3.3km). 그 사이에 있는 장소가 "가는 길" 이다.
 

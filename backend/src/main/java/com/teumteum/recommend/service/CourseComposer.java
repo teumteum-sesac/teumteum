@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -44,6 +45,8 @@ import java.util.Set;
  *    - 가까움 기준을 출발지 거리 대신 우회 거리(출발→장소 + 장소→도착 − 출발→도착)로 본다
  *    - 우회 거리가 기준보다 큰 장소(가는 길에서 많이 벗어난 곳)는 넣지 않는다
  *    - 방문 순서는 ④ 대신 "도착지 쪽으로 점점 가까워지는 순"
+ * ⑨ 음식/맛집·카페/디저트는 한 코스에 1곳만 (한식 → 일식, 카페 → 디저트 X / 한식 → 카페 O) (#170)
+ * ⑩ 같은 브랜드(체인)는 두 번 넣지 않는다 (메가커피 A점 → 메가커피 B점 X) (#170)
  * <p>
  * 장소 검색·반경 넓히기는 하지 않는다. 받은 후보 안에서만 고른다.
  */
@@ -78,6 +81,12 @@ public class CourseComposer {
      * 도보(2km) → 1km, 대중교통·차량(5km) → 2.5km
      */
     static final double DETOUR_LIMIT_RATIO = 0.5;
+
+    /**
+     * 한 코스에 1곳만 넣는 대분류 (규칙 ⑨). 밥을 두 번 먹거나 카페를 연달아 가는 코스는 어색하다 (팀 회의, 2026-11-19).
+     * 음식/맛집만 골랐으면 그 코스는 1곳짜리가 된다 (고르지 않은 대분류는 넣지 않으므로).
+     */
+    static final Set<CategoryCode> ONCE_PER_COURSE = EnumSet.of(CategoryCode.FOOD, CategoryCode.CAFE);
 
     private final PlaceCountCalculator placeCountCalculator;
     private final StayTimeCalculator stayTimeCalculator;
@@ -310,6 +319,8 @@ public class CourseComposer {
      * - 이미 넣은 장소가 아니어야 하고
      * - 원하는 대분류여야 하고 (category 가 null 이면 아무거나)
      * - 이미 넣은 장소와 세분류가 겹치지 않아야 한다 (규칙 ②)
+     * - 음식/맛집·카페/디저트는 한 코스에 1곳만 (규칙 ⑨)
+     * - 같은 브랜드(체인)는 두 번 넣지 않는다 (규칙 ⑩)
      */
     private boolean canAdd(PlaceCandidate candidate, CategoryCode category, List<PlaceCandidate> picked) {
         if (category != null && candidate.category() != category) {
@@ -317,11 +328,42 @@ public class CourseComposer {
         }
         for (PlaceCandidate place : picked) {
             if (place.placeId().equals(candidate.placeId())
-                    || Objects.equals(place.subCategory(), candidate.subCategory())) { // null 이어도 안전하게 비교
+                    || Objects.equals(place.subCategory(), candidate.subCategory()) // null 이어도 안전하게 비교
+                    || isOncePerCourseCategoryTwice(place, candidate)
+                    || brandOf(place.placeName()).equals(brandOf(candidate.placeName()))) {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * 음식/맛집 또는 카페/디저트가 두 번째로 들어가려는지 (규칙 ⑨).
+     * 예) 한식 → 일식 (밥 두 번), 카페 → 디저트 (카페 두 번) 은 막고, 한식 → 카페 는 괜찮다.
+     */
+    private boolean isOncePerCourseCategoryTwice(PlaceCandidate place, PlaceCandidate candidate) {
+        return place.category() == candidate.category() && ONCE_PER_COURSE.contains(candidate.category());
+    }
+
+    /**
+     * 장소 이름에서 지점명을 뗀 브랜드 이름 (규칙 ⑩).
+     * <pre>
+     * "메가MGC커피 성수역점"       → "메가MGC커피"
+     * "프랑스루브르바게트 성수점"  → "프랑스루브르바게트"
+     * "성수동구두테마공원"         → "성수동구두테마공원"   (지점명 없음 → 그대로)
+     * </pre>
+     * 카카오 장소 이름은 대개 "브랜드 지점명점" 모양이라, 마지막 단어가 '점' 으로 끝나면 지점명으로 보고 뗀다.
+     */
+    String brandOf(String placeName) {
+        if (placeName == null) {
+            return "";
+        }
+        String name = placeName.trim();
+        int lastSpace = name.lastIndexOf(' ');
+        if (lastSpace > 0 && name.endsWith("점")) {
+            return name.substring(0, lastSpace).trim();
+        }
+        return name;
     }
 
     /**
