@@ -1,5 +1,6 @@
 package com.teumteum.member.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.teumteum.member.domain.Member;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -28,18 +29,22 @@ import jakarta.validation.constraints.Size;
  * 화면 기준: 화면설계서 AUT-02 / 요구사항 REQ-001
  *   약관 동의는 프론트에서 체크해야 가입 버튼이 눌리므로 서버로는 보내지 않는다.
  */
+@Schema(description = "회원가입 요청")
 public record SignupRequest(
 
+        @Schema(description = "이메일 (로그인 ID, 최대 255자)", example = "user@email.com")
         @NotBlank(message = "이메일을 입력해 주세요.")
         @Email(message = "이메일 형식을 확인해 주세요.")
         @Size(max = Member.EMAIL_MAX_LENGTH, message = "이메일이 너무 길어요.")
         String email,
 
         // 8자 이상 (화면설계서 AUT-02). 최대 64자: BCrypt 는 앞 72바이트까지만 쓰므로 그보다 짧게 제한한다
+        @Schema(description = "비밀번호 8~64자", example = "abc12345")
         @NotBlank(message = "비밀번호를 입력해 주세요.")
         @Size(min = 8, max = 64, message = "비밀번호는 8자 이상 64자 이하로 입력해 주세요.")
         String password,
 
+        @Schema(description = "닉네임 최대 50자", example = "틈틈이")
         @NotBlank(message = "닉네임을 입력해 주세요.")
         @Size(max = Member.NICKNAME_MAX_LENGTH, message = "닉네임은 50자 이하로 입력해 주세요.")
         String nickname

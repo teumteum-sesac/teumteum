@@ -1,5 +1,9 @@
 package com.teumteum.member.controller;
 
+import com.teumteum.global.config.OpenApiConfig;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.teumteum.global.common.ApiResponse;
 import com.teumteum.member.dto.LoginRequest;
 import com.teumteum.member.dto.LoginResponse;
@@ -30,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
  *                                 "memberId": 1, "email": "user@email.com", "nickname": "틈틈이" }, "error": null }
  * 실패 (401): { "success": false, "data": null, "error": { "code": "LOGIN_FAILED", "message": "이메일 또는 비밀번호가 맞지 않아요." } }
  */
+@Tag(name = OpenApiConfig.TAG_AUTH)
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -37,6 +42,7 @@ public class AuthController {
 
     private final MemberService memberService;
 
+    @Operation(summary = "로그인", description = "이메일·비밀번호가 맞으면 accessToken(JWT, 1시간)을 준다. 이 토큰을 오른쪽 위 [Authorize] 에 넣으면 로그인 필요 API 를 시험할 수 있다.\n\n실패: 401 LOGIN_FAILED (없는 이메일·틀린 비밀번호·탈퇴 회원 모두 같은 문구)", security = {})
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(memberService.login(request)));
