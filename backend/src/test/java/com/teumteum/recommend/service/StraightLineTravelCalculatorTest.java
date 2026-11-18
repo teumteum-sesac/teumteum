@@ -5,6 +5,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 직선거리 이동시간 계산기 테스트.
@@ -79,5 +81,34 @@ class StraightLineTravelCalculatorTest {
         int result = calculator.calculateTravelMinutes(TransportType.WALK, BASE_LAT, BASE_LNG, BASE_LAT + 0.0001, BASE_LNG);
 
         assertEquals(1, result);
+    }
+
+    // ===================== 대중교통 700m 이내 = 도보 =====================
+
+    @Test
+    @DisplayName("대중교통이어도 700m 이내면 걷는 속도로 계산한다 (약 556m → 도보 10.8분 → 11분)")
+    void calculateTravelMinutes_transitUsesWalkSpeed_within700m() {
+        int transit = calculator.calculateTravelMinutes(TransportType.TRANSIT, BASE_LAT, BASE_LNG, BASE_LAT + 0.005, BASE_LNG);
+        int walk = calculator.calculateTravelMinutes(TransportType.WALK, BASE_LAT, BASE_LNG, BASE_LAT + 0.005, BASE_LNG);
+
+        assertEquals(11, transit);
+        assertEquals(walk, transit);
+    }
+
+    @Test
+    @DisplayName("대중교통 700m 넘으면 원래대로 대중교통 속도 (약 778m → 4.05분 → 5분)")
+    void calculateTravelMinutes_transitUsesTransitSpeed_over700m() {
+        int result = calculator.calculateTravelMinutes(TransportType.TRANSIT, BASE_LAT, BASE_LNG, BASE_LAT + 0.007, BASE_LNG);
+
+        assertEquals(5, result);
+    }
+
+    @Test
+    @DisplayName("걸어갈 거리 판단은 대중교통 + 700m 미만일 때만 true")
+    void isTransitWalkingDistance() {
+        assertTrue(calculator.isTransitWalkingDistance(TransportType.TRANSIT, BASE_LAT, BASE_LNG, BASE_LAT + 0.005, BASE_LNG));
+        assertFalse(calculator.isTransitWalkingDistance(TransportType.TRANSIT, BASE_LAT, BASE_LNG, BASE_LAT + 0.007, BASE_LNG));
+        assertFalse(calculator.isTransitWalkingDistance(TransportType.WALK, BASE_LAT, BASE_LNG, BASE_LAT + 0.005, BASE_LNG));
+        assertFalse(calculator.isTransitWalkingDistance(TransportType.CAR, BASE_LAT, BASE_LNG, BASE_LAT + 0.005, BASE_LNG));
     }
 }

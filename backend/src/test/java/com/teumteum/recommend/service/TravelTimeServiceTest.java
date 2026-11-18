@@ -146,4 +146,38 @@ class TravelTimeServiceTest {
         assertTrue(result.estimated());
         assertNull(result.transitInfo());
     }
+
+    // ===================== 대중교통 700m 이내 = 도보 =====================
+
+    /** 출발지에서 약 556m (700m 이내) */
+    private static final double NEAR_LAT = FROM_LAT + 0.005;
+
+    @Test
+    @DisplayName("대중교통이어도 700m 이내면 ODsay 대신 도보 API 를 부르고, 실제 경로·'도보' 표시로 돌려준다")
+    void findRoute_transitWithin700m_usesWalkRoute() {
+        List<Coordinate> path = List.of(new Coordinate(FROM_LAT, FROM_LNG), new Coordinate(NEAR_LAT, FROM_LNG));
+        given(orsClient.findWalkRoute(FROM_LAT, FROM_LNG, NEAR_LAT, FROM_LNG))
+                .willReturn(Optional.of(new TravelRoute(9, path)));
+
+        TravelRoute result = travelTimeService.findRoute(TransportType.TRANSIT, FROM_LAT, FROM_LNG, NEAR_LAT, FROM_LNG);
+
+        assertEquals(9, result.travelMinutes());
+        assertEquals(path, result.coordinates());   // 지도에 실제 도보 경로
+        assertEquals("도보", result.transitInfo());
+        assertFalse(result.estimated());
+        verify(odsayClient, never()).findTransitRoute(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+    }
+
+    @Test
+    @DisplayName("700m 이내 도보 API 도 실패하면 걷는 속도로 추정한다 (estimated true, '도보' 표시)")
+    void findRoute_transitWithin700m_walkFails_estimatesWithWalkSpeed() {
+        given(orsClient.findWalkRoute(FROM_LAT, FROM_LNG, NEAR_LAT, FROM_LNG)).willReturn(Optional.empty());
+
+        TravelRoute result = travelTimeService.findRoute(TransportType.TRANSIT, FROM_LAT, FROM_LNG, NEAR_LAT, FROM_LNG);
+
+        assertEquals(11, result.travelMinutes()); // 556m × 1.3 ÷ 4km/h ≈ 10.8 → 11분
+        assertTrue(result.estimated());
+        assertEquals("도보", result.transitInfo());
+        verify(odsayClient, never()).findTransitRoute(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+    }
 }
