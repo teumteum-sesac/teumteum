@@ -52,6 +52,9 @@ class RecommendServiceTest {
 
     private static final OffsetDateTime NOW = OffsetDateTime.of(2026, 11, 17, 13, 0, 0, 0, ZoneOffset.ofHours(9));
 
+    /** 다시 추천 사용자 구분 값 (IP) */
+    private static final String CLIENT = "127.0.0.1";
+
     @Mock
     private CourseSearchService courseSearchService;
 
@@ -152,7 +155,7 @@ class RecommendServiceTest {
         RecommendResponse first = recommendService.recommend(request(CategoryMode.RANDOM, List.of()));
         given(courseSearchService.findCourses(any(), any())).willReturn(List.of(plan("201")));
 
-        RecommendResponse second = recommendService.regenerate(first.recommendationSetId());
+        RecommendResponse second = recommendService.regenerate(first.recommendationSetId(), CLIENT);
 
         verify(courseSearchService).findCourses(any(), excludedCaptor.capture());
         assertEquals(Set.of("101", "102"), excludedCaptor.getValue());     // 직전 장소 둘 다 제외
@@ -169,7 +172,7 @@ class RecommendServiceTest {
         RecommendResponse first = recommendService.recommend(request(CategoryMode.RANDOM, List.of()));
         given(courseSearchService.findCourses(any(), any())).willReturn(List.of());
 
-        RecommendResponse second = recommendService.regenerate(first.recommendationSetId());
+        RecommendResponse second = recommendService.regenerate(first.recommendationSetId(), CLIENT);
 
         verify(courseSearchService, times(2)).findCourses(any()); // 처음 추천 1번 + 제외 없이 다시 1번
         assertEquals("101", second.courses().get(0).places().get(0).placeId());
@@ -182,7 +185,7 @@ class RecommendServiceTest {
         RecommendResponse first = recommendService.recommend(request(CategoryMode.RANDOM, List.of()));
         given(courseSearchService.findCourses(any(), any())).willReturn(List.of());
 
-        RecommendResponse second = recommendService.regenerate(first.recommendationSetId());
+        RecommendResponse second = recommendService.regenerate(first.recommendationSetId(), CLIENT);
 
         verify(courseSearchService, times(1)).findCourses(any()); // 처음 추천 때 1번뿐
         assertTrue(second.courses().isEmpty());
@@ -192,7 +195,7 @@ class RecommendServiceTest {
     @DisplayName("다시 추천: 없는 묶음 ID 면 404, 2시간 지난 묶음이면 410")
     void regenerate_notFoundAndExpired() {
         CustomException notFound = assertThrows(CustomException.class,
-                () -> recommendService.regenerate("rs_없는아이디"));
+                () -> recommendService.regenerate("rs_없는아이디", CLIENT));
         assertEquals(RecommendErrorCode.RECOMMENDATION_NOT_FOUND, notFound.getErrorCode());
 
         given(courseSearchService.findCourses(any())).willReturn(List.of());
@@ -200,8 +203,20 @@ class RecommendServiceTest {
         RecommendService twoHoursLater = new RecommendService(courseSearchService, store, new RecommendResponseMapper(),
                 Clock.fixed(NOW.plusHours(2).toInstant(), ZoneOffset.ofHours(9)));
 
-        CustomException expired = assertThrows(CustomException.class, () -> twoHoursLater.regenerate(setId));
+        CustomException expired = assertThrows(CustomException.class, () -> twoHoursLater.regenerate(setId, CLIENT));
         assertEquals(RecommendErrorCode.RECOMMENDATION_EXPIRED, expired.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("다시 추천: 횟수 제한을 맨 먼저 확인한다 (없는 ID 로 5번 실패해도 6번째는 404 가 아니라 429)")
+    void regenerate_checksRateLimitFirst() {
+        for (int i = 0; i < RegenerateRateLimiter.MAX_REQUESTS; i++) {
+            assertThrows(CustomException.class, () -> recommendService.regenerate("rs_없는아이디", CLIENT));
+        }
+
+        CustomException limited = assertThrows(CustomException.class,
+                () -> recommendService.regenerate("rs_없는아이디", CLIENT));
+        assertEquals(RecommendErrorCode.TOO_MANY_REQUESTS, limited.getErrorCode());
     }
 
     // ===================== 코스 상세 =====================

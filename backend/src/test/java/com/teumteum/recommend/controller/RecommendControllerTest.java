@@ -99,11 +99,15 @@ class RecommendControllerTest {
     // ===================== 다시 추천 =====================
 
     @Test
-    @DisplayName("다시 추천: 요청 본문 없이 주소의 묶음 ID 를 서비스에 넘기고 200 으로 새 결과를 돌려준다")
+    @DisplayName("다시 추천: 요청 본문 없이 주소의 묶음 ID 와 요청 IP 를 서비스에 넘기고 200 으로 새 결과를 돌려준다")
     void regenerate_ok() throws Exception {
-        given(recommendService.regenerate("rs_1")).willReturn(emptyResponse());
+        given(recommendService.regenerate("rs_1", "203.0.113.7")).willReturn(emptyResponse());
 
-        mockMvc.perform(post("/api/recommendations/rs_1/regenerate"))
+        mockMvc.perform(post("/api/recommendations/rs_1/regenerate")
+                        .with(request -> {           // 요청 IP 를 정해서 보낸다 (안 정하면 127.0.0.1)
+                            request.setRemoteAddr("203.0.113.7");
+                            return request;
+                        }))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.recommendationSetId").value("rs_1"));
@@ -112,12 +116,24 @@ class RecommendControllerTest {
     @Test
     @DisplayName("다시 추천: 만료된 묶음이면 410 RECOMMENDATION_EXPIRED")
     void regenerate_expired() throws Exception {
-        given(recommendService.regenerate(any()))
+        given(recommendService.regenerate(any(), any()))
                 .willThrow(new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED));
 
         mockMvc.perform(post("/api/recommendations/rs_old/regenerate"))
                 .andExpect(status().isGone())
                 .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_EXPIRED"));
+    }
+
+    @Test
+    @DisplayName("다시 추천: 너무 자주 누르면 429 TOO_MANY_REQUESTS")
+    void regenerate_tooManyRequests() throws Exception {
+        given(recommendService.regenerate(any(), any()))
+                .willThrow(new CustomException(RecommendErrorCode.TOO_MANY_REQUESTS));
+
+        mockMvc.perform(post("/api/recommendations/rs_1/regenerate"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("TOO_MANY_REQUESTS"));
     }
 
     // ===================== 코스 상세 =====================
