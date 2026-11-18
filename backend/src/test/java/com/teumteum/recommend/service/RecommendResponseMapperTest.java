@@ -4,6 +4,7 @@ import com.teumteum.recommend.domain.CategoryCode;
 import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
+import com.teumteum.recommend.domain.PathType;
 import com.teumteum.recommend.domain.PlaceCandidate;
 import com.teumteum.recommend.domain.RecommendCondition;
 import com.teumteum.recommend.domain.RecommendCondition.Location;
@@ -11,9 +12,14 @@ import com.teumteum.recommend.domain.RecommendationSet;
 import com.teumteum.recommend.domain.RecommendedCourse;
 import com.teumteum.recommend.domain.TransportType;
 import com.teumteum.recommend.domain.TravelRoute;
+import com.teumteum.recommend.domain.TravelRoute.Coordinate;
+import com.teumteum.recommend.dto.CoordinateResponse;
+import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendCourseResponse;
+import com.teumteum.recommend.dto.RecommendPlaceDetailResponse;
 import com.teumteum.recommend.dto.RecommendPlaceResponse;
 import com.teumteum.recommend.dto.RecommendResponse;
+import com.teumteum.recommend.dto.RouteLegResponse;
 import com.teumteum.recommend.dto.SubCategoryFilterResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -132,7 +138,100 @@ class RecommendResponseMapperTest {
         assertEquals(List.of("당구"), filters.get(1).subCategories());
     }
 
+    // ===================== 코스 상세 =====================
+
+    @Test
+    @DisplayName("코스 상세에는 묶음 ID·만료 시각·출발지·도착지·이동수단·이용 시간이 함께 나간다")
+    void detail_conditionFields() {
+        RecommendCourseDetailResponse detail = mapper.toCourseDetailResponse(detailCourse(), conditionWithDestination());
+
+        assertEquals("rc_2", detail.recommendationId());
+        assertEquals("rs_1", detail.recommendationSetId());
+        assertEquals(EXPIRES_AT, detail.expiresAt());
+        assertEquals("성수역", detail.origin().name());
+        assertEquals("서울숲", detail.destination().name());
+        assertEquals(TransportType.WALK, detail.transportType());
+        assertEquals(180, detail.availableMinutes());
+        assertEquals("당구장 A → 소품샵 B", detail.courseName());
+        assertEquals("13:00", detail.startTime());
+    }
+
+    @Test
+    @DisplayName("상세 장소에는 카카오맵 링크가 들어가고, 소개는 아직 null 이다")
+    void detail_placeFields() {
+        RecommendPlaceDetailResponse first = mapper.toCourseDetailResponse(detailCourse(), conditionWithDestination())
+                .places().get(0);
+
+        assertEquals(1, first.visitOrder());
+        assertEquals("https://place.map.kakao.com/101", first.kakaoMapUrl());
+        assertNull(first.description());
+        assertEquals(15, first.travelMinutes());
+    }
+
+    @Test
+    @DisplayName("지도 구간: 경로 좌표가 있으면 ACTUAL + 그 좌표, 없으면 STRAIGHT + 앞뒤 두 점, 도착지 구간까지")
+    void detail_routeLegs() {
+        List<RouteLegResponse> legs = mapper.toCourseDetailResponse(detailCourse(), conditionWithDestination())
+                .routeLegs();
+
+        assertEquals(3, legs.size()); // 출발지→장소1, 장소1→장소2, 장소2→도착지
+
+        // 0 → 1: 도보 API 경로 좌표 3개 그대로
+        assertEquals(0, legs.get(0).fromVisitOrder());
+        assertEquals(1, legs.get(0).toVisitOrder());
+        assertEquals(PathType.ACTUAL, legs.get(0).pathType());
+        assertEquals(3, legs.get(0).coordinates().size());
+
+        // 1 → 2: 직선 추정 → 장소1, 장소2 두 점
+        assertEquals(PathType.STRAIGHT, legs.get(1).pathType());
+        assertEquals(new CoordinateResponse(37.5470, 127.0500), legs.get(1).coordinates().get(0));
+        assertEquals(new CoordinateResponse(37.5460, 127.0420), legs.get(1).coordinates().get(1));
+
+        // 2 → 3: 마지막 장소 → 도착지(서울숲)
+        assertEquals(2, legs.get(2).fromVisitOrder());
+        assertEquals(3, legs.get(2).toVisitOrder());
+        assertEquals(new CoordinateResponse(37.5444, 127.0374), legs.get(2).coordinates().get(1));
+    }
+
+    @Test
+    @DisplayName("도착지가 없으면 도착지 구간 없이 장소 수만큼만 구간이 생긴다")
+    void detail_routeLegs_noDestination() {
+        RecommendCondition noDestination = conditionOf(CategoryMode.RANDOM, List.of());
+
+        List<RouteLegResponse> legs = mapper.toCourseDetailResponse(twoPlaceCourse(), noDestination).routeLegs();
+
+        assertEquals(2, legs.size());
+        // 첫 구간 대중교통(좌표 없음) → 출발지에서 장소1 로 직선
+        assertEquals(PathType.STRAIGHT, legs.get(0).pathType());
+        assertEquals(new CoordinateResponse(37.5446, 127.0559), legs.get(0).coordinates().get(0));
+    }
+
     // ===================== 도우미 =====================
+
+    /**
+     * 상세용 코스: 도보, 도착지 서울숲.
+     * 당구장 A(도보 API 경로 좌표 3개) → 소품샵 B(직선 추정) → 서울숲(7분, 좌표 없음)
+     */
+    private RecommendedCourse detailCourse() {
+        List<Coordinate> walkPath = List.of(
+                new Coordinate(37.5446, 127.0559), new Coordinate(37.5458, 127.0530), new Coordinate(37.5470, 127.0500));
+        CourseStop billiards = new CourseStop(
+                new PlaceCandidate("101", "당구장 A", CategoryCode.SPORTS, "당구", "서울 성동구 ○○로 1", 37.5470, 127.0500,
+                        "https://place.map.kakao.com/101"),
+                90, new TravelRoute(15, walkPath));
+        CourseStop propShop = new CourseStop(
+                new PlaceCandidate("102", "소품샵 B", CategoryCode.SHOPPING, "소품샵", "서울 성동구 ○○로 2", 37.5460, 127.0420),
+                40, TravelRoute.estimated(8));
+        CoursePlan plan = new CoursePlan(List.of(billiards, propShop), new TravelRoute(7, List.of()), 160, 30, true);
+        return new RecommendedCourse("rc_2", "rs_1", plan, EXPIRES_AT);
+    }
+
+    private RecommendCondition conditionWithDestination() {
+        Location seoulForest = new Location("서울숲", null, 37.5444, 127.0374);
+        return new RecommendCondition(ORIGIN, seoulForest, "13:00", 180, TransportType.WALK,
+                CategoryMode.RANDOM, List.of());
+    }
+
 
     /** 명세 1.3 예시와 같은 코스: 당구장 A(버스 15분) → 소품샵 B(8분) → 도착지(7분) */
     private RecommendedCourse twoPlaceCourse() {

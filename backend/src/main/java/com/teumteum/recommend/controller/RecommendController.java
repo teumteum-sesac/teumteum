@@ -1,12 +1,15 @@
 package com.teumteum.recommend.controller;
 
 import com.teumteum.global.common.ApiResponse;
+import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendRequest;
 import com.teumteum.recommend.dto.RecommendResponse;
 import com.teumteum.recommend.service.RecommendService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,5 +33,21 @@ public class RecommendController {
     @PostMapping
     public ResponseEntity<ApiResponse<RecommendResponse>> recommend(@Valid @RequestBody RecommendRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(recommendService.recommend(request)));
+    }
+
+    /**
+     * 다시 추천 (RES-01 '다시 추천'). 요청 본문 없이 보관한 조건으로 다시 찾고, 새 recommendationSetId 로 응답한다.
+     * 없으면 404, 만료면 410. (너무 자주 누르면 429 는 5-3 에서)
+     */
+    @PostMapping("/{recommendationSetId}/regenerate")
+    public ResponseEntity<ApiResponse<RecommendResponse>> regenerate(@PathVariable String recommendationSetId) {
+        return ResponseEntity.ok(ApiResponse.ok(recommendService.regenerate(recommendationSetId)));
+    }
+
+    /** 추천 코스 상세 (RES-01 코스 카드 → DET-01 일정, DET-02 지도). 없으면 404, 만료면 410 */
+    @GetMapping("/courses/{recommendationId}")
+    public ResponseEntity<ApiResponse<RecommendCourseDetailResponse>> getCourseDetail(
+            @PathVariable String recommendationId) {
+        return ResponseEntity.ok(ApiResponse.ok(recommendService.getCourseDetail(recommendationId)));
     }
 }

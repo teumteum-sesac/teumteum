@@ -7,7 +7,9 @@ import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.TransportType;
 import com.teumteum.recommend.dto.LocationResponse;
 import com.teumteum.recommend.dto.RecommendConditionResponse;
+import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendResponse;
+import com.teumteum.recommend.exception.RecommendErrorCode;
 import com.teumteum.recommend.service.RecommendService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -91,6 +94,74 @@ class RecommendControllerTest {
         mockMvc.perform(post("/api/recommendations").contentType(MediaType.APPLICATION_JSON).content(validBody()))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.error.code").value("KAKAO_API_ERROR"));
+    }
+
+    // ===================== 다시 추천 =====================
+
+    @Test
+    @DisplayName("다시 추천: 요청 본문 없이 주소의 묶음 ID 를 서비스에 넘기고 200 으로 새 결과를 돌려준다")
+    void regenerate_ok() throws Exception {
+        given(recommendService.regenerate("rs_1")).willReturn(emptyResponse());
+
+        mockMvc.perform(post("/api/recommendations/rs_1/regenerate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.recommendationSetId").value("rs_1"));
+    }
+
+    @Test
+    @DisplayName("다시 추천: 만료된 묶음이면 410 RECOMMENDATION_EXPIRED")
+    void regenerate_expired() throws Exception {
+        given(recommendService.regenerate(any()))
+                .willThrow(new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED));
+
+        mockMvc.perform(post("/api/recommendations/rs_old/regenerate"))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_EXPIRED"));
+    }
+
+    // ===================== 코스 상세 =====================
+
+    @Test
+    @DisplayName("코스 상세: 주소의 코스 ID 를 서비스에 넘기고 200 으로 상세를 돌려준다")
+    void getCourseDetail_ok() throws Exception {
+        given(recommendService.getCourseDetail("rc_1")).willReturn(detailResponse());
+
+        mockMvc.perform(get("/api/recommendations/courses/rc_1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.recommendationId").value("rc_1"))
+                .andExpect(jsonPath("$.data.routeLegs").isArray());
+    }
+
+    @Test
+    @DisplayName("코스 상세: 없는 ID 면 404 RECOMMENDATION_NOT_FOUND")
+    void getCourseDetail_notFound() throws Exception {
+        given(recommendService.getCourseDetail(any()))
+                .willThrow(new CustomException(RecommendErrorCode.RECOMMENDATION_NOT_FOUND));
+
+        mockMvc.perform(get("/api/recommendations/courses/rc_none"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("코스 상세: 만료된 ID 면 410 RECOMMENDATION_EXPIRED")
+    void getCourseDetail_expired() throws Exception {
+        given(recommendService.getCourseDetail(any()))
+                .willThrow(new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED));
+
+        mockMvc.perform(get("/api/recommendations/courses/rc_old"))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_EXPIRED"));
+    }
+
+    private RecommendCourseDetailResponse detailResponse() {
+        return new RecommendCourseDetailResponse("rc_1", "rs_1",
+                OffsetDateTime.of(2026, 11, 17, 15, 0, 0, 0, ZoneOffset.ofHours(9)),
+                new LocationResponse("성수역", null, 37.5446, 127.0559), null,
+                TransportType.WALK, 180, "카페 A", 1, "13:00", 70, 10, 0, false,
+                List.of(), List.of());
     }
 
     private String validBody() {

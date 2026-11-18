@@ -52,6 +52,16 @@ public class CourseSearchService {
      * @throws CustomException 장소 검색 외부 API 가 전부 실패하고, 그때까지 찾은 코스도 없을 때 (장소 쪽 502·503 그대로 전달)
      */
     public List<CoursePlan> findCourses(CourseCondition condition) {
+        return findCourses(condition, Set.of());
+    }
+
+    /**
+     * 정해진 장소를 빼고 코스를 최대 3개 찾는다 (다시 추천, 명세 2장).
+     * 후보 목록에서 제외할 장소를 먼저 걸러 낸 뒤 코스를 조합한다. 나머지 흐름은 위와 같다.
+     *
+     * @param excludedPlaceIds 후보에서 뺄 장소 ID (직전 추천에 나온 장소). 비어 있으면 아무것도 안 뺀다
+     */
+    public List<CoursePlan> findCourses(CourseCondition condition, Set<String> excludedPlaceIds) {
         List<CoursePlan> found = new ArrayList<>();
         Set<PlaceCategory> placeCategories = toPlaceCategories(condition);
 
@@ -62,6 +72,7 @@ public class CourseSearchService {
                         condition.origin().latitude(), condition.origin().longitude(), placeCategories, radius)
                         .stream()
                         .map(this::toPlaceCandidate)
+                        .filter(candidate -> !excludedPlaceIds.contains(candidate.placeId())) // 제외할 장소 빼기
                         .toList();
             } catch (CustomException e) {
                 if (found.isEmpty()) {
@@ -97,7 +108,7 @@ public class CourseSearchService {
 
     /**
      * 장소 쪽 후보(NearbyPlaceResult) → 추천 쪽 후보(PlaceCandidate).
-     * 주소는 도로명을 먼저 쓰고, 없으면 지번 주소를 쓴다.
+     * 주소는 도로명을 먼저 쓰고, 없으면 지번 주소를 쓴다. 카카오맵 링크는 코스 상세에서 쓰려고 함께 담는다.
      */
     PlaceCandidate toPlaceCandidate(NearbyPlaceResult result) {
         String address = (result.roadAddress() != null) ? result.roadAddress() : result.address();
@@ -108,6 +119,7 @@ public class CourseSearchService {
                 result.subCategory(),
                 address,
                 result.latitude(),
-                result.longitude());
+                result.longitude(),
+                result.placeUrl());
     }
 }
