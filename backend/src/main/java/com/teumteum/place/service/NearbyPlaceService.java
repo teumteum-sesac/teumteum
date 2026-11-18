@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 /**
- * 주변 장소 후보 검색 (REQ-015) 과 카테고리 필터링 (REQ-016).
+ * 주변 장소 후보 검색 (REQ-015), 카테고리 필터링 (REQ-016), 주변 탐색 (REQ-051).
  *
  * 반경 확대는 이 서비스가 판단하지 않는다. REQ-015 는 "맞는 코스가 없으면" 넓히므로,
  * 추천 서비스가 코스 구성에 실패하면 RADIUS_STEPS 의 다음 반경으로 다시 호출한다.

@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 주변 장소 후보 검색 API. 추천 서비스는 NearbyPlaceService 를 직접 호출하고, 이 API 는 Swagger·프론트 확인용이다.
+ * 주변 장소 검색 API.
+ * 주변 탐색 화면(HOM-02, REQ-051)이 사용자가 고른 반경(500m / 1km / 3km)과 대분류로 호출한다.
+ * 추천 서비스(REQ-015·016)는 이 API 대신 NearbyPlaceService 를 직접 호출한다.
  */
 @RestController
 @RequestMapping("/api/places")
