@@ -1,4 +1,4 @@
-import type { AlternativePlace, Course, CoursePlace } from './types'
+import type { Course, CoursePlace } from './types'
 
 /**
  * [임시] 추천 API 연동 전까지 화면 확인용 샘플 데이터.
@@ -49,16 +49,6 @@ const PLACES: Record<string, CoursePlace> = {
   },
 }
 
-/** 조합 후보. '다시 추천'을 누르면 3개씩 돌려가며 보여준다 */
-const COMBINATIONS: { places: string[]; estimated?: boolean }[] = [
-  { places: ['p-4', 'p-5'] },
-  { places: ['p-1', 'p-2', 'p-3'] },
-  { places: ['p-8'] },
-  { places: ['p-6', 'p-2'] },
-  { places: ['p-4', 'p-7'], estimated: true },
-  { places: ['p-1'] },
-]
-
 function buildCourse(courseId: string, placeIds: string[], estimated = false): Course {
   const places = placeIds.map((id, i) => ({ ...PLACES[id], visitOrder: i + 1 }))
   const totalMinutes = places.reduce((sum, p) => sum + p.travelMinutes + p.stayMinutes, 0)
@@ -75,37 +65,10 @@ function buildCourse(courseId: string, placeIds: string[], estimated = false): C
   }
 }
 
-/** [임시] n번째 '다시 추천' 결과 (코스 3개) */
-export function mockRecommend(round: number): Course[] {
-  return [0, 1, 2].map((i) => {
-    const index = (round * 3 + i) % COMBINATIONS.length
-    const combo = COMBINATIONS[index]
-    return buildCourse(`mock-${round}-${i}`, combo.places, combo.estimated)
-  })
-}
 
 /** [임시] 장소 1곳짜리 코스 (홈 검색·주변 탐색에서 장소를 눌렀을 때). courseId = "place-<placeId>" */
 export function mockSinglePlaceCourse(courseId: string): Course | undefined {
   const placeId = courseId.replace(/^place-/, '')
   if (!courseId.startsWith('place-') || !PLACES[placeId]) return undefined
   return buildCourse(courseId, [placeId])
-}
-
-/** [임시] 장소 교체(DET-03) 후보 5곳: 같은 세분류, 앞뒤 장소와 가까운 순 */
-export function mockAlternatives(place: CoursePlace): AlternativePlace[] {
-  const diffs = [-3, 3, 5, 8, 12]
-  const travel = [12, 18, 20, 22, 25]
-  return diffs.map((diffMinutes, i) => ({
-    ...place,
-    placeId: `${place.placeId}-alt-${i + 1}`,
-    name: `${place.subCategory} ${String.fromCharCode(72 + i)}`,
-    address: `서울 성동구 ○○로 ${70 + i * 4}`,
-    description: undefined,
-    imageUrl: undefined,
-    lat: place.lat + 0.001 * (i + 1),
-    lng: place.lng - 0.001 * (i + 1),
-    travelMinutes: travel[i],
-    transitInfo: i % 2 === 0 ? '버스 · 환승 0회' : '도보',
-    diffMinutes,
-  }))
 }

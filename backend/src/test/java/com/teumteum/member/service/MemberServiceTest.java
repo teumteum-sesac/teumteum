@@ -10,10 +10,15 @@ import static org.mockito.Mockito.verify;
 import com.teumteum.admin.service.AdminService;
 import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.global.exception.CustomException;
+import com.teumteum.global.exception.CommonErrorCode;
 import com.teumteum.member.domain.Member;
 import com.teumteum.member.dto.LoginRequest;
 import com.teumteum.member.dto.LoginResponse;
 import com.teumteum.member.dto.SignupRequest;
+import com.teumteum.member.dto.MemberUpdateRequest;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.CsvSource;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.repository.MemberRepository;
 import java.util.Optional;
@@ -67,6 +72,113 @@ class MemberServiceTest {
         Member member = Member.create("user@email.com", passwordEncoder.encode(rawPassword), "틈틈이");
         ReflectionTestUtils.setField(member, "id", id);
         return member;
+    }
+
+    @Test
+    @DisplayName("본인 정보 조회는 저장된 이메일과 닉네임을 반환한다")
+    void getMyInfo() {
+        Member member = savedMember(7L, "abc12345");
+        given(memberRepository.findById(7L)).willReturn(Optional.of(member));
+
+        var response = memberService.getMyInfo(7L);
+
+        assertThat(response.email()).isEqualTo("user@email.com");
+        assertThat(response.nickname()).isEqualTo("틈틈이");
+        verify(memberRepository).findById(7L);
+        verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    @Test
+    @DisplayName("본인 정보 조회에서 회원이 없으면 401로 거절한다")
+    void getMyInfoMissingMember() {
+        given(memberRepository.findById(7L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> memberService.getMyInfo(7L))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED));
+    }
+
+    @Test
+    @DisplayName("본인 정보 조회에서 탈퇴한 회원은 401로 거절한다")
+    void getMyInfoWithdrawnMember() {
+        Member member = savedMember(7L, "abc12345");
+        member.withdraw();
+        given(memberRepository.findById(7L)).willReturn(Optional.of(member));
+
+        assertThatThrownBy(() -> memberService.getMyInfo(7L))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED));
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void updatesNicknameAndKeepsPasswordWhenBothPasswordFieldsAreEmpty(String empty) {
+        Member member = savedMember(7L, "abc12345");
+        String originalHash = member.getPasswordHash();
+        given(memberRepository.findById(7L)).willReturn(Optional.of(member));
+
+        var response = memberService.updateMyInfo(7L, new MemberUpdateRequest("새닉네임", empty, empty));
+
+        assertThat(response.email()).isEqualTo("user@email.com");
+        assertThat(response.nickname()).isEqualTo("새닉네임");
+        assertThat(member.getPasswordHash()).isEqualTo(originalHash);
+        assertThat(member.getEmail()).isEqualTo("user@email.com");
+    }
+
+    @Test
+    void updatesPasswordAsHashAndLoginAcceptsOnlyNewPassword() {
+        Member member = savedMember(7L, "abc12345");
+        given(memberRepository.findById(7L)).willReturn(Optional.of(member));
+        memberService.updateMyInfo(7L, new MemberUpdateRequest("새닉네임", "newpass123", "newpass123"));
+
+        assertThat(member.getPasswordHash()).isNotEqualTo("newpass123");
+        assertThat(passwordEncoder.matches("newpass123", member.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("abc12345", member.getPasswordHash())).isFalse();
+        given(memberRepository.findByEmail("user@email.com")).willReturn(Optional.of(member));
+        assertThat(memberService.login(new LoginRequest("user@email.com", "newpass123")).nickname())
+                .isEqualTo("새닉네임");
+        assertThatThrownBy(() -> memberService.login(new LoginRequest("user@email.com", "abc12345")))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"short,short", "newpass123,different", "NULL,newpass123", "newpass123,NULL", "'        ','        '"}, nullValues = "NULL")
+    void rejectsInvalidPasswordBeforeLookingUpMember(String password, String confirm) {
+        assertThatThrownBy(() -> memberService.updateMyInfo(7L,
+                new MemberUpdateRequest("새닉네임", password, confirm)))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.INVALID_REQUEST));
+        verify(memberRepository, never()).findById(any());
+    }
+
+    @Test
+    void rejectsOversizedPasswordsAndNickname() {
+        for (var request : java.util.List.of(
+                new MemberUpdateRequest("닉네임", "a".repeat(65), "a".repeat(65)),
+                new MemberUpdateRequest("닉네임", "가".repeat(25), "가".repeat(25)),
+                new MemberUpdateRequest("닉".repeat(51), null, null),
+                new MemberUpdateRequest(" ", null, null))) {
+            assertThatThrownBy(() -> memberService.updateMyInfo(7L, request))
+                    .isInstanceOf(CustomException.class);
+        }
+        verify(memberRepository, never()).findById(any());
+    }
+
+    @Test
+    void rejectsUpdateForMissingOrWithdrawnMember() {
+        var request = new MemberUpdateRequest("새닉네임", null, null);
+        given(memberRepository.findById(7L)).willReturn(Optional.empty());
+        assertThatThrownBy(() -> memberService.updateMyInfo(7L, request))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED));
+
+        Member withdrawn = savedMember(8L, "abc12345");
+        withdrawn.withdraw();
+        given(memberRepository.findById(8L)).willReturn(Optional.of(withdrawn));
+        assertThatThrownBy(() -> memberService.updateMyInfo(8L, request))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED));
+        assertThat(withdrawn.getNickname()).isEqualTo("틈틈이");
     }
 
     // ===== 회원가입 =====

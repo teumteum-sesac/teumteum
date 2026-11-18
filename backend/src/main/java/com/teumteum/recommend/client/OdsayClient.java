@@ -27,6 +27,8 @@ import java.util.Optional;
  * - 경로 좌표는 쓰지 않는다 (대중교통 지도는 1차 버전에서 직선) → coordinates 는 빈 목록
  * - 서버 플랫폼 키라 ODsay 에 호출하는 곳의 공인 IP 를 등록해야 한다
  * - 무료 호출 한도가 있어 최종 후보 코스에만 부른다 (NFR-014, 이동시간 서비스에서 지킴)
+ * - 하루 한도와 별개로 짧은 시간에 연달아 부르면 429 "Too Many Requests" 로 막는다
+ *   → 호출 사이에 최소 간격(MIN_INTERVAL)을 둔다. 연달아 6번까지는 통과, 300ms 간격이면 통과 (2026-11-18 실측)
  * <p>
  * 실패는 예외 대신 Optional.empty() 로 알리고, 직선거리로 바꾸는 일은 이동시간 서비스(3-5)가 한다.
  * API 키는 application-local.yml 의 odsay.api-key 에서 읽는다. 코드·로그에 키를 남기지 않는다.
@@ -46,8 +48,12 @@ public class OdsayClient {
     private static final int TRAFFIC_TYPE_SUBWAY = 1;
     private static final int TRAFFIC_TYPE_BUS = 2;
 
+    /** 호출 사이 최소 간격 (429 방지). 실측에서 300ms 간격은 모두 통과했다 */
+    static final Duration MIN_INTERVAL = Duration.ofMillis(300);
+
     private final RestClient restClient;
     private final String apiKey;
+    private final RequestThrottle throttle = new RequestThrottle(MIN_INTERVAL);
 
     /**
      * 기본 주소·타임아웃·인코딩 방식을 한 번 정해 둔다.
@@ -83,6 +89,7 @@ public class OdsayClient {
      */
     public Optional<TravelRoute> findTransitRoute(double fromLatitude, double fromLongitude,
                                                   double toLatitude, double toLongitude) {
+        throttle.acquire(); // 직전 호출에서 300ms 가 안 지났으면 기다렸다가 부른다
         try {
             OdsayDirectionsResponse response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -110,7 +117,8 @@ public class OdsayClient {
     Optional<TravelRoute> toTravelRoute(OdsayDirectionsResponse response) {
         // 1. result 가 없으면 실패 (키 오류, IP 미등록, 출발·도착이 너무 가까움 등은 200 + error 로 온다)
         if (response == null || response.result() == null) {
-            log.warn("ODsay 대중교통 길찾기 결과 없음 (오류 응답)");
+            // 오류 내용(예: 700m 이내 -98, 429 Too Many Requests, Daily quota exceeded)을 남겨야 원인을 바로 안다
+            log.warn("ODsay 대중교통 길찾기 결과 없음: {}", response == null ? "응답 없음" : response.error());
             return Optional.empty();
         }
 

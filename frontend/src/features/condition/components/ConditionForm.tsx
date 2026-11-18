@@ -9,7 +9,7 @@ import StickerImage from '../../../shared/components/StickerImage'
 import { MAX_CATEGORIES, TRANSPORT_OPTIONS } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
 import { useRecommendStore } from '../../recommend/store'
-import { canRequestRecommend } from '../recommendRequest'
+import { canRequestRecommend, toRecommendRequest } from '../recommendRequest'
 import { useConditionStore } from '../store'
 import CategorySelector from './CategorySelector'
 import LocationFields from './LocationFields'
@@ -23,7 +23,6 @@ export default function ConditionForm() {
 
   // 출발지가 없거나 이용시간이 0분이면 비활성 (REQ-008, 0분은 슬라이더 시작 위치). 카테고리는 비어 있으면 랜덤으로 진행
   // 기준은 추천 API 검증 규칙과 같은 canRequestRecommend (recommendRequest.ts)
-  // TODO(나혜빈): RES-01 연결 시 requestRecommend(목업) 대신 toRecommendRequest(조건) 으로 POST /api/recommendations 호출
   const canSubmit = canRequestRecommend({ origin, availableMinutes, startTime })
 
   return (
@@ -60,7 +59,10 @@ export default function ConditionForm() {
             className="flex flex-1 items-center justify-center gap-1"
             disabled={!canSubmit}
             onClick={() => {
-              requestRecommend()
+              // 조건 → 추천 요청 → POST /api/recommendations (결과 화면이 계산 중 표시를 보여 준다)
+              const request = toRecommendRequest(useConditionStore.getState())
+              if (!request) return
+              void requestRecommend(request)
               navigate('/results')
             }}
           >

@@ -4,6 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import jakarta.persistence.EntityManager;
+import com.teumteum.member.service.MemberWithdrawalService;
+import com.teumteum.member.dto.MemberWithdrawRequest;
+import com.teumteum.global.auth.JwtProvider;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.MediaType;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import java.sql.Statement;
 import java.util.Objects;
 import java.util.UUID;
@@ -23,6 +33,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 // 실제 Spring 객체와 로컬 DB 설정을 사용한다.
 // Hibernate가 테이블 구조를 자동 생성·변경·삭제하지 않도록 설정한다.
 @SpringBootTest(properties = "spring.jpa.hibernate.ddl-auto=none")
+@AutoConfigureMockMvc
 @ActiveProfiles("local")
 
 // 실제 DB를 사용하는 테스트라 명시적으로 허용한 경우에만 실행한다.
@@ -31,6 +42,80 @@ import org.springframework.transaction.support.TransactionTemplate;
         matches = "true"
 )
 class CourseDeleteTransactionTest {
+
+    @Autowired
+    private MemberWithdrawalService withdrawalService;
+    @Autowired
+    private MockMvc mockMvc;
+    @Autowired
+    private JwtProvider jwtProvider;
+
+    @Test
+    void withdrawalHttpRequestRevokesExistingTokenForMemberAndCourseApis() throws Exception {
+        String authorization = "Bearer " + jwtProvider.createAccessToken(fixture.memberId());
+        mockMvc.perform(delete("/api/members/me").header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"agreed\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.withdrawn").value(true));
+        mockMvc.perform(get("/api/members/me").header("Authorization", authorization))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/courses").header("Authorization", authorization))
+                .andExpect(status().isUnauthorized());
+        transactionTemplate.executeWithoutResult(status -> {
+            assertSavedRowCounts(0L);
+            assertSharedPlaceExists();
+        });
+    }
+
+    @Test
+    void withdrawalLeavesAnotherMembersCoursesUntouched() {
+        transactionTemplate.executeWithoutResult(status -> {
+            Fixture other = createFixture();
+            withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(null, true));
+            entityManager.flush();
+            assertSavedRowCounts(0L);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM course WHERE course_id = ?",
+                    Long.class, other.courseId())).isEqualTo(1L);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM course_place WHERE course_id = ?",
+                    Long.class, other.courseId())).isEqualTo(1L);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM course_route_leg WHERE course_id = ?",
+                    Long.class, other.courseId())).isEqualTo(1L);
+            assertThat(jdbcTemplate.queryForObject("SELECT account_status FROM member WHERE member_id = ?",
+                    String.class, other.memberId())).isEqualTo("ACTIVE");
+            // 추가로 만든 회원·코스는 이 테스트의 트랜잭션과 함께 되돌린다.
+            status.setRollbackOnly();
+        });
+    }
+
+    @Test
+    void withdrawalRemovesCoursesAndChildrenButKeepsSharedPlace() {
+        withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(null, true));
+        transactionTemplate.executeWithoutResult(status -> {
+            assertSavedRowCounts(0L);
+            assertSharedPlaceExists();
+            assertThat(jdbcTemplate.queryForObject("SELECT account_status FROM member WHERE member_id = ?",
+                    String.class, fixture.memberId())).isEqualTo("WITHDRAWN");
+        });
+    }
+
+    @Test
+    void withdrawalRollsBackStatusAndCourseDeletionTogether() {
+        assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {
+            withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(null, true));
+            entityManager.flush();
+            assertSavedRowCounts(0L);
+            assertThat(jdbcTemplate.queryForObject("SELECT account_status FROM member WHERE member_id = ?",
+                    String.class, fixture.memberId())).isEqualTo("WITHDRAWN");
+            throw new ForcedRollbackException();
+        })).isInstanceOf(ForcedRollbackException.class);
+
+        transactionTemplate.executeWithoutResult(status -> {
+            assertSavedRowCounts(1L);
+            assertSharedPlaceExists();
+            assertThat(jdbcTemplate.queryForObject("SELECT account_status FROM member WHERE member_id = ?",
+                    String.class, fixture.memberId())).isEqualTo("ACTIVE");
+        });
+    }
 
     @Test
     void restoresCourseAndChildrenWhenDeleteTransactionFails() {

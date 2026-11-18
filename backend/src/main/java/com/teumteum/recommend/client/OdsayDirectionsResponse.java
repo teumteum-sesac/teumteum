@@ -22,13 +22,21 @@ import java.util.List;
  * </pre>
  * 카카오·ORS 와 달리 실패해도 HTTP 200 으로 오고, result 대신 error 칸이 온다.
  * 예) 키 인증 실패: {"error":[{"code":"500","message":"[ApiKeyAuthFailed] ..."}]}
- * error 는 모양이 일정하지 않아(배열·객체) 받지 않고, "result 가 없으면 실패" 로만 판단한다.
+ * 예) 700m 이내:      {"error":{"msg":"출, 도착지가 700m이내입니다.","code":"-98"}}
+ * 예) 너무 자주 호출:  {"error":[{"code":"429","message":"Too Many Requests"}]}
+ * error 는 모양이 일정하지 않아(배열·객체) Object 로 받아 로그에만 남기고, 실패 판단은 "result 가 없으면 실패" 로 한다.
  * 이 클래스는 client 패키지 안에서만 쓰고, 바깥에는 TravelRoute 로 바꿔서 내보낸다.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record OdsayDirectionsResponse(
-        Result result
+        Result result,
+        Object error   // 실패 이유 (로그용). Object 라서 배열이든 객체든 그대로 받는다
 ) {
+
+    /** 성공 응답처럼 error 없이 만드는 생성자 (기존 테스트의 new OdsayDirectionsResponse(result) 유지) */
+    public OdsayDirectionsResponse(Result result) {
+        this(result, null);
+    }
 
     /** 검색 결과. 실패 응답이면 이 칸이 통째로 없다(null) */
     @JsonIgnoreProperties(ignoreUnknown = true)

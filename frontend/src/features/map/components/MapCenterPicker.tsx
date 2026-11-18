@@ -39,12 +39,17 @@ export default function MapCenterPicker({ initialCenter, onConfirm, confirmLabel
   // 핀이 가리키는 좌표. 지도 움직임이 끝날 때마다 KakaoMap 이 알려 준다
   const [center, setCenter] = useState<LatLng>(initialCenter)
   const [result, setResult] = useState<AddressResult | null>(null)
+  // '다시 시도'를 누를 때마다 1 늘려 같은 위치의 주소를 다시 조회한다
+  const [retry, setRetry] = useState(0)
 
   const { lat, lng } = center
-  const requestKey = `${lat},${lng}`
+  // 지도에서 받은 좌표가 숫자가 아니거나 범위를 벗어나면 위치를 정할 수 없다
+  const validCenter = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+  const requestKey = `${lat},${lng},${retry}`
 
   // 핀 위치가 바뀌면 잠시 뒤 주소를 조회한다. 그 사이 다시 움직이면 이전 요청은 취소·무시한다
   useEffect(() => {
+    if (!validCenter) return
     let latest = true
     const timer = setTimeout(() => {
       getAddress({ lat, lng })
@@ -59,7 +64,7 @@ export default function MapCenterPicker({ initialCenter, onConfirm, confirmLabel
       latest = false
       clearTimeout(timer)
     }
-  }, [lat, lng, requestKey])
+  }, [lat, lng, requestKey, validCenter])
 
   // 지금 핀 위치의 주소가 도착했는지 (도착 전에는 '확인 중')
   const current = result?.requestKey === requestKey ? result : null
@@ -92,10 +97,21 @@ export default function MapCenterPicker({ initialCenter, onConfirm, confirmLabel
       <div className="flex flex-col gap-3 border-t border-line bg-white px-4 py-4">
         <p className="text-xs text-neutral-500">지도를 움직여 핀을 원하는 위치에 맞춰 주세요.</p>
         <div role="status" className="min-h-10">
-          {current === null ? (
+          {!validCenter ? (
+            <p className="text-sm text-red-500">위치를 확인할 수 없어요. 지도를 조금 움직여 다시 맞춰 주세요.</p>
+          ) : current === null ? (
             <p className="text-sm text-neutral-400">주소를 확인하고 있어요…</p>
           ) : current.failed ? (
-            <p className="text-sm text-neutral-500">주소를 불러오지 못했어요. 이 위치 그대로 설정할 수 있어요.</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-neutral-500">주소를 불러오지 못했어요. 다시 시도하거나 이 위치 그대로 설정할 수 있어요.</p>
+              <button
+                type="button"
+                onClick={() => setRetry((n) => n + 1)}
+                className="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-bold active:bg-neutral-100"
+              >
+                다시 시도
+              </button>
+            </div>
           ) : address?.displayName ? (
             <>
               <p className="font-semibold">{address.displayName}</p>
@@ -105,7 +121,7 @@ export default function MapCenterPicker({ initialCenter, onConfirm, confirmLabel
             <p className="text-sm text-neutral-500">주소를 찾을 수 없는 위치예요.</p>
           )}
         </div>
-        <Button onClick={confirm} disabled={current === null}>
+        <Button onClick={confirm} disabled={!validCenter || current === null}>
           {confirmLabel}
         </Button>
       </div>

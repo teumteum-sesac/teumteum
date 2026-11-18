@@ -2,10 +2,13 @@ package com.teumteum.member.service;
 
 import com.teumteum.admin.service.AdminService;
 import com.teumteum.global.auth.JwtProvider;
+import com.teumteum.global.exception.CommonErrorCode;
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.member.domain.Member;
 import com.teumteum.member.dto.LoginRequest;
 import com.teumteum.member.dto.LoginResponse;
+import com.teumteum.member.dto.MemberResponse;
+import com.teumteum.member.dto.MemberUpdateRequest;
 import com.teumteum.member.dto.SignupRequest;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.repository.MemberRepository;
@@ -116,10 +119,70 @@ public class MemberService {
         return memberRepository.findById(memberId);
     }
 
+    /** JWT 서명이 맞아도 삭제·탈퇴한 회원이면 인증하지 않는다. */
+    public boolean isActiveMember(Long memberId) {
+        return memberId != null && memberId > 0
+                && findMember(memberId).filter(Member::isActive).isPresent();
+    }
+
     /** 탈퇴 처리 (상태만 WITHDRAWN 으로). 바뀐 회원을 돌려준다 */
     @Transactional
     public Member withdraw(Member member) {
         member.withdraw();
         return member;
+    }
+
+    /** 닉네임·선택적인 새 비밀번호를 수정한다. 이메일은 변경하지 않는다. */
+    @Transactional
+    public MemberResponse updateMyInfo(Long memberId, MemberUpdateRequest request) {
+        if (memberId == null || memberId <= 0) {
+            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+        }
+        // Controller 이외의 호출에서도 검증하고 필드를 변경하기 전에 오류를 거절한다.
+        if (request == null || request.nickname() == null || request.nickname().isBlank()
+                || request.nickname().length() > Member.NICKNAME_MAX_LENGTH
+                || !request.isPasswordChangeValid()) {
+            throw new CustomException(CommonErrorCode.INVALID_REQUEST);
+        }
+
+        Member member = findMember(memberId)
+                .filter(Member::isActive)
+                .orElseThrow(() -> new CustomException(CommonErrorCode.UNAUTHORIZED));
+
+        // 암호화가 실패해도 닉네임이 먼저 바뀌지 않도록 해시를 준비한 뒤 변경한다.
+        String passwordHash = null;
+        if (request.newPassword() != null && !request.newPassword().isEmpty()) {
+            passwordHash = passwordEncoder.encode(request.newPassword());
+        }
+        member.changeNickname(request.nickname());
+        if (passwordHash != null) {
+            member.changePassword(passwordHash);
+        }
+
+        // 조회한 엔티티는 JPA가 관리하므로 트랜잭션 커밋 시 변경 감지로 UPDATE된다.
+        // 수정 결과에는 비밀번호·해시를 넣지 않는다.
+        return new MemberResponse(member.getEmail(), member.getNickname());
+    }
+
+    /** 인증된 회원 본인의 이메일·닉네임을 조회한다. 없거나 탈퇴한 회원은 401로 거절한다. */
+    public MemberResponse getMyInfo(Long memberId) {
+        Optional<Member> member = findMember(memberId);
+
+        // 조회된 회원이 없으면 여기서 예외를 던지고 메서드를 끝낸다.
+        if (member.isEmpty()) {
+            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+        }
+
+        // 위 검사를 통과했으므로 Optional에서 실제 회원을 꺼낼 수 있다.
+        Member foundMember = member.get();
+
+        if (!foundMember.isActive()) {
+            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+        }
+
+        return new MemberResponse(
+                foundMember.getEmail(),
+                foundMember.getNickname()
+        );
     }
 }

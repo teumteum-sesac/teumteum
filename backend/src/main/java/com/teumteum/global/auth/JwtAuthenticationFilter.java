@@ -1,6 +1,8 @@
 package com.teumteum.global.auth;
 
 import com.teumteum.global.exception.CustomException;
+import com.teumteum.global.exception.CommonErrorCode;
+import com.teumteum.member.service.MemberService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,9 +44,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String ROLE_ADMIN = "ROLE_ADMIN";
 
     private final JwtProvider jwtProvider;
+    private final MemberService memberService;
 
-    public JwtAuthenticationFilter(JwtProvider jwtProvider) {
+    public JwtAuthenticationFilter(JwtProvider jwtProvider, MemberService memberService) {
         this.jwtProvider = jwtProvider;
+        this.memberService = memberService;
     }
 
     @Override
@@ -54,6 +58,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null) {
             try {
                 JwtProvider.TokenClaims claims = jwtProvider.parse(token);
+                // 탈퇴 후 기존 토큰의 서명·만료가 유효해도 회원 전용 경로에 접근할 수 없게 한다.
+                if (!memberService.isActiveMember(claims.memberId())) {
+                    throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+                }
                 // principal(누구인가) = 회원 ID, 비밀번호 자리 = null, 권한 = 관리자면 ROLE_ADMIN (SecurityConfig 의 hasRole("ADMIN"))
                 List<SimpleGrantedAuthority> authorities = claims.admin() ? List.of(new SimpleGrantedAuthority(ROLE_ADMIN)) : List.of();
                 var authentication = new UsernamePasswordAuthenticationToken(claims.memberId(), null, authorities);

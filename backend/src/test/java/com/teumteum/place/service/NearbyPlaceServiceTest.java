@@ -24,6 +24,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import static org.mockito.ArgumentMatchers.intThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 @ExtendWith(MockitoExtension.class)
 class NearbyPlaceServiceTest {
@@ -181,5 +187,38 @@ class NearbyPlaceServiceTest {
     private static Document doc(String id, String categoryName, String distance) {
         return new Document(id, "장소" + id, categoryName, null, null, null,
                 "서울 성동구", null, "127.0557", "37.5445", "http://place.map.kakao.com/" + id, distance);
+    }
+
+    // ===== 주변 탐색 (REQ-051, HOM-02) =====
+
+    @ParameterizedTest
+    @ValueSource(ints = {500, 1_000, 3_000})
+    void 주변_탐색은_사용자가_고른_반경으로_카테고리와_키워드_검색을_모두_호출한다(int radius) {
+        givenCategory(KakaoCategory.FD6, response());
+        givenAnyKeyword(response());
+
+        nearbyPlaceService.findCandidates(LAT, LNG, Set.of(PlaceCategory.FOOD), radius);
+
+        verify(kakaoLocalClient).searchCategory(eq(KakaoCategory.FD6), anyDouble(), anyDouble(),
+                eq(radius), anyInt(), anyInt());
+        verify(kakaoLocalClient).searchKeyword(eq("한식"), anyDouble(), anyDouble(),
+                eq(radius), anyInt(), anyInt());
+    }
+
+    @Test
+    void 결과가_없어도_반경을_스스로_넓히지_않는다() {
+        givenCategory(KakaoCategory.FD6, response());
+        givenAnyKeyword(response());
+
+        List<NearbyPlaceResult> results =
+                nearbyPlaceService.findCandidates(LAT, LNG, Set.of(PlaceCategory.FOOD), 500);
+
+        assertThat(results).isEmpty();
+        verify(kakaoLocalClient, times(1)).searchCategory(any(), anyDouble(), anyDouble(),
+                anyInt(), anyInt(), anyInt());
+        verify(kakaoLocalClient, never()).searchCategory(any(), anyDouble(), anyDouble(),
+                intThat(r -> r != 500), anyInt(), anyInt());
+        verify(kakaoLocalClient, never()).searchKeyword(anyString(), anyDouble(), anyDouble(),
+                intThat(r -> r != 500), anyInt(), anyInt());
     }
 }

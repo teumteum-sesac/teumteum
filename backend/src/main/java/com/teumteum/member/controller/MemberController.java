@@ -1,6 +1,12 @@
 package com.teumteum.member.controller;
 
+import com.teumteum.global.auth.LoginMember;
 import com.teumteum.global.config.OpenApiConfig;
+import com.teumteum.member.dto.MemberResponse;
+import com.teumteum.member.dto.MemberUpdateRequest;
+import com.teumteum.member.dto.MemberWithdrawRequest;
+import com.teumteum.member.dto.MemberWithdrawResponse;
+import com.teumteum.member.service.MemberWithdrawalService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,6 +22,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +51,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class MemberController {
 
     private final MemberService memberService;
+    private final MemberWithdrawalService memberWithdrawalService;
+
+    @Operation(summary = "🔒 회원 탈퇴", description = "비밀번호 확인 또는 agreed=true로 탈퇴한다. 저장 코스·장소 스냅샷·경로를 삭제하고 회원을 탈퇴 상태로 변경한다. 성공 후 프론트는 토큰을 지우고 홈으로 이동한다.")
+    @DeleteMapping("/me")
+    public ResponseEntity<ApiResponse<MemberWithdrawResponse>> withdrawMyAccount(
+            @Parameter(hidden = true) @LoginMember Long memberId,
+            @Valid @RequestBody MemberWithdrawRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(memberWithdrawalService.withdrawMyAccount(memberId, request)));
+    }
 
     /**
      * 회원가입.
@@ -70,5 +88,28 @@ public class MemberController {
     ) {
         boolean exists = memberService.existsByEmail(email);
         return ResponseEntity.ok(ApiResponse.ok(new EmailExistsResponse(exists)));
+    }
+
+    @Operation(summary = "🔒 내 회원 정보 수정", description = "닉네임과 선택적인 새 비밀번호를 수정한다. 비밀번호 두 칸을 비우면 기존 비밀번호 유지. 새 비밀번호는 8~64자·UTF-8 72바이트 이하이며 확인 값과 일치해야 한다. 이메일은 변경하지 않는다.")
+    @PatchMapping("/me")
+    public ResponseEntity<ApiResponse<MemberResponse>> updateMyInfo(
+            @Parameter(hidden = true) @LoginMember Long memberId,
+            @Valid @RequestBody MemberUpdateRequest request
+    ) {
+        // @Valid로 입력을 검사하고, 인증 정보에서 받은 ID로 본인 정보만 수정한다.
+        MemberResponse response = memberService.updateMyInfo(memberId, request);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @Operation(summary = "🔒 내 회원 정보 조회", description = "로그인한 회원의 이메일·닉네임을 반환한다. 인증이 없거나 회원이 없거나 탈퇴한 경우 401로 응답한다.")
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<MemberResponse>> getMyInfo(
+            // 회원 ID는 요청 파라미터가 아니라 JWT로 인증된 회원 정보에서 가져온다.
+            @Parameter(hidden = true) @LoginMember Long memberId
+    ) {
+        // 회원 조회와 탈퇴 여부 확인은 Service가 담당한다.
+        MemberResponse response = memberService.getMyInfo(memberId);
+        // HTTP 200과 공통 응답 형식으로 이메일·닉네임을 반환한다.
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }
