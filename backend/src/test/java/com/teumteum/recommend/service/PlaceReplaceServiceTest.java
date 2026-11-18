@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,14 +49,17 @@ import static org.mockito.Mockito.verifyNoInteractions;
  * 이동시간 API(TravelTimeService)만 가짜로 바꿔서 "몇 번 부르는지" 와 "결과 시간" 을 정한다.
  * 묶음은 보관소에 직접 넣는다.
  * <pre>
- * 코스 rc_1: 출발지(성수역) ─5분─▶ 카페 A(60분) ─10분─▶ 공원 B(60분)    총 135분, 이용 시간 180분
+ * 코스 rc_1: 출발지(성수역) ─5분─▶ 카페 A(40분) ─10분─▶ 공원 B(40분)    총 95분, 이용 시간 180분
  * 보관한 후보: A, B, 카페 C, 디저트 D, 산책로 E
  * </pre>
  */
 @ExtendWith(MockitoExtension.class)
 class PlaceReplaceServiceTest {
 
-    private static final OffsetDateTime NOW = OffsetDateTime.of(2026, 11, 18, 13, 0, 0, 0, ZoneOffset.ofHours(9));
+    /**
+     * 지금 시각 기준. 날짜를 고정하면 그 날짜가 지난 뒤 보관소(실제 시계로 만료 정리)가 새로 넣은 코스를 바로 지워 테스트가 깨진다.
+     */
+    private static final OffsetDateTime NOW = OffsetDateTime.now(ZoneOffset.ofHours(9)).truncatedTo(ChronoUnit.SECONDS);
     private static final OffsetDateTime EXPIRES_AT = NOW.plusHours(2);
     private static final Location DESTINATION = new Location("서울숲", null, 37.5444, 127.0374);
 
@@ -141,7 +145,7 @@ class PlaceReplaceServiceTest {
         assertEquals(EXPIRES_AT, response.expiresAt());                      // 만료 시각도 같음
         assertEquals(List.of("C", "B"), response.places().stream().map(p -> p.placeId()).toList());
         assertEquals(7, response.places().get(1).travelMinutes());          // B 로 가는 구간도 바뀜
-        assertEquals(7 + 60 + 7 + 60, response.totalMinutes());
+        assertEquals(7 + 40 + 7 + 40, response.totalMinutes());
     }
 
     @Test
@@ -167,8 +171,8 @@ class PlaceReplaceServiceTest {
 
         verify(travelTimeService, times(2)).findRoute(any(), anyDouble(), anyDouble(), anyDouble(), anyDouble());
         assertEquals(7, response.finalTravelMinutes());
-        // 출발지→A 5분·A 60분은 그대로, A→E 7분 + 산책로 60분 + E→서울숲 7분
-        assertEquals(5 + 60 + 7 + 60 + 7, response.totalMinutes());
+        // 출발지→A 5분·A 40분은 그대로, A→E 7분 + 산책로 40분 + E→서울숲 7분
+        assertEquals(5 + 40 + 7 + 40 + 7, response.totalMinutes());
     }
 
     @Test
@@ -186,7 +190,7 @@ class PlaceReplaceServiceTest {
     @DisplayName("교체: 실제 이동시간으로 이용 시간을 넘으면 409 이고 아무것도 보관하지 않는다")
     void replace_exceedsAvailableTime() {
         save(null);
-        givenEveryRouteTakes(60); // 60 + 60 + 60 + 60 = 240분 > 180분
+        givenEveryRouteTakes(60); // 60 + 40 + 60 + 40 = 200분 > 180분
 
         CustomException e = assertThrows(CustomException.class,
                 () -> placeReplaceService.replace("rc_1", request("A", "C")));
@@ -244,8 +248,8 @@ class PlaceReplaceServiceTest {
     private void save(Location destination) {
         TravelRoute finalTravel = (destination == null) ? null : new TravelRoute(8, List.of());
         CoursePlan plan = new CourseTimeCalculator().toCoursePlan(List.of(
-                new CourseStop(cafeA, 60, new TravelRoute(5, List.of())),
-                new CourseStop(parkB, 60, new TravelRoute(10, List.of()))), finalTravel);
+                new CourseStop(cafeA, 40, new TravelRoute(5, List.of())),
+                new CourseStop(parkB, 40, new TravelRoute(10, List.of()))), finalTravel);
         RecommendedCourse course = new RecommendedCourse("rc_1", "rs_1", plan, EXPIRES_AT);
         RecommendCondition condition = new RecommendCondition(
                 new Location("성수역", null, 37.5446, 127.0559), destination, "13:00", 180,
