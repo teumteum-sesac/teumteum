@@ -5,7 +5,6 @@ import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
 import com.teumteum.recommend.domain.PlaceCandidate;
-import com.teumteum.recommend.domain.PlaceVisit;
 import com.teumteum.recommend.domain.TravelRoute;
 import com.teumteum.recommend.domain.TravelRoute.Coordinate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -284,34 +283,12 @@ public class CourseComposer {
                     ? findRoute(condition, coordinateOf(kept.get(count - 1).place()), condition.destination())
                     : null;
 
-            CoursePlan course = toCoursePlan(kept, finalTravel);
+            CoursePlan course = courseTimeCalculator.toCoursePlan(kept, finalTravel);
             if (courseTimeCalculator.isWithinAvailableTime(course.totalMinutes(), condition.availableMinutes())) {
                 return Optional.of(course);
             }
         }
         return Optional.empty(); // 한 곳만 남겨도 넘음 → 이 코스는 버린다
-    }
-
-    /** 방문지 목록 → 총 소요시간·이동 합·추정 여부를 계산해 CoursePlan 으로 만든다 */
-    private CoursePlan toCoursePlan(List<CourseStop> stops, TravelRoute finalTravel) {
-        List<PlaceVisit> visits = new ArrayList<>();
-        int travelSum = 0;
-        boolean estimated = false;
-
-        for (CourseStop stop : stops) {
-            visits.add(new PlaceVisit(stop.travel().travelMinutes(), stop.stayMinutes()));
-            travelSum += stop.travel().travelMinutes();
-            estimated = estimated || stop.travel().estimated(); // 하나라도 추정이면 true
-        }
-
-        int finalTravelMinutes = 0;
-        if (finalTravel != null) {
-            finalTravelMinutes = finalTravel.travelMinutes();
-            estimated = estimated || finalTravel.estimated();
-        }
-
-        int totalMinutes = courseTimeCalculator.calculateTotalMinutes(visits, finalTravelMinutes);
-        return new CoursePlan(stops, finalTravel, totalMinutes, travelSum + finalTravelMinutes, estimated);
     }
 
     // ===================== 작은 도우미들 =====================
