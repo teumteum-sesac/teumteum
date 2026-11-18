@@ -16,6 +16,7 @@ import KakaoMap, { type ClusterMarker, type KakaoMapController, type MapMarker, 
 import LocationGuide from './LocationGuide'
 import MapControls, { LocateButton, MAP_CONTROLS_HEIGHT, type LocateStatus } from './MapControls'
 import NearbySheet from './NearbySheet'
+import type { NearbyPlaceResult } from '../types'
 
 // ── 주변 탐색 (HOM-02) 반경 맞춤 ──
 /** 반경 원에 맞출 때 지도 가장자리 여백(px). 위쪽은 검색창 묶음 아래끝 + 이 값 */
@@ -219,6 +220,15 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     [controller, readSearchBottom],
   )
 
+  // 주변 탐색 카드 선택: 그 장소로 지도를 옮기고 마커를 강조한다 (확대 수준·반경·검색 기준 좌표는 그대로)
+  const selectPlaceFromCard = useCallback(
+    (place: NearbyPlaceResult) => {
+      setSelectedPlaceId(place.kakaoPlaceId)
+      panNearbyTo({ lat: place.latitude, lng: place.longitude })
+    },
+    [panNearbyTo],
+  )
+
   // 주변 탐색: 반경을 정했을 때(처음 진입·반경 변경)만 반경 원이 보이는 영역에 들어오게 맞춘다.
   // 사용자가 지도를 끌거나 확대·축소한 뒤에는 다시 맞추지 않고, 시트 높이가 바뀌어도 맞추지 않는다
   const fittedRadiusRef = useRef<string | null>(null)
@@ -370,6 +380,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             errorMessage={nearbyPlaces.errorMessage}
             onRetry={nearbyPlaces.retry}
             selectedPlaceId={selectedPlaceId}
+            onSelectPlace={selectPlaceFromCard}
             scrollRequest={scrollRequest}
             radiusEmpty={nearbyPlaces.places.length === 0}
             level={sheetLevel}

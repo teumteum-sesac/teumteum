@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
-import { Link } from 'react-router'
 import Button from '../../../shared/components/Button'
 import Chip from '../../../shared/components/Chip'
 import ChipGroup from '../../../shared/components/ChipGroup'
@@ -9,6 +8,7 @@ import { formatDistance, walkMinutes } from '../format'
 import type { NearbyPlacesStatus } from '../hooks/useNearbyPlaces'
 import { clampSheetHeight, SHEET_HEIGHT_CLASS, snapSheetLevel, tapSheetLevel, type SheetLevel } from '../sheetLayout'
 import type { NearbyPlaceResult } from '../types'
+import PlaceCard from './PlaceCard'
 
 const RADIUS_OPTIONS = [500, 1000, 3000]
 
@@ -44,8 +44,10 @@ interface NearbySheetProps {
   errorMessage: string | null
   /** '다시 시도' 버튼 */
   onRetry: () => void
-  /** 지도 마커로 고른 장소. 해당 카드를 강조하고 목록에서 보이게 스크롤한다 */
+  /** 지도 마커나 카드로 고른 장소. 해당 카드를 강조하고 목록에서 보이게 스크롤한다 */
   selectedPlaceId: string | null
+  /** 카드를 눌렀을 때: 지도 이동 + 마커 강조 (상세 이동은 선택된 카드의 '상세 보기') */
+  onSelectPlace: (place: NearbyPlaceResult) => void
   /** 마커를 누를 때마다 바뀌는 값. 같은 마커를 다시 눌러도 해당 카드로 다시 스크롤한다 */
   scrollRequest: number
   /** true면 대분류와 상관없이 반경 안에 장소가 하나도 없다 (빈 목록 안내 문구 구분용) */
@@ -60,7 +62,8 @@ interface NearbySheetProps {
  * - 손잡이·'내 주변 장소' 제목 줄을 누르면 반만 ↔ 접힘 (전체에서는 반만)
  * - 끌면 시트가 손가락을 따라 움직이고, 놓으면 가까운 단계로 정착한다 (길게 끌면 두 단계도 한 번에)
  * 끝까지 내려도 홈으로 가지 않고 접힘 상태로 주변 탐색을 유지한다.
- * 장소 카드를 누르면 장소 1곳짜리 상세(DET-01)로 이동한다. 마커를 누르면 해당 카드를 강조한다.
+ * 장소 카드를 누르면 지도를 그 장소로 옮기고 마커를 강조한다. 선택된 카드의 '상세 보기'로 장소 1곳짜리 상세(DET-01)에 간다.
+ * 마커를 누르면 해당 카드를 강조한다.
  * 장소 데이터는 HomeScreen 이 주변 장소 API(useNearbyPlaces)로 받아 넘긴다. 불러오는 중·실패·결과 없음은 목록 자리에 안내한다
  */
 export default function NearbySheet({
@@ -73,6 +76,7 @@ export default function NearbySheet({
   errorMessage,
   onRetry,
   selectedPlaceId,
+  onSelectPlace,
   scrollRequest,
   radiusEmpty,
   level,
@@ -223,27 +227,23 @@ export default function NearbySheet({
             )}
             <ul ref={listRef} className="flex flex-col gap-2">
               {places.map((place) => (
-                <li key={place.kakaoPlaceId} data-place-id={place.kakaoPlaceId}>
-                  <Link
-                    to={`/results/place-${place.kakaoPlaceId}`}
-                    aria-current={place.kakaoPlaceId === selectedPlaceId ? 'true' : undefined}
-                    className={`flex gap-3 rounded-xl border p-3 ${
-                      place.kakaoPlaceId === selectedPlaceId ? 'border-primary bg-primary-light' : 'border-line'
-                    }`}
-                  >
-                    <div aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-2xl">
-                      {getCategoryIcon(place.category)}
-                    </div>
-                    <div className="flex flex-col justify-center">
-                      <p className="font-semibold">{place.name}</p>
-                      <p className="text-xs text-neutral-500">
-                        {getCategoryLabel(place.category)}
-                        {/* 서버가 거리를 모르면(null) 거리·도보 시간은 빼고 대분류만 보여 준다 */}
-                        {place.distance !== null && ` · ${formatDistance(place.distance)} · 도보 ${walkMinutes(place.distance)}분`}
-                      </p>
-                    </div>
-                  </Link>
-                </li>
+                <PlaceCard
+                  key={place.kakaoPlaceId}
+                  id={place.kakaoPlaceId}
+                  icon={getCategoryIcon(place.category)}
+                  name={place.name}
+                  meta={
+                    <>
+                      {getCategoryLabel(place.category)}
+                      {/* 서버가 거리를 모르면(null) 거리·도보 시간은 빼고 대분류만 보여 준다 */}
+                      {place.distance !== null && ` · ${formatDistance(place.distance)} · 도보 ${walkMinutes(place.distance)}분`}
+                    </>
+                  }
+                  selected={place.kakaoPlaceId === selectedPlaceId}
+                  onSelect={() => onSelectPlace(place)}
+                  detailTo={`/results/place-${place.kakaoPlaceId}`}
+                  detailState={{ name: place.name, lat: place.latitude, lng: place.longitude }}
+                />
               ))}
             </ul>
           </>
