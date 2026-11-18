@@ -15,8 +15,8 @@
 | 회원 | 회원가입 (+자동 로그인) | POST | `/api/members` | 🔓 | ✅ | 김용현 | AUT-02 | [2.2](#22-회원가입) |
 | 회원 | 이메일 중복 확인 | GET | `/api/members/email-exists?email=` | 🔓 | ✅ | 김용현 | AUT-02 | [2.3](#23-이메일-중복-확인) |
 | 회원 | 내 정보 조회 | GET | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-01·MY-04 | [2.4](#24-내-회원-정보-조회) |
-| 회원 | 내 정보 수정 | PATCH | `/api/members/me` | 🔒 | ⬜ | 김하윤 | MY-04 | #153 별도 작업 |
-| 회원 | 회원 탈퇴 | DELETE | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-04 | [2.5](#25-회원-탈퇴) |
+| 회원 | 내 정보 수정 | PATCH | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-04 | [2.5](#25-내-회원-정보-수정) |
+| 회원 | 회원 탈퇴 | DELETE | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-04 | [2.6](#26-회원-탈퇴) |
 | 장소 | 장소·주소 검색 | GET | `/api/places/search?query=&lat=&lng=` | 🔓 | ✅ | 정종일 | HOM-01, CON-02 | [3.1](#31-장소주소-검색) |
 | 장소 | 좌표 → 주소 | GET | `/api/places/address?lat=&lng=` | 🔓 | ✅ | 정종일 | CON-02, 지도 핀 | [3.2](#32-좌표--주소) |
 | 장소 | 주변 장소 | GET | `/api/places/nearby?lat=&lng=&categories=&radius=` | 🔓 | ✅ | 정종일 | HOM-02 | [3.3](#33-주변-장소) |
@@ -152,7 +152,40 @@
 |---|---|---|
 | 401 | `UNAUTHORIZED` | 토큰 없음·만료·위조, 회원이 없거나 탈퇴한 경우 |
 
-### 2.5 회원 탈퇴
+### 2.5 내 회원 정보 수정
+`PATCH /api/members/me` · 🔒 · 화면 MY-04 · REQ-005
+
+요청 (`MemberUpdateRequest`). 수정 대상은 인증된 본인이다. 이메일·회원 ID는 수정 요청 필드가 아니다.
+```json
+{ "nickname": "새닉네임", "newPassword": "newpass123", "newPasswordConfirm": "newpass123" }
+```
+
+| 필드 | 필수 | 규칙 |
+|---|---|---|
+| nickname | ✅ | 공백만 입력 불가, 최대 50자 |
+| newPassword | | 변경 시 8~64자, 공백만 입력 불가, BCrypt 제한에 따라 UTF-8 72바이트 이하 |
+| newPasswordConfirm | | 비밀번호 변경 시 필수이며 새 비밀번호와 일치 |
+
+비밀번호 두 필드가 모두 생략·null·빈 문자열이면 기존 비밀번호를 유지한다. 한쪽만 입력하거나 값이 다르면 400으로 거절한다. 비밀번호는 공백 제거 없이 그대로 검증하고 BCrypt 해시로 저장한다.
+
+닉네임만 변경하는 요청:
+```json
+{ "nickname": "새닉네임" }
+```
+
+성공 200 (`MemberResponse`, 공통 응답의 `data`):
+```json
+{ "email": "user@email.com", "nickname": "새닉네임" }
+```
+
+비밀번호·해시는 반환하지 않는다. 수정 후 기존 조회 API로 변경된 정보를 확인할 수 있다.
+
+| HTTP | code | 언제 |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | 닉네임·비밀번호 검증 실패 (DTO 검증은 `fieldErrors` 포함) |
+| 401 | `UNAUTHORIZED` | 인증 실패, 회원 없음·탈퇴 상태 |
+
+### 2.6 회원 탈퇴
 `DELETE /api/members/me` · 🔒 · 화면 MY-04 · REQ-006
 
 요청 (`MemberWithdrawRequest`). JWT로 인증한 본인만 탈퇴한다. 아래 두 방식 중 하나를 사용한다.
@@ -242,6 +275,7 @@
 ## 변경 이력
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-18 | 내 회원 정보 수정(PATCH /api/members/me) 요청·응답·비밀번호 유지 정책 추가 (#153) |
 | 2026-11-18 | 회원 탈퇴 요청·응답·저장 코스 삭제·탈퇴 토큰 차단 정책 추가 (#155) |
 | 2026-11-18 | 내 회원 정보 조회(GET /api/members/me) 응답·인증·오류 명세 추가 (#142) |
 | 2026-11-18 | 첫 취합 (인증·회원·장소 상세, 추천·코스는 도메인 문서 연결, 구현 상태 표시) |

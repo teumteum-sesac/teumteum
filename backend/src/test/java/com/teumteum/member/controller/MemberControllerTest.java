@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -18,6 +19,9 @@ import com.teumteum.global.exception.GlobalExceptionHandler;
 import com.teumteum.member.dto.SignupRequest;
 import com.teumteum.member.dto.LoginResponse;
 import com.teumteum.member.dto.MemberResponse;
+import com.teumteum.member.dto.MemberUpdateRequest;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.service.MemberService;
 import com.teumteum.member.service.MemberWithdrawalService;
@@ -62,6 +66,62 @@ class MemberControllerTest {
                 .setCustomArgumentResolvers(new LoginMemberArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())   // 예외 → 공통 응답 변환도 실제처럼 붙인다
                 .build();
+    }
+
+    @Test
+    void updatesOnlyAuthenticatedMemberAndReturnsPublicInfo() throws Exception {
+        var request = new MemberUpdateRequest("새닉네임", "newpass123", "newpass123");
+        given(memberService.updateMyInfo(7L, request))
+                .willReturn(new MemberResponse("user@email.com", "새닉네임"));
+        mockMvc.perform(patch("/api/members/me")
+                        .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
+                        .param("memberId", "99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nickname":"새닉네임","newPassword":"newpass123","newPasswordConfirm":"newpass123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value("user@email.com"))
+                .andExpect(jsonPath("$.data.nickname").value("새닉네임"))
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.data.newPassword").doesNotExist());
+        verify(memberService).updateMyInfo(7L, request);
+    }
+
+    @Test
+    void updatesNicknameWithoutPasswordFields() throws Exception {
+        var request = new MemberUpdateRequest("새닉네임", null, null);
+        given(memberService.updateMyInfo(7L, request))
+                .willReturn(new MemberResponse("user@email.com", "새닉네임"));
+        mockMvc.perform(patch("/api/members/me")
+                        .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"nickname\":\"새닉네임\"}"))
+                .andExpect(status().isOk());
+        verify(memberService).updateMyInfo(7L, request);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"nickname\":\" \"}",
+            "{\"nickname\":\"닉네임\",\"newPassword\":\"short\",\"newPasswordConfirm\":\"short\"}",
+            "{\"nickname\":\"닉네임\",\"newPassword\":\"newpass123\",\"newPasswordConfirm\":\"different\"}",
+            "{\"nickname\":\"닉네임\",\"newPasswordConfirm\":\"newpass123\"}"
+    })
+    void rejectsInvalidUpdateBodyWithoutCallingService(String body) throws Exception {
+        mockMvc.perform(patch("/api/members/me")
+                        .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+        verifyNoInteractions(memberService);
+    }
+
+    @Test
+    void rejectsUnauthenticatedUpdate() throws Exception {
+        mockMvc.perform(patch("/api/members/me")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"nickname\":\"새닉네임\"}"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(memberService);
     }
 
     @Test

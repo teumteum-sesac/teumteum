@@ -3,6 +3,7 @@ package com.teumteum.member.controller;
 import com.teumteum.global.auth.LoginMember;
 import com.teumteum.global.config.OpenApiConfig;
 import com.teumteum.member.dto.MemberResponse;
+import com.teumteum.member.dto.MemberUpdateRequest;
 import com.teumteum.member.dto.MemberWithdrawRequest;
 import com.teumteum.member.dto.MemberWithdrawResponse;
 import com.teumteum.member.service.MemberWithdrawalService;
@@ -21,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -86,6 +88,17 @@ public class MemberController {
     ) {
         boolean exists = memberService.existsByEmail(email);
         return ResponseEntity.ok(ApiResponse.ok(new EmailExistsResponse(exists)));
+    }
+
+    @Operation(summary = "🔒 내 회원 정보 수정", description = "닉네임과 선택적인 새 비밀번호를 수정한다. 비밀번호 두 칸을 비우면 기존 비밀번호 유지. 새 비밀번호는 8~64자·UTF-8 72바이트 이하이며 확인 값과 일치해야 한다. 이메일은 변경하지 않는다.")
+    @PatchMapping("/me")
+    public ResponseEntity<ApiResponse<MemberResponse>> updateMyInfo(
+            @Parameter(hidden = true) @LoginMember Long memberId,
+            @Valid @RequestBody MemberUpdateRequest request
+    ) {
+        // @Valid로 입력을 검사하고, 인증 정보에서 받은 ID로 본인 정보만 수정한다.
+        MemberResponse response = memberService.updateMyInfo(memberId, request);
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
     @Operation(summary = "🔒 내 회원 정보 조회", description = "로그인한 회원의 이메일·닉네임을 반환한다. 인증이 없거나 회원이 없거나 탈퇴한 경우 401로 응답한다.")
