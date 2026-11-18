@@ -30,7 +30,7 @@ public class MemberWithdrawalService {
                 || (request.password() != null && request.password().length() > 64)) {
             throw new CustomException(CommonErrorCode.INVALID_REQUEST);
         }
-        Member member = memberRepository.findById(memberId).filter(Member::isActive)
+        Member member = memberRepository.findByIdForUpdate(memberId).filter(Member::isActive)
                 .orElseThrow(() -> new CustomException(CommonErrorCode.UNAUTHORIZED));
 
         // 동의 체크만으로도 탈퇴 가능하다. 체크하지 않았으면 현재 비밀번호가 맞아야 한다.

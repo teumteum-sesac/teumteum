@@ -33,7 +33,7 @@ class MemberWithdrawalServiceTest {
 
     @Test
     void withdrawsWithConsentAndDeletesOnlyAuthenticatedMembersCourses() {
-        given(repository.findById(7L)).willReturn(Optional.of(member));
+        given(repository.findByIdForUpdate(7L)).willReturn(Optional.of(member));
         assertThat(service.withdrawMyAccount(7L, new MemberWithdrawRequest(null, true)).withdrawn()).isTrue();
         assertThat(member.isActive()).isFalse();
         verify(courses).deleteMemberCourses(7L);
@@ -42,7 +42,7 @@ class MemberWithdrawalServiceTest {
 
     @Test
     void withdrawsWithCorrectPasswordWithoutCheckbox() {
-        given(repository.findById(7L)).willReturn(Optional.of(member));
+        given(repository.findByIdForUpdate(7L)).willReturn(Optional.of(member));
         service.withdrawMyAccount(7L, new MemberWithdrawRequest("abc12345", false));
         assertThat(member.isActive()).isFalse();
         verify(courses).deleteMemberCourses(7L);
@@ -50,7 +50,7 @@ class MemberWithdrawalServiceTest {
 
     @Test
     void rejectsWrongPasswordBeforeDeletingCourses() {
-        given(repository.findById(7L)).willReturn(Optional.of(member));
+        given(repository.findByIdForUpdate(7L)).willReturn(Optional.of(member));
         assertThatThrownBy(() -> service.withdrawMyAccount(7L, new MemberWithdrawRequest("wrong", false)))
                 .isInstanceOfSatisfying(CustomException.class, ex ->
                         assertThat(ex.getErrorCode()).isEqualTo(MemberErrorCode.WITHDRAWAL_PASSWORD_MISMATCH));
@@ -68,12 +68,12 @@ class MemberWithdrawalServiceTest {
 
     @Test
     void rejectsMissingOrAlreadyWithdrawnMember() {
-        given(repository.findById(7L)).willReturn(Optional.empty());
+        given(repository.findByIdForUpdate(7L)).willReturn(Optional.empty());
         assertThatThrownBy(() -> service.withdrawMyAccount(7L, new MemberWithdrawRequest(null, true)))
                 .isInstanceOfSatisfying(CustomException.class, ex ->
                         assertThat(ex.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED));
         member.withdraw();
-        given(repository.findById(8L)).willReturn(Optional.of(member));
+        given(repository.findByIdForUpdate(8L)).willReturn(Optional.of(member));
         assertThatThrownBy(() -> service.withdrawMyAccount(8L, new MemberWithdrawRequest(null, true)))
                 .isInstanceOf(CustomException.class);
         verifyNoInteractions(courses);
@@ -81,7 +81,7 @@ class MemberWithdrawalServiceTest {
 
     @Test
     void doesNotChangeStatusWhenCourseDeletionFails() {
-        given(repository.findById(7L)).willReturn(Optional.of(member));
+        given(repository.findByIdForUpdate(7L)).willReturn(Optional.of(member));
         doThrow(new IllegalStateException("test failure")).when(courses).deleteMemberCourses(7L);
         assertThatThrownBy(() -> service.withdrawMyAccount(7L, new MemberWithdrawRequest(null, true)))
                 .isInstanceOf(IllegalStateException.class);
