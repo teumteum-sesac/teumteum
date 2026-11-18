@@ -1,6 +1,6 @@
 package com.teumteum.recommend.service;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
@@ -38,18 +38,18 @@ class AlternativeFinderTest {
     private final AlternativeFinder finder =
             new AlternativeFinder(stayTimeCalculator, straightLine, new CourseTimeCalculator());
 
-    private final PlaceCandidate cafeA = place("A", CategoryCode.CAFE, "카페", 37.5450, 127.0560);
-    private final PlaceCandidate parkB = place("B", CategoryCode.NATURE, "공원", 37.5460, 127.0600);
+    private final PlaceCandidate cafeA = place("A", Category.CAFE, "카페", 37.5450, 127.0560);
+    private final PlaceCandidate parkB = place("B", Category.NATURE, "공원", 37.5460, 127.0600);
 
     // ===================== 고르기 =====================
 
     @Test
     @DisplayName("같은 세분류를 가까운 순으로 먼저, 그다음 같은 대분류의 다른 세분류. 다른 대분류와 코스 장소는 빠진다")
     void picksSameSubCategoryFirst_thenSameCategory() {
-        PlaceCandidate nearCafe = place("c1", CategoryCode.CAFE, "카페", 37.5451, 127.0570);
-        PlaceCandidate farCafe = place("c2", CategoryCode.CAFE, "카페", 37.5550, 127.0700);
-        PlaceCandidate bakery = place("d1", CategoryCode.CAFE, "베이커리", 37.5452, 127.0565); // 제일 가깝지만 세분류가 다름
-        PlaceCandidate food = place("f1", CategoryCode.FOOD, "한식", 37.5451, 127.0561);      // 다른 대분류
+        PlaceCandidate nearCafe = place("c1", Category.CAFE, "카페", 37.5451, 127.0570);
+        PlaceCandidate farCafe = place("c2", Category.CAFE, "카페", 37.5550, 127.0700);
+        PlaceCandidate bakery = place("d1", Category.CAFE, "베이커리", 37.5452, 127.0565); // 제일 가깝지만 세분류가 다름
+        PlaceCandidate food = place("f1", Category.FOOD, "한식", 37.5451, 127.0561);      // 다른 대분류
 
         List<PlaceAlternative> result = finder.find(condition(180, null), plan(), 0,
                 List.of(farCafe, food, cafeA, bakery, parkB, nearCafe));
@@ -62,7 +62,7 @@ class AlternativeFinderTest {
     void limitsToFive() {
         List<PlaceCandidate> candidates = new ArrayList<>();
         for (int i = 0; i < 7; i++) {
-            candidates.add(place("c" + i, CategoryCode.CAFE, "카페", 37.5450 + i * 0.001, 127.0560));
+            candidates.add(place("c" + i, Category.CAFE, "카페", 37.5450 + i * 0.001, 127.0560));
         }
 
         List<PlaceAlternative> result = finder.find(condition(180, null), plan(), 0, candidates);
@@ -74,8 +74,8 @@ class AlternativeFinderTest {
     @DisplayName("가까운 순은 앞 지점과 뒤 지점 거리의 합으로 정한다 (앞 지점에만 가까운 곳이 먼저 오지 않음)")
     void ordersByDistanceToBothNeighbors() {
         // 카페 A(앞 지점: 출발지, 뒤 지점: 공원 B)를 바꿀 때
-        PlaceCandidate behindOrigin = place("back", CategoryCode.CAFE, "카페", 37.5440, 127.0550); // 출발지에 더 가깝지만 B 와 멀다
-        PlaceCandidate onTheWay = place("way", CategoryCode.CAFE, "카페", 37.5455, 127.0585);       // 출발지와 B 사이
+        PlaceCandidate behindOrigin = place("back", Category.CAFE, "카페", 37.5440, 127.0550); // 출발지에 더 가깝지만 B 와 멀다
+        PlaceCandidate onTheWay = place("way", Category.CAFE, "카페", 37.5455, 127.0585);       // 출발지와 B 사이
 
         List<PlaceAlternative> result = finder.find(condition(180, null), plan(), 0, List.of(behindOrigin, onTheWay));
 
@@ -93,7 +93,7 @@ class AlternativeFinderTest {
     @Test
     @DisplayName("첫 장소 교체: 출발지→후보, 후보→다음 장소 이동과 체류를 지금 값과 비교해 diff 를 낸다")
     void calculatesDiff_forFirstPlace() {
-        PlaceCandidate bakery = place("d1", CategoryCode.CAFE, "베이커리", 37.5452, 127.0565);
+        PlaceCandidate bakery = place("d1", Category.CAFE, "베이커리", 37.5452, 127.0565);
 
         PlaceAlternative alternative = finder.find(condition(180, null), plan(), 0, List.of(bakery)).get(0);
 
@@ -108,7 +108,7 @@ class AlternativeFinderTest {
     @Test
     @DisplayName("마지막 장소 교체 + 도착지 있음: 후보→도착지 이동을 넣고 지금의 마지막→도착지 이동을 뺀다")
     void calculatesDiff_forLastPlaceWithDestination() {
-        PlaceCandidate trail = place("t1", CategoryCode.NATURE, "산책로", 37.5470, 127.0620);
+        PlaceCandidate trail = place("t1", Category.NATURE, "산책로", 37.5470, 127.0620);
 
         PlaceAlternative alternative = finder.find(condition(180, DESTINATION), planWithFinalTravel(7), 1,
                 List.of(trail)).get(0);
@@ -121,7 +121,7 @@ class AlternativeFinderTest {
     @Test
     @DisplayName("마지막 장소 교체 + 도착지 없음: 뒤 지점이 없으니 후보까지 이동과 체류만 비교한다")
     void calculatesDiff_forLastPlaceWithoutDestination() {
-        PlaceCandidate trail = place("t1", CategoryCode.NATURE, "산책로", 37.5470, 127.0620);
+        PlaceCandidate trail = place("t1", Category.NATURE, "산책로", 37.5470, 127.0620);
 
         PlaceAlternative alternative = finder.find(condition(180, null), plan(), 1, List.of(trail)).get(0);
 
@@ -133,8 +133,8 @@ class AlternativeFinderTest {
     @DisplayName("바꾼 뒤 총 시간이 이용 시간을 넘으면 exceedsAvailableTime true, 같거나 적으면 false")
     void marksExceeding() {
         int total = plan().totalMinutes();
-        PlaceCandidate farCafe = place("far", CategoryCode.CAFE, "카페", 37.5600, 127.0800);     // 멀어서 늘어남
-        PlaceCandidate sameSpot = place("same", CategoryCode.CAFE, "카페", 37.5450, 127.0560);  // A 와 같은 자리
+        PlaceCandidate farCafe = place("far", Category.CAFE, "카페", 37.5600, 127.0800);     // 멀어서 늘어남
+        PlaceCandidate sameSpot = place("same", Category.CAFE, "카페", 37.5450, 127.0560);  // A 와 같은 자리
 
         List<PlaceAlternative> result = finder.find(condition(total, null), plan(), 0, List.of(farCafe, sameSpot));
 
@@ -167,7 +167,7 @@ class AlternativeFinderTest {
         return new CourseCondition(ORIGIN, destination, availableMinutes, TransportType.WALK, List.of());
     }
 
-    private PlaceCandidate place(String id, CategoryCode category, String subCategory, double lat, double lng) {
+    private PlaceCandidate place(String id, Category category, String subCategory, double lat, double lng) {
         return new PlaceCandidate(id, "장소 " + id, category, subCategory, "서울", lat, lng);
     }
 

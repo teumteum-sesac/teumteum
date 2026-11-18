@@ -3,7 +3,7 @@ package com.teumteum.recommend.controller;
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.global.exception.GlobalExceptionHandler;
 import com.teumteum.place.exception.PlaceErrorCode;
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.TransportType;
 import com.teumteum.recommend.dto.AlternativePlaceListResponse;
@@ -187,8 +187,8 @@ class RecommendControllerTest {
     @DisplayName("교체 후보: 주소의 코스 ID·장소 ID 를 서비스에 넘기고 200 으로 후보 목록을 돌려준다")
     void getAlternatives_ok() throws Exception {
         AlternativePlaceListResponse response = new AlternativePlaceListResponse("rc_1",
-                new CurrentPlaceResponse("101", 1, "카페 A", CategoryCode.CAFE, "카페", 60),
-                List.of(new AlternativePlaceResponse("201", "카페 C", CategoryCode.CAFE, "카페", "서울",
+                new CurrentPlaceResponse("101", 1, "카페 A", Category.CAFE, "카페", 60),
+                List.of(new AlternativePlaceResponse("201", "카페 C", Category.CAFE, "카페", "서울",
                         37.545, 127.057, null, 60, 8, null, -2, false, true)));
         given(placeReplaceService.getAlternatives("rc_1", "101")).willReturn(response);
 

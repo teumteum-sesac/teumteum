@@ -1,6 +1,6 @@
 package com.teumteum.place.dto;
 
-import com.teumteum.place.domain.PlaceCategory;
+import com.teumteum.global.common.category.Category;
 
 /**
  * 주변 장소 후보 (REQ-015·016).
@@ -19,7 +19,7 @@ import com.teumteum.place.domain.PlaceCategory;
 public record NearbyPlaceResult(
         String kakaoPlaceId,
         String name,
-        PlaceCategory category,
+        Category category,
         String subCategory,
         String address,
         String roadAddress,

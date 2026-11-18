@@ -1,6 +1,6 @@
 package com.teumteum.recommend.service;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
@@ -86,7 +86,7 @@ public class CourseComposer {
      * 한 코스에 1곳만 넣는 대분류 (규칙 ⑨). 밥을 두 번 먹거나 카페를 연달아 가는 코스는 어색하다 (팀 회의, 2026-11-19).
      * 음식/맛집만 골랐으면 그 코스는 1곳짜리가 된다 (고르지 않은 대분류는 넣지 않으므로).
      */
-    static final Set<CategoryCode> ONCE_PER_COURSE = EnumSet.of(CategoryCode.FOOD, CategoryCode.CAFE);
+    static final Set<Category> ONCE_PER_COURSE = EnumSet.of(Category.FOOD, Category.CAFE);
 
     private final PlaceCountCalculator placeCountCalculator;
     private final StayTimeCalculator stayTimeCalculator;
@@ -263,7 +263,7 @@ public class CourseComposer {
      */
     private Optional<PlaceCandidate> findPlaceThatFits(CourseCondition condition, List<PlaceCandidate> shuffled,
                                                        List<PlaceCandidate> picked, int turn) {
-        for (CategoryCode category : categoryOrder(condition, turn)) {
+        for (Category category : categoryOrder(condition, turn)) {
             for (PlaceCandidate candidate : shuffled) {
                 if (!canAdd(candidate, category, picked) || !isOnTheWay(condition, candidate)) {
                     continue;
@@ -302,12 +302,12 @@ public class CourseComposer {
      * 예) 고른 대분류 [카페, 음식], turn 0 → [카페, 음식] / turn 1 → [음식, 카페] / turn 2 → [카페, 음식]
      * 랜덤이면 대분류를 따지지 않으므로 null 하나만 담는다 (null = 아무 대분류나).
      */
-    private List<CategoryCode> categoryOrder(CourseCondition condition, int turn) {
+    private List<Category> categoryOrder(CourseCondition condition, int turn) {
         if (condition.isRandom()) {
             return Collections.singletonList(null); // List.of(null) 은 null 을 못 담아서 이걸 쓴다
         }
-        List<CategoryCode> categories = condition.categories();
-        List<CategoryCode> order = new ArrayList<>();
+        List<Category> categories = condition.categories();
+        List<Category> order = new ArrayList<>();
         for (int i = 0; i < categories.size(); i++) {
             order.add(categories.get((turn + i) % categories.size())); // % 로 끝에 가면 처음으로 돌아감
         }
@@ -322,7 +322,7 @@ public class CourseComposer {
      * - 음식/맛집·카페/디저트는 한 코스에 1곳만 (규칙 ⑨)
      * - 같은 브랜드(체인)는 두 번 넣지 않는다 (규칙 ⑩)
      */
-    private boolean canAdd(PlaceCandidate candidate, CategoryCode category, List<PlaceCandidate> picked) {
+    private boolean canAdd(PlaceCandidate candidate, Category category, List<PlaceCandidate> picked) {
         if (category != null && candidate.category() != category) {
             return false;
         }

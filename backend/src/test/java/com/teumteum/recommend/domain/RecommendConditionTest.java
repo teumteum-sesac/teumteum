@@ -1,5 +1,7 @@
 package com.teumteum.recommend.domain;
 
+import com.teumteum.global.common.category.Category;
+
 import com.teumteum.recommend.domain.RecommendCondition.Location;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,7 +39,7 @@ class RecommendConditionTest {
     @Test
     @DisplayName("랜덤이면 대분류를 보내도 무시한다")
     void random_ignoresCategories() {
-        RecommendCondition condition = conditionOf(CategoryMode.RANDOM, List.of(CategoryCode.CAFE));
+        RecommendCondition condition = conditionOf(CategoryMode.RANDOM, List.of(Category.CAFE));
 
         assertTrue(condition.categories().isEmpty());
     }
@@ -46,26 +48,26 @@ class RecommendConditionTest {
     @DisplayName("대분류 중복은 하나로 정리하고 처음 순서를 지킨다")
     void direct_removesDuplicateCategories() {
         RecommendCondition condition = conditionOf(CategoryMode.DIRECT,
-                List.of(CategoryCode.SPORTS, CategoryCode.CAFE, CategoryCode.SPORTS));
+                List.of(Category.SPORTS, Category.CAFE, Category.SPORTS));
 
         assertEquals(CategoryMode.DIRECT, condition.categoryMode());
-        assertEquals(List.of(CategoryCode.SPORTS, CategoryCode.CAFE), condition.categories());
+        assertEquals(List.of(Category.SPORTS, Category.CAFE), condition.categories());
     }
 
     @Test
     @DisplayName("코스 계산용 조건으로 바꾸면 좌표·이용 시간·이동수단·대분류만 남는다")
     void toCourseCondition_keepsCalculationFields() {
-        RecommendCondition condition = conditionOf(CategoryMode.DIRECT, List.of(CategoryCode.CAFE));
+        RecommendCondition condition = conditionOf(CategoryMode.DIRECT, List.of(Category.CAFE));
 
         CourseCondition courseCondition = condition.toCourseCondition();
 
         assertEquals(37.5446, courseCondition.origin().latitude());
         assertNull(courseCondition.destination()); // 도착지 없음
         assertEquals(180, courseCondition.availableMinutes());
-        assertEquals(List.of(CategoryCode.CAFE), courseCondition.categories());
+        assertEquals(List.of(Category.CAFE), courseCondition.categories());
     }
 
-    private RecommendCondition conditionOf(CategoryMode mode, List<CategoryCode> categories) {
+    private RecommendCondition conditionOf(CategoryMode mode, List<Category> categories) {
         return new RecommendCondition(ORIGIN, null, "13:00", 180, TransportType.TRANSIT, mode, categories);
     }
 }

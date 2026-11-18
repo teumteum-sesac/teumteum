@@ -1,7 +1,7 @@
 package com.teumteum.recommend.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.TransportType;
 import jakarta.validation.Valid;
@@ -68,6 +68,6 @@ public record RecommendRequest(
 
         @Schema(description = "대분류 0~3개 (DIRECT 일 때). 비우면 랜덤. CULTURE·CAFE·FOOD·NATURE·ENTERTAINMENT·SHOPPING·SPORTS·TOURISM", example = "[\"CAFE\", \"FOOD\"]")
         @Size(max = 3)
-        List<CategoryCode> categories
+        List<Category> categories
 ) {
 }

@@ -1,5 +1,7 @@
 package com.teumteum.recommend.domain;
 
+import com.teumteum.global.common.category.Category;
+
 import com.teumteum.recommend.domain.TravelRoute.Coordinate;
 
 import java.util.LinkedHashSet;
@@ -23,7 +25,7 @@ public record CourseCondition(
         Coordinate destination,
         int availableMinutes,
         TransportType transportType,
-        List<CategoryCode> categories
+        List<Category> categories
 ) {
 
     /**

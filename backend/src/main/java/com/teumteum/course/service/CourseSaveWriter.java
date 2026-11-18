@@ -3,7 +3,6 @@ package com.teumteum.course.service;
 import com.teumteum.course.dto.CourseSaveResponse;
 import com.teumteum.course.repository.*;
 import com.teumteum.member.service.MemberService;
-import com.teumteum.place.domain.PlaceCategory;
 import com.teumteum.place.dto.PlaceRegisterCommand;
 import com.teumteum.place.service.PlaceService;
 import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
@@ -35,7 +34,7 @@ public class CourseSaveWriter {
 
         // 카카오 ID를 내부 ID로 변환한다. 장소 도메인의 등록은 별도 트랜잭션 계약을 따른다.
         var commands = detail.places().stream().map(p -> new PlaceRegisterCommand(p.placeId(), p.placeName(),
-                PlaceCategory.valueOf(p.category().name()), p.subCategory(), p.address(), p.latitude(), p.longitude())).toList();
+                p.category(), p.subCategory(), p.address(), p.latitude(), p.longitude())).toList();
         var ids = placeService.findOrCreateAll(commands);
         var savedPlaces = detail.places().stream()
                 .map(p -> CourseSnapshotMapper.place(course, ids.get(p.placeId()), p)).toList();

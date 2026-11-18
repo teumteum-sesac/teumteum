@@ -1,6 +1,6 @@
 package com.teumteum.recommend.service;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
@@ -100,9 +100,9 @@ class CourseComposerTest {
     @DisplayName("이용 시간이 60분이면 1곳짜리 코스만 나온다")
     void compose_onePlace_whenOneHour() {
         List<PlaceCandidate> candidates = List.of(
-                place("1", CategoryCode.CAFE, "베이커리", 0.001),  // 40분
-                place("2", CategoryCode.CAFE, "디저트", 0.002),    // 40분
-                place("3", CategoryCode.FOOD, "분식", 0.003));     // 40분
+                place("1", Category.CAFE, "베이커리", 0.001),  // 40분
+                place("2", Category.CAFE, "디저트", 0.002),    // 40분
+                place("3", Category.FOOD, "분식", 0.003));     // 40분
 
         List<CoursePlan> courses = composer.compose(randomCondition(60), candidates);
 
@@ -113,10 +113,10 @@ class CourseComposerTest {
     @Test
     @DisplayName("상한 안에서도 시간이 부족하면 더 적게 넣는다: 3시간에 영화(150분)가 들어가면 1곳 (REQ-019 예시)")
     void compose_fewerPlaces_whenLongStay() {
-        CourseCondition condition = directCondition(180, CategoryCode.CULTURE, CategoryCode.CAFE);
+        CourseCondition condition = directCondition(180, Category.CULTURE, Category.CAFE);
         List<PlaceCandidate> candidates = List.of(
-                place("1", CategoryCode.CULTURE, "영화", 0.001),   // 150분
-                place("2", CategoryCode.CAFE, "베이커리", 0.002)); // 40분 → 150 + 40 + 이동 > 180
+                place("1", Category.CULTURE, "영화", 0.001),   // 150분
+                place("2", Category.CAFE, "베이커리", 0.002)); // 40분 → 150 + 40 + 이동 > 180
 
         List<CoursePlan> courses = composer.compose(condition, candidates);
 
@@ -131,16 +131,16 @@ class CourseComposerTest {
     @Test
     @DisplayName("직접 선택(카페·음식)이면 코스에 두 대분류가 모두 들어간다 (번갈아 넣기)")
     void compose_direct_includesEachChosenCategory() {
-        CourseCondition condition = directCondition(180, CategoryCode.CAFE, CategoryCode.FOOD);
+        CourseCondition condition = directCondition(180, Category.CAFE, Category.FOOD);
 
         List<CoursePlan> courses = composer.compose(condition, manyCandidates());
 
         assertFalse(courses.isEmpty());
         for (CoursePlan course : courses) {
-            Set<CategoryCode> categories = course.stops().stream()
+            Set<Category> categories = course.stops().stream()
                     .map(stop -> stop.place().category())
                     .collect(Collectors.toSet());
-            assertEquals(Set.of(CategoryCode.CAFE, CategoryCode.FOOD), categories);
+            assertEquals(Set.of(Category.CAFE, Category.FOOD), categories);
         }
     }
 
@@ -149,11 +149,11 @@ class CourseComposerTest {
     void compose_noDuplicateSubCategoryInCourse() {
         // 카페가 잔뜩 있어도 한 코스에 카페는 1곳만
         List<PlaceCandidate> candidates = List.of(
-                place("1", CategoryCode.CAFE, "카페", 0.001),
-                place("2", CategoryCode.CAFE, "카페", 0.002),
-                place("3", CategoryCode.CAFE, "카페", 0.003),
-                place("4", CategoryCode.FOOD, "분식", 0.004),
-                place("5", CategoryCode.NATURE, "공원", 0.005));
+                place("1", Category.CAFE, "카페", 0.001),
+                place("2", Category.CAFE, "카페", 0.002),
+                place("3", Category.CAFE, "카페", 0.003),
+                place("4", Category.FOOD, "분식", 0.004),
+                place("5", Category.NATURE, "공원", 0.005));
 
         List<CoursePlan> courses = composer.compose(randomCondition(300), candidates);
 
@@ -169,9 +169,9 @@ class CourseComposerTest {
     @Test
     @DisplayName("방문 순서는 출발지에서 가까운 곳부터다")
     void orderByNearest_visitsClosestFirst() {
-        PlaceCandidate far = place("far", CategoryCode.CAFE, "카페", 0.009);
-        PlaceCandidate near = place("near", CategoryCode.FOOD, "한식", 0.001);
-        PlaceCandidate middle = place("middle", CategoryCode.NATURE, "공원", 0.005);
+        PlaceCandidate far = place("far", Category.CAFE, "카페", 0.009);
+        PlaceCandidate near = place("near", Category.FOOD, "한식", 0.001);
+        PlaceCandidate middle = place("middle", Category.NATURE, "공원", 0.005);
 
         List<PlaceCandidate> ordered = composer.orderByNearest(ORIGIN, List.of(far, near, middle));
 
@@ -186,8 +186,8 @@ class CourseComposerTest {
         given(travelTimeService.findRoute(any(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .willReturn(new TravelRoute(100, List.of())); // 구간마다 100분 (어림보다 훨씬 김)
         List<PlaceCandidate> places = List.of(
-                place("1", CategoryCode.CAFE, "베이커리", 0.001),  // 40분
-                place("2", CategoryCode.FOOD, "분식", 0.002));     // 40분
+                place("1", Category.CAFE, "베이커리", 0.001),  // 40분
+                place("2", Category.FOOD, "분식", 0.002));     // 40분
 
         // 2곳: 100 + 40 + 100 + 40 = 280 > 180 → 1곳: 100 + 40 = 140
         CoursePlan course = composer.confirmCourse(randomCondition(180), places).orElseThrow();
@@ -204,7 +204,7 @@ class CourseComposerTest {
                 .willReturn(new TravelRoute(200, List.of()));
 
         assertTrue(composer.confirmCourse(randomCondition(180),
-                List.of(place("1", CategoryCode.CAFE, "베이커리", 0.001))).isEmpty());
+                List.of(place("1", Category.CAFE, "베이커리", 0.001))).isEmpty());
     }
 
     @Test
@@ -212,7 +212,7 @@ class CourseComposerTest {
     void confirmCourse_includesFinalTravel_whenDestination() {
         CourseCondition condition = new CourseCondition(ORIGIN, new Coordinate(37.5546, 127.0559),
                 180, TransportType.WALK, List.of());
-        List<PlaceCandidate> places = List.of(place("1", CategoryCode.CAFE, "베이커리", 0.001)); // 40분
+        List<PlaceCandidate> places = List.of(place("1", Category.CAFE, "베이커리", 0.001)); // 40분
 
         CoursePlan course = composer.confirmCourse(condition, places).orElseThrow();
 
@@ -225,7 +225,7 @@ class CourseComposerTest {
     @DisplayName("도착지가 없으면 돌아오는 시간은 계산하지 않는다 (finalTravel 없음, 0분)")
     void confirmCourse_noFinalTravel_withoutDestination() {
         CoursePlan course = composer.confirmCourse(randomCondition(180),
-                List.of(place("1", CategoryCode.CAFE, "베이커리", 0.001))).orElseThrow();
+                List.of(place("1", Category.CAFE, "베이커리", 0.001))).orElseThrow();
 
         assertEquals(0, course.finalTravelMinutes());
         assertEquals(API_MINUTES, course.totalTravelMinutes());
@@ -237,8 +237,8 @@ class CourseComposerTest {
         given(travelTimeService.findRoute(any(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .willReturn(new TravelRoute(API_MINUTES, List.of()), TravelRoute.estimated(5)); // 첫 구간 API, 둘째 추정
         List<PlaceCandidate> places = List.of(
-                place("1", CategoryCode.CAFE, "베이커리", 0.001),
-                place("2", CategoryCode.FOOD, "분식", 0.002));
+                place("1", Category.CAFE, "베이커리", 0.001),
+                place("2", Category.FOOD, "분식", 0.002));
 
         CoursePlan course = composer.confirmCourse(randomCondition(300), places).orElseThrow();
 
@@ -286,8 +286,8 @@ class CourseComposerTest {
     @Test
     @DisplayName("도보 한 구간이 25분을 넘는 장소는 시간이 남아도 코스에 넣지 않는다")
     void compose_walk_skipsPlaceOverLegLimit() {
-        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);   // 약 111m → 도보 약 3분
-        PlaceCandidate far = place("far", CategoryCode.NATURE, "공원", 0.013);   // 약 1.4km → 도보 약 29분 (> 25분)
+        PlaceCandidate near = place("near", Category.CAFE, "카페", 0.001);   // 약 111m → 도보 약 3분
+        PlaceCandidate far = place("far", Category.NATURE, "공원", 0.013);   // 약 1.4km → 도보 약 29분 (> 25분)
 
         List<CoursePlan> courses = composer.compose(randomCondition(300), List.of(near, far)); // 5시간: 시간은 충분
 
@@ -300,8 +300,8 @@ class CourseComposerTest {
     @Test
     @DisplayName("한 구간 판단: 출발지 → 장소, 장소 → 장소 구간만 보고 마지막 장소 → 도착지 구간은 보지 않는다")
     void isWithinLegLimit_ignoresFinalTravelToDestination() {
-        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);
-        PlaceCandidate far = place("far", CategoryCode.NATURE, "공원", 0.013);
+        PlaceCandidate near = place("near", Category.CAFE, "카페", 0.001);
+        PlaceCandidate far = place("far", Category.NATURE, "공원", 0.013);
         Coordinate farDestination = new Coordinate(ORIGIN.latitude() + 0.05, ORIGIN.longitude()); // 약 5.6km
         CourseCondition withFarDestination =
                 new CourseCondition(ORIGIN, farDestination, 300, TransportType.WALK, List.of());
@@ -315,8 +315,8 @@ class CourseComposerTest {
     @Test
     @DisplayName("가까운 후보 먼저: 많이 먼 장소는 항상 뒤에 온다")
     void orderNearFirst_putsMuchFartherPlaceLast() {
-        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);    // 약 0.1km
-        PlaceCandidate far = place("far", CategoryCode.CAFE, "디저트", 0.009);    // 약 1.0km (섞는 거리 0.5km 보다 훨씬 멂)
+        PlaceCandidate near = place("near", Category.CAFE, "카페", 0.001);    // 약 0.1km
+        PlaceCandidate far = place("far", Category.CAFE, "디저트", 0.009);    // 약 1.0km (섞는 거리 0.5km 보다 훨씬 멂)
 
         for (int i = 0; i < 30; i++) { // 무작위가 들어가니 여러 번 돌려서 확인
             List<PlaceCandidate> ordered = composer.orderNearFirst(randomCondition(180), List.of(far, near));
@@ -327,8 +327,8 @@ class CourseComposerTest {
     @Test
     @DisplayName("가까운 후보 먼저: 거리가 비슷하면 순서가 바뀌기도 한다 (코스가 매번 같지 않게)")
     void orderNearFirst_mixesSimilarDistances() {
-        PlaceCandidate a = place("a", CategoryCode.CAFE, "카페", 0.001);    // 약 0.1km
-        PlaceCandidate b = place("b", CategoryCode.CAFE, "디저트", 0.002);  // 약 0.2km
+        PlaceCandidate a = place("a", Category.CAFE, "카페", 0.001);    // 약 0.1km
+        PlaceCandidate b = place("b", Category.CAFE, "디저트", 0.002);  // 약 0.2km
 
         Set<String> firsts = new java.util.HashSet<>();
         for (int i = 0; i < 30; i++) {
@@ -343,16 +343,16 @@ class CourseComposerTest {
     @DisplayName("음식/맛집은 한 코스에 1곳만: 한식 → 일식 같은 '밥 두 번' 코스는 없다")
     void compose_foodOnlyOnce() {
         List<PlaceCandidate> candidates = List.of(
-                place("1", CategoryCode.FOOD, "한식", 0.001),
-                place("2", CategoryCode.FOOD, "일식", 0.002),
-                place("3", CategoryCode.FOOD, "중식", 0.003),
-                place("4", CategoryCode.NATURE, "공원", 0.002));
+                place("1", Category.FOOD, "한식", 0.001),
+                place("2", Category.FOOD, "일식", 0.002),
+                place("3", Category.FOOD, "중식", 0.003),
+                place("4", Category.NATURE, "공원", 0.002));
 
         List<CoursePlan> courses = composer.compose(randomCondition(300), candidates); // 5시간: 3곳까지 가능
 
         assertFalse(courses.isEmpty());
         for (CoursePlan course : courses) {
-            assertTrue(countOf(course, CategoryCode.FOOD) <= 1, "음식점이 두 번: " + subCategoriesOf(course));
+            assertTrue(countOf(course, Category.FOOD) <= 1, "음식점이 두 번: " + subCategoriesOf(course));
         }
     }
 
@@ -360,17 +360,17 @@ class CourseComposerTest {
     @DisplayName("카페/디저트도 한 코스에 1곳만, 음식점 → 카페 는 함께 들어갈 수 있다")
     void compose_cafeOnlyOnce_butFoodAndCafeTogether() {
         List<PlaceCandidate> candidates = List.of(
-                place("1", CategoryCode.CAFE, "카페", 0.001),
-                place("2", CategoryCode.CAFE, "디저트", 0.002),
-                place("3", CategoryCode.FOOD, "한식", 0.001));
+                place("1", Category.CAFE, "카페", 0.001),
+                place("2", Category.CAFE, "디저트", 0.002),
+                place("3", Category.FOOD, "한식", 0.001));
 
-        List<CoursePlan> courses = composer.compose(directCondition(300, CategoryCode.FOOD, CategoryCode.CAFE), candidates);
+        List<CoursePlan> courses = composer.compose(directCondition(300, Category.FOOD, Category.CAFE), candidates);
 
         assertFalse(courses.isEmpty());
         for (CoursePlan course : courses) {
-            assertTrue(countOf(course, CategoryCode.CAFE) <= 1, "카페가 두 번: " + subCategoriesOf(course));
+            assertTrue(countOf(course, Category.CAFE) <= 1, "카페가 두 번: " + subCategoriesOf(course));
         }
-        assertTrue(courses.stream().anyMatch(c -> countOf(c, CategoryCode.FOOD) == 1 && countOf(c, CategoryCode.CAFE) == 1),
+        assertTrue(courses.stream().anyMatch(c -> countOf(c, Category.FOOD) == 1 && countOf(c, Category.CAFE) == 1),
                 "음식점 + 카페 코스가 하나도 없음");
     }
 
@@ -378,10 +378,10 @@ class CourseComposerTest {
     @DisplayName("음식/맛집만 골랐으면 시간이 남아도 1곳짜리 코스다")
     void compose_foodOnly_makesOnePlaceCourse() {
         List<PlaceCandidate> candidates = List.of(
-                place("1", CategoryCode.FOOD, "한식", 0.001),
-                place("2", CategoryCode.FOOD, "일식", 0.002));
+                place("1", Category.FOOD, "한식", 0.001),
+                place("2", Category.FOOD, "일식", 0.002));
 
-        List<CoursePlan> courses = composer.compose(directCondition(300, CategoryCode.FOOD), candidates);
+        List<CoursePlan> courses = composer.compose(directCondition(300, Category.FOOD), candidates);
 
         assertFalse(courses.isEmpty());
         courses.forEach(course -> assertEquals(1, course.stops().size()));
@@ -390,9 +390,9 @@ class CourseComposerTest {
     @Test
     @DisplayName("같은 브랜드(체인)는 두 번 넣지 않는다: 메가커피 성수역점 → 메가커피 뚝섬점 X")
     void compose_skipsSameBrand() {
-        PlaceCandidate megaA = named("1", "메가MGC커피 성수역점", CategoryCode.CAFE, "카페", 0.001);
-        PlaceCandidate megaB = named("2", "메가MGC커피 뚝섬점", CategoryCode.SHOPPING, "소품샵", 0.002); // 대분류가 달라도 같은 브랜드
-        PlaceCandidate park = named("3", "성수동구두테마공원", CategoryCode.NATURE, "공원", 0.003);
+        PlaceCandidate megaA = named("1", "메가MGC커피 성수역점", Category.CAFE, "카페", 0.001);
+        PlaceCandidate megaB = named("2", "메가MGC커피 뚝섬점", Category.SHOPPING, "소품샵", 0.002); // 대분류가 달라도 같은 브랜드
+        PlaceCandidate park = named("3", "성수동구두테마공원", Category.NATURE, "공원", 0.003);
 
         List<CoursePlan> courses = composer.compose(randomCondition(300), List.of(megaA, megaB, park));
 
@@ -412,11 +412,11 @@ class CourseComposerTest {
         assertEquals("", composer.brandOf(null));
     }
 
-    private long countOf(CoursePlan course, CategoryCode category) {
+    private long countOf(CoursePlan course, Category category) {
         return course.stops().stream().filter(stop -> stop.place().category() == category).count();
     }
 
-    private PlaceCandidate named(String id, String name, CategoryCode category, String subCategory, double latOffset) {
+    private PlaceCandidate named(String id, String name, Category category, String subCategory, double latOffset) {
         return new PlaceCandidate(id, name, category, subCategory, "서울 성동구",
                 ORIGIN.latitude() + latOffset, ORIGIN.longitude());
     }
@@ -439,8 +439,8 @@ class CourseComposerTest {
     @Test
     @DisplayName("경로 모드: 가는 길을 많이 벗어난 장소(출발지 반대쪽)는 넣지 않는다")
     void compose_routeMode_skipsPlaceOffTheWay() {
-        PlaceCandidate onTheWay = place("on", CategoryCode.CAFE, "카페", 0.01);     // 북쪽, 가는 길 위 (우회 0km)
-        PlaceCandidate behind = place("behind", CategoryCode.NATURE, "공원", -0.01); // 남쪽, 우회 약 2.2km (> 도보 1km)
+        PlaceCandidate onTheWay = place("on", Category.CAFE, "카페", 0.01);     // 북쪽, 가는 길 위 (우회 0km)
+        PlaceCandidate behind = place("behind", Category.NATURE, "공원", -0.01); // 남쪽, 우회 약 2.2km (> 도보 1km)
 
         List<CoursePlan> courses = composer.compose(routeCondition(TransportType.WALK, 240), List.of(onTheWay, behind));
 
@@ -453,8 +453,8 @@ class CourseComposerTest {
     @Test
     @DisplayName("경로 모드: 가까움은 우회 거리로 본다. 출발지에서 멀어도 길 위면 옆길 장소보다 앞에 온다")
     void orderNearFirst_routeMode_prefersPlaceOnTheWay() {
-        PlaceCandidate onTheWay = place("on", CategoryCode.CAFE, "카페", 0.015);       // 출발지에서 약 1.7km, 우회 0
-        PlaceCandidate behind = place("behind", CategoryCode.CAFE, "디저트", -0.004);  // 출발지에서 약 0.4km, 우회 약 0.9km
+        PlaceCandidate onTheWay = place("on", Category.CAFE, "카페", 0.015);       // 출발지에서 약 1.7km, 우회 0
+        PlaceCandidate behind = place("behind", Category.CAFE, "디저트", -0.004);  // 출발지에서 약 0.4km, 우회 약 0.9km
 
         for (int i = 0; i < 30; i++) {
             List<PlaceCandidate> ordered =
@@ -468,9 +468,9 @@ class CourseComposerTest {
     void orderForVisit_routeMode_movesTowardDestination() {
         // side : 북쪽 0.001 + 동쪽 0.013 (출발지에서 약 1.15km, 출발지 옆쪽)
         // ahead: 북쪽 0.010              (출발지에서 약 1.11km, 도착지 쪽)
-        PlaceCandidate side = new PlaceCandidate("side", "옆", CategoryCode.CAFE, "카페", "서울 성동구",
+        PlaceCandidate side = new PlaceCandidate("side", "옆", Category.CAFE, "카페", "서울 성동구",
                 ORIGIN.latitude() + 0.001, ORIGIN.longitude() + 0.013);
-        PlaceCandidate ahead = place("ahead", CategoryCode.NATURE, "공원", 0.010);
+        PlaceCandidate ahead = place("ahead", Category.NATURE, "공원", 0.010);
 
         // 출발지에서 가까운 순(④)은 ahead → side: 도착지 쪽으로 갔다가 옆으로 되돌아온다
         assertEquals(List.of("ahead", "side"), idsOf(composer.orderByNearest(ORIGIN, List.of(side, ahead))));
@@ -492,10 +492,10 @@ class CourseComposerTest {
     @Test
     @DisplayName("조건의 대분류 중복은 하나로 정리되고, 비어 있으면 랜덤이다")
     void courseCondition_normalizesCategories() {
-        CourseCondition duplicated = directCondition(180, CategoryCode.CAFE, CategoryCode.CAFE, CategoryCode.FOOD);
+        CourseCondition duplicated = directCondition(180, Category.CAFE, Category.CAFE, Category.FOOD);
         CourseCondition empty = new CourseCondition(ORIGIN, null, 180, TransportType.WALK, null);
 
-        assertEquals(List.of(CategoryCode.CAFE, CategoryCode.FOOD), duplicated.categories());
+        assertEquals(List.of(Category.CAFE, Category.FOOD), duplicated.categories());
         assertTrue(empty.isRandom());
     }
 
@@ -505,12 +505,12 @@ class CourseComposerTest {
         return new CourseCondition(ORIGIN, null, availableMinutes, TransportType.WALK, List.of());
     }
 
-    private CourseCondition directCondition(int availableMinutes, CategoryCode... categories) {
+    private CourseCondition directCondition(int availableMinutes, Category... categories) {
         return new CourseCondition(ORIGIN, null, availableMinutes, TransportType.WALK, List.of(categories));
     }
 
     /** 출발지에서 북쪽으로 latOffset 만큼 떨어진 후보 */
-    private PlaceCandidate place(String id, CategoryCode category, String subCategory, double latOffset) {
+    private PlaceCandidate place(String id, Category category, String subCategory, double latOffset) {
         return new PlaceCandidate(id, "장소" + id, category, subCategory, "서울 성동구",
                 ORIGIN.latitude() + latOffset, ORIGIN.longitude());
     }
@@ -518,14 +518,14 @@ class CourseComposerTest {
     /** 대분류·세분류가 고루 섞인 후보 8곳 */
     private List<PlaceCandidate> manyCandidates() {
         return List.of(
-                place("1", CategoryCode.CAFE, "카페", 0.001),       // 40분
-                place("2", CategoryCode.CAFE, "베이커리", 0.002),   // 40분
-                place("3", CategoryCode.CAFE, "디저트", 0.003),     // 40분
-                place("4", CategoryCode.FOOD, "한식", 0.001),       // 40분
-                place("5", CategoryCode.FOOD, "분식", 0.004),       // 40분
-                place("6", CategoryCode.FOOD, "일식", 0.002),       // 40분
-                place("7", CategoryCode.NATURE, "공원", 0.003),     // 40분
-                place("8", CategoryCode.SHOPPING, "소품샵", 0.005)); // 40분
+                place("1", Category.CAFE, "카페", 0.001),       // 40분
+                place("2", Category.CAFE, "베이커리", 0.002),   // 40분
+                place("3", Category.CAFE, "디저트", 0.003),     // 40분
+                place("4", Category.FOOD, "한식", 0.001),       // 40분
+                place("5", Category.FOOD, "분식", 0.004),       // 40분
+                place("6", Category.FOOD, "일식", 0.002),       // 40분
+                place("7", Category.NATURE, "공원", 0.003),     // 40분
+                place("8", Category.SHOPPING, "소품샵", 0.005)); // 40분
     }
 
     private List<String> subCategoriesOf(CoursePlan course) {

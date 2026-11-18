@@ -2,7 +2,7 @@ package com.teumteum.recommend.service;
 
 import com.teumteum.global.exception.CommonErrorCode;
 import com.teumteum.global.exception.CustomException;
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
@@ -71,11 +71,11 @@ class PlaceReplaceServiceTest {
     private InMemoryRecommendationStore store;
     private PlaceReplaceService placeReplaceService;
 
-    private final PlaceCandidate cafeA = place("A", CategoryCode.CAFE, "카페", 37.5450, 127.0560);
-    private final PlaceCandidate parkB = place("B", CategoryCode.NATURE, "공원", 37.5460, 127.0600);
-    private final PlaceCandidate cafeC = place("C", CategoryCode.CAFE, "카페", 37.5452, 127.0570);
-    private final PlaceCandidate dessertD = place("D", CategoryCode.CAFE, "디저트", 37.5451, 127.0565);
-    private final PlaceCandidate trailE = place("E", CategoryCode.NATURE, "산책로", 37.5465, 127.0610);
+    private final PlaceCandidate cafeA = place("A", Category.CAFE, "카페", 37.5450, 127.0560);
+    private final PlaceCandidate parkB = place("B", Category.NATURE, "공원", 37.5460, 127.0600);
+    private final PlaceCandidate cafeC = place("C", Category.CAFE, "카페", 37.5452, 127.0570);
+    private final PlaceCandidate dessertD = place("D", Category.CAFE, "디저트", 37.5451, 127.0565);
+    private final PlaceCandidate trailE = place("E", Category.NATURE, "산책로", 37.5465, 127.0610);
 
     @BeforeEach
     void setUp() {
@@ -262,7 +262,7 @@ class PlaceReplaceServiceTest {
         return new PlaceReplaceRequest(targetPlaceId, newPlaceId);
     }
 
-    private PlaceCandidate place(String id, CategoryCode category, String subCategory, double lat, double lng) {
+    private PlaceCandidate place(String id, Category category, String subCategory, double lat, double lng) {
         return new PlaceCandidate(id, "장소 " + id, category, subCategory, "서울", lat, lng);
     }
 }

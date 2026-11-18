@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.place.domain.Place;
-import com.teumteum.place.domain.PlaceCategory;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.place.dto.PlaceRegisterCommand;
 import com.teumteum.place.repository.PlaceRepository;
 import java.util.List;
@@ -89,7 +89,7 @@ class PlaceServiceTest {
     @Test
     void 좌표가_범위를_벗어나면_예외를_던진다() {
         PlaceRegisterCommand invalid = new PlaceRegisterCommand(
-                "555", "장소", PlaceCategory.CAFE, "카페", "서울 성동구", 91, 127.0557);
+                "555", "장소", Category.CAFE, "카페", "서울 성동구", 91, 127.0557);
 
         assertThatThrownBy(() -> placeService.findOrCreate(invalid)).isInstanceOf(CustomException.class);
     }
@@ -110,7 +110,7 @@ class PlaceServiceTest {
     // ===== helpers =====
 
     private static PlaceRegisterCommand cafe(String kakaoPlaceId) {
-        return new PlaceRegisterCommand(kakaoPlaceId, "장소" + kakaoPlaceId, PlaceCategory.CAFE, "카페",
+        return new PlaceRegisterCommand(kakaoPlaceId, "장소" + kakaoPlaceId, Category.CAFE, "카페",
                 "서울 성동구", 37.5445, 127.0557);
     }
 

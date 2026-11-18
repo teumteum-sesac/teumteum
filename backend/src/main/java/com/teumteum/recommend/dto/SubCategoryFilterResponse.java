@@ -1,6 +1,6 @@
 package com.teumteum.recommend.dto;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 
 import java.util.List;
 
@@ -21,7 +21,7 @@ import java.util.List;
  * @param subCategories 세분류 이름들, 세분류 표 순서
  */
 public record SubCategoryFilterResponse(
-        CategoryCode category,
+        Category category,
         String categoryName,
         List<String> subCategories
 ) {

@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import com.teumteum.global.common.ApiResponse;
-import com.teumteum.place.domain.PlaceCategory;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.place.dto.NearbyPlaceResult;
 import com.teumteum.place.service.NearbyPlaceService;
 import jakarta.validation.constraints.DecimalMax;
@@ -43,7 +43,7 @@ public class NearbyPlaceController {
     public ResponseEntity<ApiResponse<List<NearbyPlaceResult>>> searchNearby(
             @Parameter(description = "위도", example = "37.5446") @RequestParam @DecimalMin("-90.0") @DecimalMax("90.0") double lat,
             @Parameter(description = "경도", example = "127.0559") @RequestParam @DecimalMin("-180.0") @DecimalMax("180.0") double lng,
-            @Parameter(description = "대분류 여러 개 (CULTURE, CAFE, FOOD, NATURE, ENTERTAINMENT, SHOPPING, SPORTS, TOURISM). 비우면 전체", example = "CAFE,FOOD") @RequestParam(required = false) Set<PlaceCategory> categories,
+            @Parameter(description = "대분류 여러 개 (CULTURE, CAFE, FOOD, NATURE, ENTERTAINMENT, SHOPPING, SPORTS, TOURISM). 비우면 전체", example = "CAFE,FOOD") @RequestParam(required = false) Set<Category> categories,
             @Parameter(description = "반경(m), 기본 1000, 최대 20000", example = "1000") @RequestParam(defaultValue = "1000") @Min(1) @Max(NearbyPlaceService.MAX_RADIUS) int radius
     ) {
         return ResponseEntity.ok(ApiResponse.ok(nearbyPlaceService.findCandidates(lat, lng, categories, radius)));

@@ -1,10 +1,10 @@
 package com.teumteum.recommend.service;
 
 import com.teumteum.global.exception.CustomException;
-import com.teumteum.place.domain.PlaceCategory;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.place.dto.NearbyPlaceResult;
 import com.teumteum.place.service.NearbyPlaceService;
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseSearchResult;
@@ -73,7 +73,7 @@ public class CourseSearchService {
         List<CoursePlan> found = new ArrayList<>();
         // 반경을 넓히면 좁은 반경의 장소가 또 나온다 → 장소 ID 로 중복을 없앤다. LinkedHashMap 은 처음 넣은 순서를 지킨다
         Map<String, PlaceCandidate> seenCandidates = new LinkedHashMap<>();
-        Set<PlaceCategory> placeCategories = toPlaceCategories(condition);
+        Set<Category> placeCategories = searchCategories(condition);
 
         List<Coordinate> centers = searchCenters(condition);
 
@@ -132,7 +132,7 @@ public class CourseSearchService {
      * 여러 지점 주변 후보를 모아 하나의 목록으로 만든다. 지점끼리 반경이 겹쳐 같은 장소가 또 나오면 하나만 남긴다.
      * 한 지점이라도 검색에 실패하면 장소 쪽 오류(CustomException)가 그대로 올라간다 (부르는 쪽에서 처리).
      */
-    private List<PlaceCandidate> findAround(List<Coordinate> centers, Set<PlaceCategory> placeCategories, int radius) {
+    private List<PlaceCandidate> findAround(List<Coordinate> centers, Set<Category> placeCategories, int radius) {
         Map<String, PlaceCandidate> merged = new LinkedHashMap<>();
         for (Coordinate center : centers) {
             nearbyPlaceService.findCandidates(center.latitude(), center.longitude(), placeCategories, radius)
@@ -157,17 +157,15 @@ public class CourseSearchService {
     }
 
     /**
-     * 추천 쪽 대분류(CategoryCode) → 장소 쪽 대분류(PlaceCategory).
-     * 두 enum 은 값 이름이 같아서 이름(name())으로 바꾼다. 랜덤이면 빈 Set (장소 쪽에서 "전체 대분류" 로 검색).
+     * 장소 검색에 넘길 대분류. 랜덤이면 빈 Set (장소 쪽에서 "전체 대분류" 로 검색).
      * <p>
-     * 이름이 다르게 바뀌면 valueOf 에서 바로 오류가 나서 알아챌 수 있다 (조용히 틀린 값이 들어가지 않음).
+     * 추천과 장소가 같은 공통 enum(Category)을 쓰므로 바꿀 필요 없이 그대로 넘긴다 (#174).
+     * 예전에는 enum 이 둘이라 이름(name())으로 하나씩 바꿔야 했다.
      */
-    Set<PlaceCategory> toPlaceCategories(CourseCondition condition) {
-        Set<PlaceCategory> result = EnumSet.noneOf(PlaceCategory.class);
-        for (CategoryCode category : condition.categories()) {
-            result.add(PlaceCategory.valueOf(category.name()));
-        }
-        return result;
+    Set<Category> searchCategories(CourseCondition condition) {
+        return condition.categories().isEmpty()
+                ? EnumSet.noneOf(Category.class)
+                : EnumSet.copyOf(condition.categories());
     }
 
     /**
@@ -179,7 +177,7 @@ public class CourseSearchService {
         return new PlaceCandidate(
                 result.kakaoPlaceId(),
                 result.name(),
-                CategoryCode.valueOf(result.category().name()),
+                result.category(),
                 result.subCategory(),
                 address,
                 result.latitude(),

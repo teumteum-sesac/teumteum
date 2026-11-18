@@ -1,6 +1,6 @@
 package com.teumteum.recommend.dto;
 
-import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.global.common.category.Category;
 
 /**
  * 추천 코스 안의 장소 1곳. RES-01 카드와 DET-01 일정의 한 줄이 된다.
@@ -20,7 +20,7 @@ public record RecommendPlaceResponse(
         String placeId,           // 장소 ID (장소 도메인 기준). 계산용 숫자가 아니라 이름표라서 String
         int visitOrder,           // 방문 순서, 1부터
         String placeName,         // 장소명
-        CategoryCode category,    // 대분류 코드 (JSON 에는 "SPORTS" 처럼 나간다)
+        Category category,    // 대분류 코드 (JSON 에는 "SPORTS" 처럼 나간다)
         String subCategory,       // 세분류 이름 (예: "당구")
         String address,           // 주소, 없으면 null
         double latitude,          // 위도
