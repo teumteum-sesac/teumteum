@@ -64,4 +64,12 @@ class JwtProviderTest {
                 .extracting("errorCode")
                 .isEqualTo(CommonErrorCode.UNAUTHORIZED);
     }
+
+    @Test
+    @DisplayName("관리자로 만든 토큰에는 관리자 표시가, 일반 토큰에는 없다 (REQ-044)")
+    void adminClaim() {
+        assertThat(jwtProvider.parse(jwtProvider.createAccessToken(1L, true)).admin()).isTrue();
+        assertThat(jwtProvider.parse(jwtProvider.createAccessToken(2L)).admin()).isFalse();
+        assertThat(jwtProvider.parse(jwtProvider.createAccessToken(1L, true)).memberId()).isEqualTo(1L);
+    }
 }

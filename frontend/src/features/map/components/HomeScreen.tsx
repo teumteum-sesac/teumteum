@@ -10,6 +10,7 @@ import { useConditionStore } from '../../condition/store'
 import { useCurrentPosition } from '../hooks/useCurrentPosition'
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces'
 import { MAP_BOTTOM_CLASS, type SheetLevel } from '../sheetLayout'
+import NoticeBanner from '../../admin/components/NoticeBanner'
 import HomeSearchBar from './HomeSearchBar'
 import KakaoMap, { type BoundsPadding, type MapMarker } from './KakaoMap'
 import NearbySheet from './NearbySheet'
@@ -122,6 +123,8 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
 
         <div className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
           <HomeSearchBar center={loading || denied ? null : position} />
+          {/* 전체 알림(REQ-053): 가장 최근 공지 1건. 주변 탐색 시트가 열려 있으면 지도를 가리지 않게 숨긴다 */}
+          {!nearby && <NoticeBanner />}
           {denied && (
             <p className="paper-card px-3 py-2 text-xs text-neutral-600">
               위치를 사용할 수 없어 서울시청 기준으로 보여드려요. 위치를 직접 설정해 주세요.

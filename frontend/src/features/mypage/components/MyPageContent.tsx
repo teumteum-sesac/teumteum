@@ -72,6 +72,8 @@ export default function MyPageContent() {
         <ul className="paper-card overflow-hidden">
           <MenuItem to="/mypage/courses" icon="bookmark" label="저장한 코스" />
           <MenuItem to="/mypage/edit" icon="user" label="회원 정보 수정" />
+          {/* 관리자 계정으로 로그인했을 때만 (REQ-044) */}
+          {user.admin && <MenuItem to="/admin" icon="settings" label="관리자 페이지" />}
           <li className="border-b-2 border-dashed border-line last:border-0">
             <button type="button" onClick={() => setConfirmLogout(true)} className="flex h-14 w-full items-center gap-3 px-4 text-left text-sm font-bold">
               <Icon name="chevronLeft" className="size-5 text-neutral-500" />

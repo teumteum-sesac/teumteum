@@ -20,7 +20,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * [경로 규칙] — 서비스는 비회원 이용 중심 (AGENTS.md 1장)
  *   로그인 필요 : /api/courses/**     코스 저장·조회·삭제 (MY-02·MY-03, DET-01 저장)
  *                 /api/members/me/**  내 정보 조회·수정·탈퇴 (MY-01·MY-04)
- *                 /api/admin/**       관리자 (TODO(정종화): 관리자 권한(ROLE) 생기면 hasRole 로 바꾼다)
+ *   관리자만    : /api/admin/**       로그인 + admin 테이블에 있는 회원 (토큰의 role=ADMIN). 아니면 403 (REQ-044)
  *   나머지 전부 : 로그인 없이 허용 (추천·장소·회원가입·로그인·Swagger 등)
  *   새 회원 전용 API 를 만들면 위 목록에 경로를 추가한다.
  *
@@ -45,7 +45,8 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // 서버 세션 안 씀
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/courses/**", "/api/members/me/**", "/api/admin/**").authenticated()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")   // 관리자만 (일반 회원은 403)
+                        .requestMatchers("/api/courses/**", "/api/members/me/**").authenticated()
                         .anyRequest().permitAll()
                 )
                 // 401·403 을 공통 응답(ApiResponse) 형식으로

@@ -30,6 +30,8 @@ export interface LoginResponse {
   memberId: number
   email: string
   nickname: string
+  /** 관리자면 true (admin 테이블에 있는 회원). 마이페이지 [관리자] 메뉴 표시용 */
+  admin: boolean
 }
 
 /** GET /api/members/email-exists?email= 응답 (EmailExistsResponse.java) */
