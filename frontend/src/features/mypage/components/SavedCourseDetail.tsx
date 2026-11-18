@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError } from '../../../shared/api/apiError'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import Icon from '../../../shared/components/Icon'
-import Toast from '../../../shared/components/Toast'
 import { formatShortDate } from '../../../shared/utils/format'
 import CourseSchedule from '../../recommend/components/CourseSchedule'
 import CourseSummary from '../../recommend/components/CourseSummary'
@@ -13,13 +12,15 @@ import { deleteCourse } from '../api/courseApi'
 import { toSavedCourse } from '../courseAdapter'
 import { useSavedCourse } from '../hooks/useSavedCourse'
 import SavedCourseRequestState from './SavedCourseRequestState'
+import { useLatestCoursePlaces } from '../hooks/useLatestCoursePlaces'
+import LatestPlacePanel from './LatestPlacePanel'
 
 /**
  * 저장한 코스 상세 (MY-03): DET-01과 같은 구성, 저장 시점 정보로 표시 (장소 교체 없음).
  * - GET /api/courses/{courseId} 로 저장본을 불러온다 (주소로 직접 들어와도 서버에서 조회)
  * - 코스명은 장소명을 조합하지 않고 저장 당시 courseName 을 그대로 표시한다
  * - 저장 해제: DELETE /api/courses/{courseId} 성공 후 목록으로
- * - '정보 새로고침'(최신 정보 조회) API 는 아직 준비 중이며 저장본을 수정하지 않는다
+ * - 최신 정보는 버튼으로만 조회하고 저장본과 별도 영역에 표시한다
  */
 export default function SavedCourseDetail({ courseId }: { courseId: string }) {
   // 코스 ID 가 바뀌면 화면 상태(삭제 중·오류 등)를 처음부터 다시 시작한다
@@ -29,14 +30,13 @@ export default function SavedCourseDetail({ courseId }: { courseId: string }) {
 function SavedCourseDetailContent({ courseId }: { courseId: string }) {
   const navigate = useNavigate()
   const { data, loading, error, retry } = useSavedCourse(courseId)
+  const latest = useLatestCoursePlaces(courseId)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   // 두 번 눌러 삭제 요청이 겹치지 않게, 화면을 떠난 뒤 온 응답은 무시하도록
   const deletingRef = useRef(false)
   const active = useRef(true)
-  const [toast, setToast] = useState(false)
-  const closeToast = useCallback(() => setToast(false), [])
 
   useEffect(() => {
     active.current = true
@@ -73,19 +73,25 @@ function SavedCourseDetailContent({ courseId }: { courseId: string }) {
           저장 시점 정보예요
           <button
             type="button"
-            onClick={() => setToast(true)}
+            onClick={() => { void latest.refresh() }}
+            disabled={latest.loading || deleting}
             className="flex items-center gap-0.5 rounded-full border-2 border-line bg-cream px-2 py-0.5 font-bold text-primary-dark"
           >
             <Icon name="refresh" className="size-3.5" strokeWidth={2.6} />
-            정보 새로고침
+            {latest.loading ? '최신 정보 조회 중…' : '정보 새로고침'}
           </button>
         </p>
       </CourseSummary>
+
+      {latest.loading && <p role="status" className="px-4 py-2 text-sm text-neutral-500">최신 장소 정보를 조회하고 있어요.</p>}
+      {latest.error && <p role="alert" className="px-4 py-2 text-sm text-red-600">{latest.error}</p>}
+      {latest.data && <LatestPlacePanel data={latest.data} />}
 
       <section className="px-4 pt-2 pb-6">
         <h3 className="mb-3 px-1 font-display text-lg">코스 타임라인</h3>
         <CourseSchedule course={course} />
       </section>
+
 
       <BottomActionBar>
         <Button
@@ -126,7 +132,6 @@ function SavedCourseDetailContent({ courseId }: { courseId: string }) {
           />
         </fieldset>
       )}
-      {toast && <Toast message="정보 새로고침은 API 연동 후 동작합니다" onClose={closeToast} />}
     </>
   )
 }

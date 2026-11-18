@@ -1,55 +1,106 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { ApiError } from '../../../shared/api/apiError'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useAuthStore } from '../../../shared/auth/authStore'
 import Button from '../../../shared/components/Button'
 import StickerImage from '../../../shared/components/StickerImage'
 import TextField from '../../../shared/components/TextField'
-import { useSavedCourseStore } from '../store'
+import EmptyState from '../../../shared/components/EmptyState'
+import LoadingState from '../../../shared/components/LoadingState'
+import { updateMyInfo, withdrawMyAccount } from '../api/memberApi'
+import { useMemberInfo } from '../hooks/useMemberInfo'
+import type { MemberResponse } from '../types'
 
 /**
  * 회원 정보 수정·탈퇴 (MY-04)
  * - 이메일(수정 불가), 닉네임, 비밀번호 변경(새 비밀번호 + 확인). 저장하면 마이페이지로
  * - 회원 탈퇴: 안내(저장한 코스 즉시 삭제) → 의사 확인(비밀번호 입력 또는 체크) → 홈으로
  * - MY-01 '회원 탈퇴' 메뉴로 들어오면(?withdraw=1) 탈퇴 영역을 펼친 채로 시작
- * TODO(김하윤): 회원 정보 조회·수정·탈퇴 API 연동 (현재 화면 상태만 변경)
+ * - 서버 조회로 입력값을 채우고 수정·탈퇴 성공 응답 뒤에만 로그인 상태를 변경한다
  */
 export default function ProfileEdit() {
+  const info = useMemberInfo()
+  if (info.loading) return <LoadingState message="회원 정보를 불러오는 중이에요" />
+  if (!info.data) return <EmptyState message="회원 정보를 불러오지 못했어요" description={info.error ?? undefined} action={<Button onClick={info.retry}>다시 시도</Button>} />
+  return <ProfileEditForm key={info.data.email} member={info.data} />
+}
+
+function ProfileEditForm({ member }: { member: MemberResponse }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { user, updateUser, logout } = useAuthStore()
-  const [nickname, setNickname] = useState(user?.nickname ?? '')
+  const { updateUser, logout } = useAuthStore()
+  const [nickname, setNickname] = useState(member.nickname)
   const [newPassword, setNewPassword] = useState('')
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
   const [withdrawOpen, setWithdrawOpen] = useState(searchParams.get('withdraw') === '1')
   const [withdrawPassword, setWithdrawPassword] = useState('')
   const [withdrawAgreed, setWithdrawAgreed] = useState(false)
+  const [busy, setBusy] = useState<'save' | 'withdraw' | null>(null)
+  const [saveError, setSaveError] = useState<ApiError | null>(null)
+  const [withdrawError, setWithdrawError] = useState<string | null>(null)
+  const inFlight = useRef(false)
+  const active = useRef(true)
+  useEffect(() => {
+    active.current = true
+    return () => { active.current = false }
+  }, [])
 
-  const passwordError = newPassword && newPassword.length < 8 ? '비밀번호는 8자 이상이어야 해요.' : undefined
+  const nicknameError = nickname.length > 50 ? '닉네임은 50자 이하로 입력해 주세요.' : undefined
+  const passwordError = newPassword && (newPassword.trim().length === 0 || newPassword.length < 8 || newPassword.length > 64 || new TextEncoder().encode(newPassword).length > 72)
+    ? '비밀번호는 8~64자, 최대 72바이트로 입력해 주세요.' : undefined
   const confirmError =
     newPasswordConfirm && newPassword !== newPasswordConfirm ? '비밀번호가 일치하지 않아요.' : undefined
   const canSave =
-    nickname.trim().length > 0 && !passwordError && !confirmError && (newPassword === '' || newPasswordConfirm !== '')
+    nickname.trim().length > 0 && !nicknameError && !passwordError && newPassword === newPasswordConfirm
 
-  const handleSave = () => {
-    updateUser({ nickname })
-    navigate('/mypage', { replace: true })
+  const handleSave = async () => {
+    if (!canSave || inFlight.current) return
+    inFlight.current = true
+    setBusy('save')
+    setSaveError(null)
+    const token = useAuthStore.getState().accessToken
+    try {
+      const result = await updateMyInfo({ nickname, ...(newPassword ? { newPassword, newPasswordConfirm } : {}) })
+      if (!active.current || useAuthStore.getState().accessToken !== token) return
+      updateUser(result)
+      navigate('/mypage', { replace: true })
+    } catch (e) {
+      if (active.current) setSaveError(e instanceof ApiError ? e : new ApiError('UNKNOWN', '회원 정보를 수정하지 못했어요.', 0))
+    } finally {
+      inFlight.current = false
+      if (active.current) setBusy(null)
+    }
   }
 
-  const handleWithdraw = () => {
-    useSavedCourseStore.setState({ savedCourses: [] })
-    logout()
-    navigate('/', { replace: true })
+  const handleWithdraw = async () => {
+    if (inFlight.current || (!withdrawAgreed && (withdrawPassword.length === 0 || withdrawPassword.length > 64))) return
+    inFlight.current = true
+    setBusy('withdraw')
+    setWithdrawError(null)
+    const token = useAuthStore.getState().accessToken
+    try {
+      const result = await withdrawMyAccount({ password: withdrawAgreed ? null : withdrawPassword, agreed: withdrawAgreed })
+      if (!active.current || useAuthStore.getState().accessToken !== token) return
+      if (!result.withdrawn) throw new Error('Unexpected withdrawal response')
+      logout()
+      navigate('/', { replace: true })
+    } catch (e) {
+      if (active.current) setWithdrawError(e instanceof ApiError ? e.message : '탈퇴하지 못했어요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      inFlight.current = false
+      if (active.current) setBusy(null)
+    }
   }
 
   return (
-    <div className="flex flex-col gap-4 px-4 py-5">
+    <fieldset disabled={busy !== null} aria-busy={busy !== null} className="flex flex-col gap-4 px-4 py-5">
       <div className="flex justify-center pb-1">
         <span className="flex size-20 items-center justify-center rounded-full border-2 border-ink bg-primary-light">
           <StickerImage name="rabbitHead" className="size-[72px]" />
         </span>
       </div>
-      <TextField label="이메일" name="email" value={user?.email ?? ''} disabled hint="이메일은 수정할 수 없어요" />
-      <TextField label="닉네임" name="nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} />
+      <TextField label="이메일" name="email" value={member.email} disabled hint="이메일은 수정할 수 없어요" />
+      <TextField label="닉네임" name="nickname" value={nickname} maxLength={50} onChange={(e) => setNickname(e.target.value)} error={nicknameError ?? saveError?.getFieldMessage('nickname')} />
       <TextField
         label="새 비밀번호"
         name="newPassword"
@@ -57,7 +108,7 @@ export default function ProfileEdit() {
         autoComplete="new-password"
         value={newPassword}
         onChange={(e) => setNewPassword(e.target.value)}
-        error={passwordError}
+        error={passwordError ?? saveError?.getFieldMessage('newPassword') ?? saveError?.getFieldMessage('passwordChangeValid')}
         hint="바꾸지 않으려면 비워두세요"
       />
       <TextField
@@ -67,10 +118,11 @@ export default function ProfileEdit() {
         autoComplete="new-password"
         value={newPasswordConfirm}
         onChange={(e) => setNewPasswordConfirm(e.target.value)}
-        error={confirmError}
+        error={confirmError ?? saveError?.getFieldMessage('newPasswordConfirm')}
       />
-      <Button onClick={handleSave} disabled={!canSave}>
-        저장
+      {saveError && <p role="alert" className="text-sm text-red-600">{saveError.message}</p>}
+      <Button onClick={() => { void handleSave() }} disabled={!canSave || busy !== null}>
+        {busy === 'save' ? '저장 중…' : '저장'}
       </Button>
 
       <section className="mt-6 border-t-2 border-dashed border-line pt-5">
@@ -95,12 +147,13 @@ export default function ProfileEdit() {
               <input type="checkbox" checked={withdrawAgreed} onChange={(e) => setWithdrawAgreed(e.target.checked)} className="size-4 accent-primary" />
               안내를 확인했고 탈퇴에 동의합니다
             </label>
-            <Button variant="secondary" disabled={!withdrawAgreed && withdrawPassword.length === 0} onClick={handleWithdraw}>
-              탈퇴하기
+            {withdrawError && <p role="alert" className="text-sm text-red-600">{withdrawError}</p>}
+            <Button variant="secondary" disabled={busy !== null || (!withdrawAgreed && (withdrawPassword.length === 0 || withdrawPassword.length > 64))} onClick={() => { void handleWithdraw() }}>
+              {busy === 'withdraw' ? '탈퇴 중…' : '탈퇴하기'}
             </Button>
           </div>
         )}
       </section>
-    </div>
+    </fieldset>
   )
 }

@@ -6,6 +6,7 @@ import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import Icon, { type IconName } from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
 import { useSavedCourseCount } from '../hooks/useSavedCourse'
+import { useMemberInfo } from '../hooks/useMemberInfo'
 
 /**
  * 마이페이지 (MY-01)
@@ -19,6 +20,7 @@ export default function MyPageContent() {
   // 저장 건수: GET /api/courses?page=0&size=1 의 totalElements. 비회원이면 회원 전용 API 를 부르지 않는다
   const { data, loading, error, retry } = useSavedCourseCount(isLoggedIn && user !== null)
   const savedCount = data?.totalElements
+  const member = useMemberInfo(isLoggedIn)
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   if (!isLoggedIn || !user) {
@@ -43,10 +45,11 @@ export default function MyPageContent() {
             <StickerImage name="rabbitHead" className="size-14" />
           </span>
           <div className="min-w-0">
-            <p className="truncate font-display text-2xl">{user.nickname}</p>
-            <p className="truncate text-sm text-neutral-500">{user.email}</p>
+            <p className="truncate font-display text-2xl">{member.data?.nickname ?? user.nickname}</p>
+            <p className="truncate text-sm text-neutral-500">{member.data?.email ?? user.email}</p>
           </div>
         </div>
+        {member.error && <p role="alert" className="mt-2 text-xs text-red-600">{member.error} <button type="button" onClick={member.retry} className="underline">회원 정보 다시 조회</button></p>}
         <Link
           to="/mypage/courses"
           className="mt-4 flex items-center justify-between rounded-2xl border-2 border-dashed border-line px-4 py-2.5"
