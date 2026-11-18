@@ -28,8 +28,10 @@ teumteum/
 
 ## 로컬 실행
 
+> 처음 실행하는 사람은 **[로컬 실행 가이드](docs/run-guide.md)** 를 보세요 (DB 테이블 만들기, 설정값 표, 자주 나는 오류 포함). 전체 API 목록은 [API 명세 취합본](docs/api-spec.md).
+
 ### Backend
-1. MySQL에 `teumteum` 데이터베이스 생성
+1. MySQL에 `teumteum` DB와 테이블 생성 ([ERD 문서](docs/erd.md) 3·4절 SQL 실행)
 2. `backend/src/main/resources/application-local.yml.example` 을 복사해 `application-local.yml` 로 만들고 값 입력
 3. `backend/` 에서 `./gradlew bootRun` (Windows: `gradlew.bat bootRun`)
 
