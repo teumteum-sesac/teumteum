@@ -9,6 +9,7 @@ import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseSearchResult;
 import com.teumteum.recommend.domain.PlaceCandidate;
+import com.teumteum.recommend.domain.TravelRoute.Coordinate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,8 +27,9 @@ import java.util.Set;
  * 흐름 (명세 1.6 서버 처리 순서 3 ~ 6)
  * <pre>
  * 반경 1km → 후보 검색(장소 도메인) → 코스 조합(CourseComposer) → 3개 모이면 끝
+ *            (도착지가 멀면 출발지·중간·도착지 3곳 주변에서 찾아 합친다)
  *          ↓ 모자라면
- * 반경 2km → 3km → 5km 차례로, 모자란 만큼만 더 찾는다
+ * 반경 2km → 3km → 5km 차례로, 모자란 만큼만 더 찾는다 (이동수단 최대 반경까지만. 도보는 2km)
  * 끝까지 넓혀도 없으면 빈 목록 (오류 아님 → 프론트가 "조건에 맞는 코스가 없어요" 안내)
  * </pre>
  * 장소 도메인은 NearbyPlaceService(서비스)를 통해서만 부른다 (도메인 경계 규칙).
@@ -73,14 +75,12 @@ public class CourseSearchService {
         Map<String, PlaceCandidate> seenCandidates = new LinkedHashMap<>();
         Set<PlaceCategory> placeCategories = toPlaceCategories(condition);
 
-        for (int radius : RADIUS_STEPS) {
+        List<Coordinate> centers = searchCenters(condition);
+
+        for (int radius : radiusStepsFor(condition)) {
             List<PlaceCandidate> candidates;
             try {
-                List<PlaceCandidate> all = nearbyPlaceService.findCandidates(
-                                condition.origin().latitude(), condition.origin().longitude(), placeCategories, radius)
-                        .stream()
-                        .map(this::toPlaceCandidate)
-                        .toList();
+                List<PlaceCandidate> all = findAround(centers, placeCategories, radius);
                 all.forEach(candidate -> seenCandidates.putIfAbsent(candidate.placeId(), candidate));
 
                 candidates = all.stream()
@@ -102,6 +102,58 @@ public class CourseSearchService {
             log.info("반경 {}m 에서 코스 {}개 → 반경을 넓혀 다시 찾음", radius, found.size());
         }
         return new CourseSearchResult(found, List.copyOf(seenCandidates.values()));
+    }
+
+    /**
+     * 후보를 찾을 지점들.
+     * <pre>
+     * 도착지가 없거나 출발지와 가까우면 → [출발지]
+     * 도착지가 멀면 (경로 모드)         → [출발지, 중간 지점, 도착지]   가는 길 전체에서 찾는다
+     * </pre>
+     * 출발지에서만 찾으면 "출발지 근처에서 놀다가 도착지로 이동" 하는 코스만 나와서 바꿨다 (#170).
+     * 경로 모드 판단은 코스 조합과 같은 기준을 쓰려고 CourseComposer.isRouteMode 에 맡긴다.
+     * <p>
+     * 지점이 3개면 장소 검색(카카오 로컬) 호출도 3배가 된다 (NFR-014 무료 한도). 그래서 도착지가 멀 때만 쓴다.
+     */
+    List<Coordinate> searchCenters(CourseCondition condition) {
+        if (!courseComposer.isRouteMode(condition)) {
+            return List.of(condition.origin());
+        }
+        Coordinate origin = condition.origin();
+        Coordinate destination = condition.destination();
+        // 몇 km 안쪽 짧은 거리라 위도·경도를 그냥 평균 내도 실제 중간과 거의 같다
+        Coordinate middle = new Coordinate(
+                (origin.latitude() + destination.latitude()) / 2,
+                (origin.longitude() + destination.longitude()) / 2);
+        return List.of(origin, middle, destination);
+    }
+
+    /**
+     * 여러 지점 주변 후보를 모아 하나의 목록으로 만든다. 지점끼리 반경이 겹쳐 같은 장소가 또 나오면 하나만 남긴다.
+     * 한 지점이라도 검색에 실패하면 장소 쪽 오류(CustomException)가 그대로 올라간다 (부르는 쪽에서 처리).
+     */
+    private List<PlaceCandidate> findAround(List<Coordinate> centers, Set<PlaceCategory> placeCategories, int radius) {
+        Map<String, PlaceCandidate> merged = new LinkedHashMap<>();
+        for (Coordinate center : centers) {
+            nearbyPlaceService.findCandidates(center.latitude(), center.longitude(), placeCategories, radius)
+                    .stream()
+                    .map(this::toPlaceCandidate)
+                    .forEach(candidate -> merged.putIfAbsent(candidate.placeId(), candidate));
+        }
+        return List.copyOf(merged.values());
+    }
+
+    /**
+     * 이 이동수단으로 넓혀 볼 반경 단계. 이동수단의 최대 반경을 넘는 단계는 뺀다.
+     * 예) 도보(최대 2km) → [1km, 2km] / 대중교통·차량(최대 5km) → [1km, 2km, 3km, 5km]
+     * <p>
+     * 도보인데 5km 까지 넓히면 "편도 1시간 넘게 걸어가기" 같은 코스가 나와서 막는다 (#170).
+     */
+    List<Integer> radiusStepsFor(CourseCondition condition) {
+        int maxRadius = condition.transportType().getMaxSearchRadiusMeters();
+        return RADIUS_STEPS.stream()
+                .filter(radius -> radius <= maxRadius)
+                .toList();
     }
 
     /**

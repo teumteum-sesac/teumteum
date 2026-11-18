@@ -1,5 +1,6 @@
 package com.teumteum.recommend.service;
 
+import com.teumteum.recommend.domain.SubCategory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -10,11 +11,11 @@ public class StayTimeCalculatorTest {
     private final StayTimeCalculator stayTimeCalculator = new StayTimeCalculator();
 
     @Test
-    @DisplayName("카페는 체류시간표에 따라 60분이다")
+    @DisplayName("카페는 체류시간표에 따라 40분이다")
     void calculate_returnsStayMinutes_forCafe() {
         int result = stayTimeCalculator.calculate("카페");
 
-        assertEquals(60, result);
+        assertEquals(40, result);
     }
 
     @Test
@@ -25,6 +26,23 @@ public class StayTimeCalculatorTest {
 
         // then
         assertEquals(150, result);
+    }
+
+    @Test
+    @DisplayName("영화·공연만 150분이고, 나머지 세분류는 모두 40분이다 (팀 결정 2026-11-18)")
+    void allSubCategories_are40_exceptMovieAndPerformance() {
+        for (SubCategory subCategory : SubCategory.values()) {
+            int expected = (subCategory == SubCategory.MOVIE || subCategory == SubCategory.PERFORMANCE) ? 150 : 40;
+
+            assertEquals(expected, stayTimeCalculator.calculate(subCategory.getDisplayName()),
+                    subCategory.getDisplayName()); // 실패하면 어느 세분류인지 메시지로 보인다
+        }
+    }
+
+    @Test
+    @DisplayName("기본 체류시간은 40분이다")
+    void defaultStayMinutes_is40() {
+        assertEquals(40, StayTimeCalculator.DEFAULT_STAY_MINUTES);
     }
 
     @Test
