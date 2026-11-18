@@ -7,6 +7,13 @@ import jakarta.persistence.EntityManager;
 import com.teumteum.member.service.MemberWithdrawalService;
 import com.teumteum.member.dto.MemberWithdrawRequest;
 import com.teumteum.global.auth.JwtProvider;
+import com.teumteum.place.service.PlaceLatestService;
+import com.teumteum.place.dto.PlaceLatestSource;
+import com.teumteum.place.dto.PlaceLatestLookup;
+import com.teumteum.place.dto.LatestPlaceResponse;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.*;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.MediaType;
@@ -49,6 +56,38 @@ class CourseDeleteTransactionTest {
     private MockMvc mockMvc;
     @Autowired
     private JwtProvider jwtProvider;
+    @MockitoBean
+    private PlaceLatestService latestPlaces;
+    @Autowired
+    private CourseLatestService latestService;
+
+    @Test
+    void latestHttpLookupKeepsAllSavedInformationAndScheduleUnchanged() throws Exception {
+        var before = courseService.getCourse(fixture.memberId(), fixture.courseId());
+        var source = new PlaceLatestSource("latest-test", "검색용 이름", 37.5, 127.0);
+        given(latestPlaces.source(fixture.placeId())).willReturn(source);
+        given(latestPlaces.lookup(source)).willReturn(PlaceLatestLookup.success(new LatestPlaceResponse(
+                "최신 장소 이름", null, null, "최신 주소", 38.0, 128.0, null, null, null, "최신 소개", null)));
+        mockMvc.perform(get("/api/courses/" + fixture.courseId() + "/places/latest")
+                        .header("Authorization", "Bearer " + jwtProvider.createAccessToken(fixture.memberId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.places[0].place.placeName").value("최신 장소 이름"));
+
+        assertThat(courseService.getCourse(fixture.memberId(), fixture.courseId())).isEqualTo(before);
+        assertThat(jdbcTemplate.queryForObject("SELECT place_name FROM place WHERE place_id=?",
+                String.class, fixture.placeId())).isEqualTo("[테스트] 롤백 카페");
+    }
+
+    @Test
+    void anotherMembersLatestRequestDoesNotReadSourceOrCallProvider() {
+        transactionTemplate.executeWithoutResult(status -> {
+            Fixture other = createFixture();
+            assertThatThrownBy(() -> latestService.getLatest(other.memberId(), fixture.courseId()))
+                    .isInstanceOf(com.teumteum.global.exception.CustomException.class);
+            verifyNoInteractions(latestPlaces);
+            status.setRollbackOnly();
+        });
+    }
 
     @Test
     void withdrawalHttpRequestRevokesExistingTokenForMemberAndCourseApis() throws Exception {

@@ -30,7 +30,7 @@
 | 코스 | 내 저장 코스 목록 | GET | `/api/courses?page=0&size=20` | 🔒 | ✅ | 김하윤 | MY-02, MY-01 건수 | [course-api.md 2](course-api.md#2-내-저장-코스-목록-조회) |
 | 코스 | 내 저장 코스 상세·지도 | GET | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-03, DET-02 | [course-api.md 3](course-api.md#3-내-저장-코스-상세지도-조회) |
 | 코스 | 내 저장 코스 삭제 | DELETE | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-02·MY-03 | [course-api.md 4](course-api.md#4-내-저장-코스-삭제) |
-| 코스 | 최신 장소 정보 조회 | GET | `/api/courses/{courseId}/places/latest` | 🔒 | ⬜ | 김하윤 | MY-03 [정보 새로고침] | [course-api.md 5](course-api.md#5-최신-장소-정보-별도-조회) |
+| 코스 | 최신 장소 정보 조회 | GET | `/api/courses/{courseId}/places/latest` | 🔒 | ✅ | 김하윤 | MY-03 [정보 새로고침] | [course-api.md 5](course-api.md#5-최신-장소-정보-별도-조회) |
 | 관리자 | 회원 관리·공지·알림 | - | `/api/admin/**` | 🔒 | ⬜ | 정종화 | `/admin` | 명세 작성 전 |
 | 인증 | 비밀번호 찾기 (메일) | - | 미정 | 🔓 | ⬜ | 김용현 | AUT-01 | P1, 명세 작성 전 |
 
