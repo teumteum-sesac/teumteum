@@ -76,9 +76,41 @@ export function buildSchedule(course: Course): { rows: ScheduleRow[]; endTime: s
   return { rows, endTime: addMinutesToTime(clock, course.finalTravelMinutes) }
 }
 
-/** 구간 이동 수단 이름 (예: "버스", "도보"). 대중교통 노선 정보가 없으면 코스 이동수단 이름 */
+/** 700m 이내 대중교통 구간을 걸어갈 때 백엔드가 보내는 transitInfo */
+const WALK_TRANSIT_INFO = '도보'
+
+/**
+ * 대중교통 노선 정보(transitInfo)를 노선 목록과 환승 문구로 나눈다.
+ * 백엔드(OdsayClient)가 만드는 모양:
+ * - "수도권 2호선 · 환승 0회"                → lines ["수도권 2호선"], transfer "환승 0회"
+ * - "버스 3411 → 수도권 2호선 · 환승 1회"    → lines ["버스 3411", "수도권 2호선"], transfer "환승 1회"
+ * - "환승 0회" (노선 이름을 못 찾음)          → lines [], transfer "환승 0회"
+ * - "도보" (700m 이내 구간)                   → lines [], transfer null
+ */
+export function parseTransitInfo(transitInfo: string): { lines: string[]; transfer: string | null } {
+  if (transitInfo === WALK_TRANSIT_INFO) return { lines: [], transfer: null }
+  const [linePart, transfer = null] = transitInfo.split(' · ')
+  if (linePart.startsWith('환승 ')) return { lines: [], transfer: linePart }
+  return { lines: linePart.split(' → '), transfer }
+}
+
+/**
+ * 구간 이동 수단 이름: "버스" · "지하철" · "버스+지하철" · "도보".
+ * 백엔드는 버스 노선에만 "버스 " 를 붙이므로(예: "버스 3411"), "버스 " 로 시작하지 않는 노선은 지하철로 본다
+ * ("신분당선", "공항철도" 처럼 "호선" 이 없는 노선도 지하철로 잡힌다).
+ * 노선 정보가 없으면(도보·차량, 또는 대중교통 API 실패) 코스 이동수단 이름 ("대중교통" 등).
+ */
 export function getLegMode(course: Course, transitInfo?: string): string {
-  return transitInfo ? transitInfo.split(' ')[0] : getTransportLabel(course.transportType)
+  if (!transitInfo) return getTransportLabel(course.transportType)
+  if (transitInfo === WALK_TRANSIT_INFO) return '도보'
+
+  const { lines } = parseTransitInfo(transitInfo)
+  if (lines.length === 0) return getTransportLabel(course.transportType)
+
+  const hasBus = lines.some((line) => line.startsWith('버스 '))
+  const hasSubway = lines.some((line) => !line.startsWith('버스 '))
+  if (hasBus && hasSubway) return '버스+지하철'
+  return hasBus ? '버스' : '지하철'
 }
 
 /** 장소 간 이동시간 합계(분) */
