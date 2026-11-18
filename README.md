@@ -8,12 +8,11 @@
 
 | 이름 | 담당 |
 |---|---|
-| 김용현 | 공통 기반·인증, 배포 |
+| 김용현 | 공통 기반·인증, 배포, 관리자 기능 |
 | 정종일 | 장소 (카카오 로컬 API) |
 | 나혜빈 | 추천 로직 |
 | 유지수 | 지도 |
 | 김하윤 | 저장·마이페이지, DB 설계 |
-| 정종화 | 관리자 기능 |
 
 ## 구조
 
@@ -28,8 +27,10 @@ teumteum/
 
 ## 로컬 실행
 
+> 처음 실행하는 사람은 **[로컬 실행 가이드](docs/run-guide.md)** 를 보세요 (DB 테이블 만들기, 설정값 표, 자주 나는 오류 포함). 전체 API 목록은 [API 명세 취합본](docs/api-spec.md).
+
 ### Backend
-1. MySQL에 `teumteum` 데이터베이스 생성
+1. MySQL에 `teumteum` DB와 테이블 생성 ([ERD 문서](docs/erd.md) 3·4절 SQL 실행)
 2. `backend/src/main/resources/application-local.yml.example` 을 복사해 `application-local.yml` 로 만들고 값 입력
 3. `backend/` 에서 `./gradlew bootRun` (Windows: `gradlew.bat bootRun`)
 
@@ -45,6 +46,6 @@ teumteum/
 
 `main` ← `dev` ← `{작업코드}/{type}/{이슈번호}-{도메인}-{기능}` (예: `be01/feature/12-auth-login`)
 
-작업코드는 영역(`be`/`fe`) + 팀원 번호(01 김용현 ~ 06 정종화)입니다. 커밋·PR 제목도 `[be01] feat: 로그인 API 추가` 처럼 작업코드로 시작합니다.
+작업코드는 영역(`be`/`fe`) + 팀원 번호(01 김용현 ~ 05 김하윤)입니다. 커밋·PR 제목도 `[be01] feat: 로그인 API 추가` 처럼 작업코드로 시작합니다.
 
 이슈를 먼저 만들고, `dev` 에서 브랜치를 따서 작업한 뒤 `dev` 로 PR을 올립니다. 자세한 규칙은 [AGENTS.md 8장](./AGENTS.md#8-git-규칙)을 참고하세요.

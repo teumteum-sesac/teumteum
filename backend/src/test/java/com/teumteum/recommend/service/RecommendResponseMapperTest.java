@@ -5,6 +5,7 @@ import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
 import com.teumteum.recommend.domain.PathType;
+import com.teumteum.recommend.domain.PlaceAlternative;
 import com.teumteum.recommend.domain.PlaceCandidate;
 import com.teumteum.recommend.domain.RecommendCondition;
 import com.teumteum.recommend.domain.RecommendCondition.Location;
@@ -13,7 +14,10 @@ import com.teumteum.recommend.domain.RecommendedCourse;
 import com.teumteum.recommend.domain.TransportType;
 import com.teumteum.recommend.domain.TravelRoute;
 import com.teumteum.recommend.domain.TravelRoute.Coordinate;
+import com.teumteum.recommend.dto.AlternativePlaceListResponse;
+import com.teumteum.recommend.dto.AlternativePlaceResponse;
 import com.teumteum.recommend.dto.CoordinateResponse;
+import com.teumteum.recommend.dto.CurrentPlaceResponse;
 import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendCourseResponse;
 import com.teumteum.recommend.dto.RecommendPlaceDetailResponse;
@@ -204,6 +208,34 @@ class RecommendResponseMapperTest {
         // 첫 구간 대중교통(좌표 없음) → 출발지에서 장소1 로 직선
         assertEquals(PathType.STRAIGHT, legs.get(0).pathType());
         assertEquals(new CoordinateResponse(37.5446, 127.0559), legs.get(0).coordinates().get(0));
+    }
+
+    // ===================== 장소 교체 후보 =====================
+
+    @Test
+    @DisplayName("교체 후보: 바꿀 장소 요약(방문 순서 1부터)과 후보(이미지·노선 null, 추정 true)를 담는다")
+    void alternatives_fields() {
+        PlaceCandidate shop = new PlaceCandidate("201", "소품샵 C", CategoryCode.SHOPPING, "소품샵", "서울 성동구 ○○로 3",
+                37.5462, 127.0430);
+        PlaceAlternative alternative = new PlaceAlternative(shop, 40, 9, 1, false);
+
+        AlternativePlaceListResponse response =
+                mapper.toAlternativeListResponse(detailCourse(), 1, List.of(alternative)); // 두 번째 장소(소품샵 B)
+
+        CurrentPlaceResponse current = response.currentPlace();
+        assertEquals("rc_2", response.recommendationId());
+        assertEquals("102", current.placeId());
+        assertEquals(2, current.visitOrder());
+        assertEquals(40, current.stayMinutes());
+
+        AlternativePlaceResponse first = response.alternatives().get(0);
+        assertEquals("201", first.placeId());
+        assertEquals("서울 성동구 ○○로 3", first.address());
+        assertEquals(9, first.travelMinutes());
+        assertEquals(1, first.diffMinutes());
+        assertNull(first.imageUrl());
+        assertNull(first.transitInfo());
+        assertTrue(first.estimated());
     }
 
     // ===================== 도우미 =====================

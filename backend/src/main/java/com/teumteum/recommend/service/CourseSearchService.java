@@ -7,6 +7,7 @@ import com.teumteum.place.service.NearbyPlaceService;
 import com.teumteum.recommend.domain.CategoryCode;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
+import com.teumteum.recommend.domain.CourseSearchResult;
 import com.teumteum.recommend.domain.PlaceCandidate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,7 +15,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -48,30 +51,39 @@ public class CourseSearchService {
     /**
      * 조건에 맞는 코스를 최대 3개 찾는다.
      *
-     * @return 코스 0 ~ 3개. 반경을 끝까지 넓혀도 없으면 빈 목록
+     * @return 코스 0 ~ 3개(반경을 끝까지 넓혀도 없으면 빈 목록) + 그동안 받은 장소 후보 (교체 후보용으로 보관)
      * @throws CustomException 장소 검색 외부 API 가 전부 실패하고, 그때까지 찾은 코스도 없을 때 (장소 쪽 502·503 그대로 전달)
      */
-    public List<CoursePlan> findCourses(CourseCondition condition) {
+    public CourseSearchResult findCourses(CourseCondition condition) {
         return findCourses(condition, Set.of());
     }
 
     /**
      * 정해진 장소를 빼고 코스를 최대 3개 찾는다 (다시 추천, 명세 2장).
      * 후보 목록에서 제외할 장소를 먼저 걸러 낸 뒤 코스를 조합한다. 나머지 흐름은 위와 같다.
+     * <p>
+     * 돌려주는 후보(candidates)에는 제외한 장소도 들어 있다. 제외는 "새 코스를 만들 때" 만 적용하고,
+     * 교체 후보로는 직전 추천에 나왔던 장소도 보여 줄 수 있게 한다.
      *
      * @param excludedPlaceIds 후보에서 뺄 장소 ID (직전 추천에 나온 장소). 비어 있으면 아무것도 안 뺀다
      */
-    public List<CoursePlan> findCourses(CourseCondition condition, Set<String> excludedPlaceIds) {
+    public CourseSearchResult findCourses(CourseCondition condition, Set<String> excludedPlaceIds) {
         List<CoursePlan> found = new ArrayList<>();
+        // 반경을 넓히면 좁은 반경의 장소가 또 나온다 → 장소 ID 로 중복을 없앤다. LinkedHashMap 은 처음 넣은 순서를 지킨다
+        Map<String, PlaceCandidate> seenCandidates = new LinkedHashMap<>();
         Set<PlaceCategory> placeCategories = toPlaceCategories(condition);
 
         for (int radius : RADIUS_STEPS) {
             List<PlaceCandidate> candidates;
             try {
-                candidates = nearbyPlaceService.findCandidates(
-                        condition.origin().latitude(), condition.origin().longitude(), placeCategories, radius)
+                List<PlaceCandidate> all = nearbyPlaceService.findCandidates(
+                                condition.origin().latitude(), condition.origin().longitude(), placeCategories, radius)
                         .stream()
                         .map(this::toPlaceCandidate)
+                        .toList();
+                all.forEach(candidate -> seenCandidates.putIfAbsent(candidate.placeId(), candidate));
+
+                candidates = all.stream()
                         .filter(candidate -> !excludedPlaceIds.contains(candidate.placeId())) // 제외할 장소 빼기
                         .toList();
             } catch (CustomException e) {
@@ -89,7 +101,7 @@ public class CourseSearchService {
             }
             log.info("반경 {}m 에서 코스 {}개 → 반경을 넓혀 다시 찾음", radius, found.size());
         }
-        return found;
+        return new CourseSearchResult(found, List.copyOf(seenCandidates.values()));
     }
 
     /**
