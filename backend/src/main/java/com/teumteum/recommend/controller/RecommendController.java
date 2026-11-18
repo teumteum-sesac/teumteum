@@ -1,9 +1,11 @@
 package com.teumteum.recommend.controller;
 
 import com.teumteum.global.common.ApiResponse;
+import com.teumteum.recommend.dto.AlternativePlaceListResponse;
 import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendRequest;
 import com.teumteum.recommend.dto.RecommendResponse;
+import com.teumteum.recommend.service.PlaceReplaceService;
 import com.teumteum.recommend.service.RecommendService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class RecommendController {
 
     private final RecommendService recommendService;
+    private final PlaceReplaceService placeReplaceService;
 
     /** 추천 생성 (CON-01 '추천받기' → RES-01) */
     @PostMapping
@@ -55,5 +58,15 @@ public class RecommendController {
     public ResponseEntity<ApiResponse<RecommendCourseDetailResponse>> getCourseDetail(
             @PathVariable String recommendationId) {
         return ResponseEntity.ok(ApiResponse.ok(recommendService.getCourseDetail(recommendationId)));
+    }
+
+    /**
+     * 장소 교체 후보 (DET-01 '장소 바꾸기' → DET-03). 같은 세분류 우선 5곳과 바꾸면 달라지는 총 시간.
+     * 없는 코스·코스에 없는 장소면 404, 만료면 410, 후보가 없으면 alternatives []
+     */
+    @GetMapping("/courses/{recommendationId}/places/{placeId}/alternatives")
+    public ResponseEntity<ApiResponse<AlternativePlaceListResponse>> getAlternatives(
+            @PathVariable String recommendationId, @PathVariable String placeId) {
+        return ResponseEntity.ok(ApiResponse.ok(placeReplaceService.getAlternatives(recommendationId, placeId)));
     }
 }
