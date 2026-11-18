@@ -1,73 +1,84 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { create } from 'zustand'
-import { mockRecommend, mockSinglePlaceCourse } from './mock'
-import type { AlternativePlace, Course } from './types'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { ApiError, DEFAULT_ERROR_MESSAGE } from '../../shared/api/apiError'
+import type { RecommendRequest } from '../condition/recommendRequest'
+import { createRecommendation, regenerateRecommendation } from './api/recommendApi'
+import { toCourse, type Course, type RecommendResponse } from './types'
 
-/** 추천 결과 보관 시간 (화면설계서 공통 정책: 2시간) */
-export const RECOMMEND_TTL_MS = 2 * 60 * 60 * 1000
-
-/** '다시 추천'을 너무 자주 누를 때 막는 간격 */
-const RELOAD_COOLDOWN_MS = 2000
+/*
+ * [이 파일이 하는 일]
+ * 추천 결과(RES-01) 상태. 외출 조건 [추천받기] 가 request 를 부르고, 결과 화면이 이 상태를 그린다.
+ *   - result  : 마지막 추천 응답 (RecommendResponse). 코스 상세·지도·교체는 recommendationId 로 서버에서 다시 조회한다
+ *   - loading : 추천 계산 중 (공통 LoadingState 표시)
+ *   - error   : 실패 (code 로 분기: 410 만료, 429 너무 자주 등)
+ * 새로고침해도 결과 화면이 유지되도록 sessionStorage 에 저장한다 (탭을 닫으면 사라짐). 2시간 보관 판단은 서버 expiresAt 기준.
+ */
+interface RecommendError {
+  code: string
+  message: string
+}
 
 interface RecommendState {
-  courses: Course[]
-  /** 추천받은 시각 (ms). 2시간이 지나면 만료 */
-  requestedAt: number
-  /** '다시 추천' 횟수 */
-  round: number
-  /** 새 조건으로 추천 요청 (CON-01 추천받기) */
-  request: () => void
-  /** 같은 조건으로 새로 추천. 너무 자주 누르면 false */
-  reload: () => boolean
-  /** 코스의 장소 1곳을 교체하고 총 소요시간을 다시 계산한다 */
-  replacePlace: (course: Course, placeId: string, alternative: AlternativePlace) => Course
+  result: RecommendResponse | null
+  loading: boolean
+  error: RecommendError | null
+  /** 새 조건으로 추천 (CON-01 [추천받기]) */
+  request: (body: RecommendRequest) => Promise<void>
+  /** 같은 조건으로 다시 추천 (RES-01). 실패하면 오류를 돌려준다 (결과는 그대로 유지) */
+  regenerate: () => Promise<RecommendError | null>
 }
 
-/**
- * 추천 결과 (RES-01·DET-01·DET-02·DET-03 공용)
- * TODO(나혜빈): 추천 API 연동. 지금은 mock 데이터로 다시 추천·교체·만료 흐름만 확인한다
- */
-export const useRecommendStore = create<RecommendState>((set, get) => ({
-  courses: mockRecommend(0),
-  requestedAt: Date.now(),
-  round: 0,
-  request: () => set({ courses: mockRecommend(0), requestedAt: Date.now(), round: 0 }),
-  reload: () => {
-    const { requestedAt, round } = get()
-    if (Date.now() - requestedAt < RELOAD_COOLDOWN_MS) return false
-    const next = round + 1
-    set({ courses: mockRecommend(next), requestedAt: Date.now(), round: next })
-    return true
-  },
-  replacePlace: (course, placeId, alternative) => {
-    // 교체한 장소만 바꾸고 바뀐 앞뒤 구간의 시간 차이만큼 총 소요시간을 갱신한다
-    const { diffMinutes, ...place } = alternative
-    const updated: Course = {
-      ...course,
-      places: course.places.map((p) => (p.placeId === placeId ? { ...place, visitOrder: p.visitOrder } : p)),
-      totalMinutes: course.totalMinutes + diffMinutes,
-    }
-    set((state) => ({
-      courses: state.courses.some((c) => c.courseId === course.courseId)
-        ? state.courses.map((c) => (c.courseId === course.courseId ? updated : c))
-        : [...state.courses, updated],
-    }))
-    return updated
-  },
-}))
-
-/** 추천 결과가 2시간이 지나 만료됐는지 */
-export function useRecommendExpired(): boolean {
-  const requestedAt = useRecommendStore((s) => s.requestedAt)
-  // 화면에 들어온 시점 기준으로 판단한다
-  const [enteredAt] = useState(() => Date.now())
-  return enteredAt - requestedAt > RECOMMEND_TTL_MS
+function toError(e: unknown): RecommendError {
+  return e instanceof ApiError ? { code: e.code, message: e.message } : { code: 'UNKNOWN', message: DEFAULT_ERROR_MESSAGE }
 }
 
-/** courseId로 코스를 찾는다. "place-<placeId>"는 장소 1곳짜리 코스 (홈 검색·주변 탐색) */
-export function useCourse(courseId: string): Course | undefined {
-  const found = useRecommendStore((s) => s.courses.find((c) => c.courseId === courseId))
-  // 매 렌더마다 새 객체가 생기지 않도록 고정 (지도가 다시 그려지는 것을 막음)
-  const single = useMemo(() => mockSinglePlaceCourse(courseId), [courseId])
-  return found ?? single
+export const useRecommendStore = create<RecommendState>()(
+  persist(
+    (set, get) => ({
+      result: null,
+      loading: false,
+      error: null,
+      request: async (body) => {
+        set({ loading: true, error: null, result: null })
+        try {
+          set({ result: await createRecommendation(body), loading: false })
+        } catch (e) {
+          set({ error: toError(e), loading: false })
+        }
+      },
+      regenerate: async () => {
+        const setId = get().result?.recommendationSetId
+        if (!setId) return { code: 'NO_RESULT', message: '추천 결과가 없어요. 조건을 다시 골라 주세요.' }
+        set({ loading: true })
+        try {
+          set({ result: await regenerateRecommendation(setId), loading: false, error: null })
+          return null
+        } catch (e) {
+          const error = toError(e)
+          // 만료(410)·없음(404)이면 결과 화면을 만료 안내로 바꾸고, 그 밖(429 등)은 결과를 두고 토스트로만 알린다
+          if (error.code === 'RECOMMENDATION_EXPIRED' || error.code === 'RECOMMENDATION_NOT_FOUND') set({ error, loading: false })
+          else set({ loading: false })
+          return error
+        }
+      },
+    }),
+    {
+      name: 'teumteum-recommend',
+      storage: createJSONStorage(() => sessionStorage),
+      // 계산 중 상태는 저장하지 않는다 (새로고침 후 무한 로딩 방지)
+      partialize: (state) => ({ result: state.result, error: state.error }),
+    },
+  ),
+)
+
+/** 결과 화면용 코스 목록 (응답 → 화면용 Course). 결과가 바뀔 때만 다시 만든다 */
+export function useRecommendCourses(): Course[] {
+  const result = useRecommendStore((s) => s.result)
+  return useMemo(() => (result ? result.courses.map((c) => toCourse(c, result.condition)) : []), [result])
+}
+
+/** 서버 오류 코드가 "추천이 만료됐거나 없어진 경우"인지 */
+export function isExpiredError(code: string | undefined): boolean {
+  return code === 'RECOMMENDATION_EXPIRED' || code === 'RECOMMENDATION_NOT_FOUND'
 }

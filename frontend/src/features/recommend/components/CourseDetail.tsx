@@ -4,26 +4,31 @@ import { useAuthStore } from '../../../shared/auth/authStore'
 import type { LoginRedirectState } from '../../../shared/auth/RequireAuth'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
+import EmptyState from '../../../shared/components/EmptyState'
 import Icon from '../../../shared/components/Icon'
+import LoadingState from '../../../shared/components/LoadingState'
 import Toast from '../../../shared/components/Toast'
 import { useSavedCourseStore } from '../../mypage/store'
-import { useCourse, useRecommendExpired } from '../store'
+import { useRecommendCourse } from '../hooks/useRecommendCourse'
+import { isExpiredError } from '../store'
 import CourseSchedule from './CourseSchedule'
 import CourseSummary from './CourseSummary'
 import ExpiredState from './ExpiredState'
 
 /**
  * 추천 결과 상세 (DET-01)
- * TODO(나혜빈): 코스 상세 API 연동 (현재 mock)
- * TODO(김하윤): 코스 저장 API 연동 (현재 useSavedCourseStore 임시 저장)
+ * - GET /api/recommendations/courses/{recommendationId} 로 일정·경로를 불러온다 (새로고침·주소 직접 진입도 동작)
+ * - 장소 교체(DET-03) 뒤에는 새 recommendationId 주소로 들어오므로 바뀐 코스가 조회된다
+ * - 2시간 지남(410)·없음(404) → 만료 안내
+ * TODO(김하윤·김용현): 코스 저장 API(POST /api/courses, #120) 나오면 연결 (현재 useSavedCourseStore 임시 저장)
  */
 export default function CourseDetail({ courseId }: { courseId: string }) {
   const navigate = useNavigate()
   const location = useLocation()
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
   const { save, isSaved } = useSavedCourseStore()
-  const course = useCourse(courseId)
-  const expired = useRecommendExpired()
+  // location.key: 화면에 들어올 때마다 바뀌는 값. 교체 후 돌아오면 다시 조회하게 한다
+  const { course, loading, error } = useRecommendCourse(courseId, location.key)
 
   const routeState = location.state as { afterLogin?: string; replaceWarning?: boolean } | null
   // 비로그인 저장 → 로그인 → 이 화면으로 돌아오면 저장을 이어서 진행하고 토스트 표시
@@ -41,7 +46,9 @@ export default function CourseDetail({ courseId }: { courseId: string }) {
     }
   }, [pendingSave, isLoggedIn, course, save, navigate, location.pathname])
 
-  if (!course || expired) return <ExpiredState />
+  if (loading) return <LoadingState message="코스를 불러오는 중이에요" />
+  if (error && isExpiredError(error.code)) return <ExpiredState />
+  if (!course) return <EmptyState sticker="sceneEmpty" message="코스를 불러오지 못했어요" description={error?.message} />
 
   const saved = isSaved(course.courseId)
 
