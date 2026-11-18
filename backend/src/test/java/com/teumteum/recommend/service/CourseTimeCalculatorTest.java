@@ -1,6 +1,11 @@
 package com.teumteum.recommend.service;
 
+import com.teumteum.recommend.domain.CategoryCode;
+import com.teumteum.recommend.domain.CoursePlan;
+import com.teumteum.recommend.domain.CourseStop;
+import com.teumteum.recommend.domain.PlaceCandidate;
 import com.teumteum.recommend.domain.PlaceVisit;
+import com.teumteum.recommend.domain.TravelRoute;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -87,5 +92,40 @@ class CourseTimeCalculatorTest {
 
         // then
         assertFalse(result);
+    }
+
+    // ===================== toCoursePlan =====================
+
+    @Test
+    @DisplayName("방문지로 코스를 만들면 총 시간·이동 합(도착지 포함)을 채우고, 추정 구간이 없으면 estimated false")
+    void toCoursePlan_fillsTotals() {
+        List<CourseStop> stops = List.of(
+                new CourseStop(place("1"), 60, new TravelRoute(15, List.of())),
+                new CourseStop(place("2"), 90, new TravelRoute(10, List.of())));
+
+        CoursePlan plan = courseTimeCalculator.toCoursePlan(stops, new TravelRoute(20, List.of()));
+
+        assertEquals(195, plan.totalMinutes());       // 15 + 60 + 10 + 90 + 20
+        assertEquals(45, plan.totalTravelMinutes());  // 15 + 10 + 20
+        assertEquals(20, plan.finalTravelMinutes());
+        assertFalse(plan.estimated());
+    }
+
+    @Test
+    @DisplayName("직선 추정 구간이 하나라도 있으면 estimated true, 도착지가 없으면 마지막 이동은 0")
+    void toCoursePlan_estimated_noDestination() {
+        List<CourseStop> stops = List.of(
+                new CourseStop(place("1"), 60, new TravelRoute(15, List.of())),
+                new CourseStop(place("2"), 90, TravelRoute.estimated(12)));
+
+        CoursePlan plan = courseTimeCalculator.toCoursePlan(stops, null);
+
+        assertEquals(177, plan.totalMinutes());       // 15 + 60 + 12 + 90
+        assertEquals(0, plan.finalTravelMinutes());
+        assertTrue(plan.estimated());
+    }
+
+    private PlaceCandidate place(String id) {
+        return new PlaceCandidate(id, "장소" + id, CategoryCode.CAFE, "카페", "서울", 37.545, 127.056);
     }
 }
