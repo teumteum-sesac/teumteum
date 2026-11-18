@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import com.teumteum.admin.service.AdminService;
 import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.global.exception.CustomException;
+import com.teumteum.global.exception.CommonErrorCode;
 import com.teumteum.member.domain.Member;
 import com.teumteum.member.dto.LoginRequest;
 import com.teumteum.member.dto.LoginResponse;
@@ -67,6 +68,42 @@ class MemberServiceTest {
         Member member = Member.create("user@email.com", passwordEncoder.encode(rawPassword), "틈틈이");
         ReflectionTestUtils.setField(member, "id", id);
         return member;
+    }
+
+    @Test
+    @DisplayName("본인 정보 조회는 저장된 이메일과 닉네임을 반환한다")
+    void getMyInfo() {
+        Member member = savedMember(7L, "abc12345");
+        given(memberRepository.findById(7L)).willReturn(Optional.of(member));
+
+        var response = memberService.getMyInfo(7L);
+
+        assertThat(response.email()).isEqualTo("user@email.com");
+        assertThat(response.nickname()).isEqualTo("틈틈이");
+        verify(memberRepository).findById(7L);
+        verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    @Test
+    @DisplayName("본인 정보 조회에서 회원이 없으면 401로 거절한다")
+    void getMyInfoMissingMember() {
+        given(memberRepository.findById(7L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> memberService.getMyInfo(7L))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED));
+    }
+
+    @Test
+    @DisplayName("본인 정보 조회에서 탈퇴한 회원은 401로 거절한다")
+    void getMyInfoWithdrawnMember() {
+        Member member = savedMember(7L, "abc12345");
+        member.withdraw();
+        given(memberRepository.findById(7L)).willReturn(Optional.of(member));
+
+        assertThatThrownBy(() -> memberService.getMyInfo(7L))
+                .isInstanceOfSatisfying(CustomException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED));
     }
 
     // ===== 회원가입 =====
