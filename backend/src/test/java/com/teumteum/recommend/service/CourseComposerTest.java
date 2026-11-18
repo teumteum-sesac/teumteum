@@ -100,7 +100,7 @@ class CourseComposerTest {
     @DisplayName("이용 시간이 60분이면 1곳짜리 코스만 나온다")
     void compose_onePlace_whenOneHour() {
         List<PlaceCandidate> candidates = List.of(
-                place("1", CategoryCode.CAFE, "베이커리", 0.001),  // 30분
+                place("1", CategoryCode.CAFE, "베이커리", 0.001),  // 40분
                 place("2", CategoryCode.CAFE, "디저트", 0.002),    // 40분
                 place("3", CategoryCode.FOOD, "분식", 0.003));     // 40분
 
@@ -116,7 +116,7 @@ class CourseComposerTest {
         CourseCondition condition = directCondition(180, CategoryCode.CULTURE, CategoryCode.CAFE);
         List<PlaceCandidate> candidates = List.of(
                 place("1", CategoryCode.CULTURE, "영화", 0.001),   // 150분
-                place("2", CategoryCode.CAFE, "베이커리", 0.002)); // 30분 → 150 + 30 + 이동 > 180
+                place("2", CategoryCode.CAFE, "베이커리", 0.002)); // 40분 → 150 + 40 + 이동 > 180
 
         List<CoursePlan> courses = composer.compose(condition, candidates);
 
@@ -186,15 +186,15 @@ class CourseComposerTest {
         given(travelTimeService.findRoute(any(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .willReturn(new TravelRoute(100, List.of())); // 구간마다 100분 (어림보다 훨씬 김)
         List<PlaceCandidate> places = List.of(
-                place("1", CategoryCode.CAFE, "베이커리", 0.001),  // 30분
+                place("1", CategoryCode.CAFE, "베이커리", 0.001),  // 40분
                 place("2", CategoryCode.FOOD, "분식", 0.002));     // 40분
 
-        // 2곳: 100 + 30 + 100 + 40 = 270 > 180 → 1곳: 100 + 30 = 130
+        // 2곳: 100 + 40 + 100 + 40 = 280 > 180 → 1곳: 100 + 40 = 140
         CoursePlan course = composer.confirmCourse(randomCondition(180), places).orElseThrow();
 
         assertEquals(1, course.stops().size());
         assertEquals("1", course.stops().get(0).place().placeId()); // 앞 장소는 남는다
-        assertEquals(130, course.totalMinutes());
+        assertEquals(140, course.totalMinutes());
     }
 
     @Test
@@ -212,13 +212,13 @@ class CourseComposerTest {
     void confirmCourse_includesFinalTravel_whenDestination() {
         CourseCondition condition = new CourseCondition(ORIGIN, new Coordinate(37.5546, 127.0559),
                 180, TransportType.WALK, List.of());
-        List<PlaceCandidate> places = List.of(place("1", CategoryCode.CAFE, "베이커리", 0.001)); // 30분
+        List<PlaceCandidate> places = List.of(place("1", CategoryCode.CAFE, "베이커리", 0.001)); // 40분
 
         CoursePlan course = composer.confirmCourse(condition, places).orElseThrow();
 
         assertEquals(API_MINUTES, course.finalTravelMinutes());
         assertEquals(API_MINUTES * 2, course.totalTravelMinutes());      // 출발지 → 장소, 장소 → 도착지
-        assertEquals(30 + API_MINUTES * 2, course.totalMinutes());
+        assertEquals(40 + API_MINUTES * 2, course.totalMinutes());
     }
 
     @Test
@@ -312,13 +312,13 @@ class CourseComposerTest {
     /** 대분류·세분류가 고루 섞인 후보 8곳 */
     private List<PlaceCandidate> manyCandidates() {
         return List.of(
-                place("1", CategoryCode.CAFE, "카페", 0.001),       // 60분
-                place("2", CategoryCode.CAFE, "베이커리", 0.002),   // 30분
+                place("1", CategoryCode.CAFE, "카페", 0.001),       // 40분
+                place("2", CategoryCode.CAFE, "베이커리", 0.002),   // 40분
                 place("3", CategoryCode.CAFE, "디저트", 0.003),     // 40분
-                place("4", CategoryCode.FOOD, "한식", 0.001),       // 60분
+                place("4", CategoryCode.FOOD, "한식", 0.001),       // 40분
                 place("5", CategoryCode.FOOD, "분식", 0.004),       // 40분
-                place("6", CategoryCode.FOOD, "일식", 0.002),       // 60분
-                place("7", CategoryCode.NATURE, "공원", 0.003),     // 60분
+                place("6", CategoryCode.FOOD, "일식", 0.002),       // 40분
+                place("7", CategoryCode.NATURE, "공원", 0.003),     // 40분
                 place("8", CategoryCode.SHOPPING, "소품샵", 0.005)); // 40분
     }
 
