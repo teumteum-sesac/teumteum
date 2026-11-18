@@ -1,9 +1,10 @@
 package com.teumteum.place.service;
 
 import com.teumteum.global.exception.CustomException;
-import com.teumteum.place.domain.PlaceCategory;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.place.domain.PlaceSearchSource;
-import com.teumteum.place.domain.SubCategory;
+import com.teumteum.global.common.category.SubCategory;
+import com.teumteum.place.domain.SubCategorySearchRule;
 import com.teumteum.place.dto.NearbyPlaceResult;
 import com.teumteum.place.dto.kakao.KakaoPlaceResponse;
 import com.teumteum.place.exception.PlaceErrorCode;
@@ -46,16 +47,16 @@ public class NearbyPlaceService {
      * @param radius     검색 반경(m), 1 ~ 20,000
      * @return 후보 목록. 결과가 없으면 빈 목록 (오류 아님). 모든 카카오 호출이 실패할 때만 예외
      */
-    public List<NearbyPlaceResult> findCandidates(double lat, double lng, Set<PlaceCategory> categories, int radius) {
+    public List<NearbyPlaceResult> findCandidates(double lat, double lng, Set<Category> categories, int radius) {
         validate(lat, lng, categories, radius);
-        Set<PlaceCategory> targets = (categories == null || categories.isEmpty())
-                ? EnumSet.allOf(PlaceCategory.class)
+        Set<Category> targets = (categories == null || categories.isEmpty())
+                ? EnumSet.allOf(Category.class)
                 : categories;
-        return searchAll(SubCategory.sourcesOf(targets), lat, lng, radius, targets);
+        return searchAll(SubCategorySearchRule.sourcesOf(targets), lat, lng, radius, targets);
     }
 
     private List<NearbyPlaceResult> searchAll(Set<PlaceSearchSource> sources, double lat, double lng,
-                                              int radius, Set<PlaceCategory> targets) {
+                                              int radius, Set<Category> targets) {
         Map<String, NearbyPlaceResult> byId = new LinkedHashMap<>();
         CustomException lastFailure = null;
         int failures = 0;
@@ -92,12 +93,12 @@ public class NearbyPlaceService {
     }
 
     /** 세분류가 정해지지 않거나, 대상 대분류가 아니거나, 좌표가 없으면 제외 */
-    private Optional<NearbyPlaceResult> toResult(KakaoPlaceResponse.Document doc, Set<PlaceCategory> targets) {
+    private Optional<NearbyPlaceResult> toResult(KakaoPlaceResponse.Document doc, Set<Category> targets) {
         if (!StringUtils.hasText(doc.id())) {
             return Optional.empty();
         }
-        Optional<SubCategory> sub = SubCategory.classify(doc.categoryName());
-        if (sub.isEmpty() || !targets.contains(sub.get().getParent())) {
+        Optional<SubCategory> sub = SubCategorySearchRule.classify(doc.categoryName());
+        if (sub.isEmpty() || !targets.contains(sub.get().getCategory())) {
             return Optional.empty();
         }
         Double lat = parseDouble(doc.y());
@@ -108,8 +109,8 @@ public class NearbyPlaceService {
         return Optional.of(new NearbyPlaceResult(
                 doc.id(),
                 doc.placeName(),
-                sub.get().getParent(),
-                sub.get().getName(),
+                sub.get().getCategory(),
+                sub.get().getDisplayName(),
                 doc.addressName(),
                 StringUtils.hasText(doc.roadAddressName()) ? doc.roadAddressName() : null,
                 lat,
@@ -119,7 +120,7 @@ public class NearbyPlaceService {
         ));
     }
 
-    private void validate(double lat, double lng, Set<PlaceCategory> categories, int radius) {
+    private void validate(double lat, double lng, Set<Category> categories, int radius) {
         if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
             throw new CustomException(PlaceErrorCode.INVALID_COORDINATE);
         }

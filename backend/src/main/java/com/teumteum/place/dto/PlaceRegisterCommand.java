@@ -1,6 +1,6 @@
 package com.teumteum.place.dto;
 
-import com.teumteum.place.domain.PlaceCategory;
+import com.teumteum.global.common.category.Category;
 
 /**
  * 장소 조회·등록(findOrCreate) 입력. 추천 결과에 이미 있는 장소 정보를 그대로 넘긴다 (외부 API 재호출 없음).
@@ -16,7 +16,7 @@ import com.teumteum.place.domain.PlaceCategory;
 public record PlaceRegisterCommand(
         String kakaoPlaceId,
         String name,
-        PlaceCategory category,
+        Category category,
         String subCategoryName,
         String address,
         double latitude,

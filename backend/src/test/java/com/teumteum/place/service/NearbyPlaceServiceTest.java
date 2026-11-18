@@ -11,7 +11,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
 import com.teumteum.global.exception.CustomException;
-import com.teumteum.place.domain.PlaceCategory;
+import com.teumteum.global.common.category.Category;
 import com.teumteum.place.dto.NearbyPlaceResult;
 import com.teumteum.place.dto.kakao.KakaoPlaceResponse;
 import com.teumteum.place.dto.kakao.KakaoPlaceResponse.Document;
@@ -49,10 +49,10 @@ class NearbyPlaceServiceTest {
         givenCategory(KakaoCategory.CE7, many(5, "음식점 > 카페 > 커피전문점"));
         givenAnyKeyword(response());
 
-        List<NearbyPlaceResult> results = find(Set.of(PlaceCategory.CAFE));
+        List<NearbyPlaceResult> results = find(Set.of(Category.CAFE));
 
         assertThat(results).hasSize(5);
-        assertThat(results.get(0).category()).isEqualTo(PlaceCategory.CAFE);
+        assertThat(results.get(0).category()).isEqualTo(Category.CAFE);
         assertThat(results.get(0).subCategory()).isEqualTo("카페");
         assertThat(results).isSortedAccordingTo((a, b) -> a.distance() - b.distance());
     }
@@ -62,7 +62,7 @@ class NearbyPlaceServiceTest {
         givenCategory(KakaoCategory.FD6, response());
         givenAnyKeyword(response());
 
-        nearbyPlaceService.findCandidates(LAT, LNG, Set.of(PlaceCategory.FOOD), 3_000);
+        nearbyPlaceService.findCandidates(LAT, LNG, Set.of(Category.FOOD), 3_000);
 
         verify(kakaoLocalClient).searchCategory(eq(KakaoCategory.FD6), anyDouble(), anyDouble(),
                 eq(3_000), anyInt(), anyInt());
@@ -78,7 +78,7 @@ class NearbyPlaceServiceTest {
         List<NearbyPlaceResult> results = find(Set.of());
 
         assertThat(results).extracting(NearbyPlaceResult::category)
-                .containsExactly(PlaceCategory.FOOD, PlaceCategory.NATURE);
+                .containsExactly(Category.FOOD, Category.NATURE);
     }
 
     @Test
@@ -86,7 +86,7 @@ class NearbyPlaceServiceTest {
         givenCategory(KakaoCategory.CE7, response(doc("1", "음식점 > 카페 > 테마카페 > 보드카페", "100")));
         givenAnyKeyword(response());
 
-        assertThat(find(Set.of(PlaceCategory.CAFE))).isEmpty();
+        assertThat(find(Set.of(Category.CAFE))).isEmpty();
     }
 
     @Test
@@ -94,7 +94,7 @@ class NearbyPlaceServiceTest {
         givenCategory(KakaoCategory.FD6, response(doc("1", "음식점 > 술집 > 호프", "100")));
         givenAnyKeyword(response());
 
-        assertThat(find(Set.of(PlaceCategory.FOOD))).isEmpty();
+        assertThat(find(Set.of(Category.FOOD))).isEmpty();
     }
 
     @Test
@@ -103,7 +103,7 @@ class NearbyPlaceServiceTest {
         givenCategory(KakaoCategory.CE7, response(same));
         givenAnyKeyword(response(same));
 
-        List<NearbyPlaceResult> results = find(Set.of(PlaceCategory.CAFE));
+        List<NearbyPlaceResult> results = find(Set.of(Category.CAFE));
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).subCategory()).isEqualTo("디저트");
@@ -115,7 +115,7 @@ class NearbyPlaceServiceTest {
         given(kakaoLocalClient.searchKeyword(anyString(), anyDouble(), anyDouble(), anyInt(), anyInt(), anyInt()))
                 .willThrow(new CustomException(PlaceErrorCode.KAKAO_API_ERROR));
 
-        assertThat(find(Set.of(PlaceCategory.CAFE))).hasSize(3);
+        assertThat(find(Set.of(Category.CAFE))).hasSize(3);
     }
 
     @Test
@@ -125,23 +125,23 @@ class NearbyPlaceServiceTest {
         given(kakaoLocalClient.searchKeyword(anyString(), anyDouble(), anyDouble(), anyInt(), anyInt(), anyInt()))
                 .willThrow(new CustomException(PlaceErrorCode.KAKAO_API_ERROR));
 
-        assertThatThrownBy(() -> find(Set.of(PlaceCategory.FOOD))).isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> find(Set.of(Category.FOOD))).isInstanceOf(CustomException.class);
     }
 
     @Test
     void 카테고리가_3개를_넘으면_예외를_던진다() {
-        assertThatThrownBy(() -> find(Set.of(PlaceCategory.CAFE, PlaceCategory.FOOD,
-                PlaceCategory.NATURE, PlaceCategory.SPORTS)))
+        assertThatThrownBy(() -> find(Set.of(Category.CAFE, Category.FOOD,
+                Category.NATURE, Category.SPORTS)))
                 .isInstanceOf(CustomException.class);
     }
 
     @Test
     void 좌표나_반경이_범위를_벗어나면_예외를_던진다() {
-        assertThatThrownBy(() -> nearbyPlaceService.findCandidates(91, LNG, Set.of(PlaceCategory.CAFE), RADIUS))
+        assertThatThrownBy(() -> nearbyPlaceService.findCandidates(91, LNG, Set.of(Category.CAFE), RADIUS))
                 .isInstanceOf(CustomException.class);
-        assertThatThrownBy(() -> nearbyPlaceService.findCandidates(LAT, LNG, Set.of(PlaceCategory.CAFE), 0))
+        assertThatThrownBy(() -> nearbyPlaceService.findCandidates(LAT, LNG, Set.of(Category.CAFE), 0))
                 .isInstanceOf(CustomException.class);
-        assertThatThrownBy(() -> nearbyPlaceService.findCandidates(LAT, LNG, Set.of(PlaceCategory.CAFE), 20_001))
+        assertThatThrownBy(() -> nearbyPlaceService.findCandidates(LAT, LNG, Set.of(Category.CAFE), 20_001))
                 .isInstanceOf(CustomException.class);
     }
 
@@ -150,7 +150,7 @@ class NearbyPlaceServiceTest {
         givenCategory(KakaoCategory.FD6, response());
         givenAnyKeyword(response());
 
-        find(Set.of(PlaceCategory.FOOD));
+        find(Set.of(Category.FOOD));
 
         verify(kakaoLocalClient).searchKeyword(eq("한식"), anyDouble(), anyDouble(), anyInt(), anyInt(), anyInt());
         verify(kakaoLocalClient).searchKeyword(eq("분식"), anyDouble(), anyDouble(), anyInt(), anyInt(), anyInt());
@@ -158,7 +158,7 @@ class NearbyPlaceServiceTest {
 
     // ===== helpers =====
 
-    private List<NearbyPlaceResult> find(Set<PlaceCategory> categories) {
+    private List<NearbyPlaceResult> find(Set<Category> categories) {
         return nearbyPlaceService.findCandidates(LAT, LNG, categories, RADIUS);
     }
 
@@ -197,7 +197,7 @@ class NearbyPlaceServiceTest {
         givenCategory(KakaoCategory.FD6, response());
         givenAnyKeyword(response());
 
-        nearbyPlaceService.findCandidates(LAT, LNG, Set.of(PlaceCategory.FOOD), radius);
+        nearbyPlaceService.findCandidates(LAT, LNG, Set.of(Category.FOOD), radius);
 
         verify(kakaoLocalClient).searchCategory(eq(KakaoCategory.FD6), anyDouble(), anyDouble(),
                 eq(radius), anyInt(), anyInt());
@@ -211,7 +211,7 @@ class NearbyPlaceServiceTest {
         givenAnyKeyword(response());
 
         List<NearbyPlaceResult> results =
-                nearbyPlaceService.findCandidates(LAT, LNG, Set.of(PlaceCategory.FOOD), 500);
+                nearbyPlaceService.findCandidates(LAT, LNG, Set.of(Category.FOOD), 500);
 
         assertThat(results).isEmpty();
         verify(kakaoLocalClient, times(1)).searchCategory(any(), anyDouble(), anyDouble(),

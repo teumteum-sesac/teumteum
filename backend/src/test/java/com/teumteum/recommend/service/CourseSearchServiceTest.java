@@ -1,7 +1,6 @@
 package com.teumteum.recommend.service;
 
 import com.teumteum.global.exception.CustomException;
-import com.teumteum.place.domain.PlaceCategory;
 import com.teumteum.place.dto.NearbyPlaceResult;
 import com.teumteum.place.exception.PlaceErrorCode;
 import com.teumteum.place.service.NearbyPlaceService;
@@ -195,18 +194,18 @@ class CourseSearchServiceTest {
     // ===================== 변환 =====================
 
     @Test
-    @DisplayName("랜덤이면 장소 쪽에 빈 대분류를 넘기고, 직접 선택이면 같은 이름의 장소 대분류로 바꾼다")
-    void toPlaceCategories_convertsByName() {
+    @DisplayName("랜덤이면 장소 검색에 빈 대분류를 넘기고, 직접 선택이면 고른 대분류를 그대로 넘긴다")
+    void searchCategories() {
         CourseCondition direct = new CourseCondition(ORIGIN, null, 180, TransportType.WALK,
                 List.of(Category.CAFE, Category.SPORTS));
 
-        assertTrue(courseSearchService.toPlaceCategories(randomCondition).isEmpty());
-        assertEquals(EnumSet.of(PlaceCategory.CAFE, PlaceCategory.SPORTS),
-                courseSearchService.toPlaceCategories(direct));
+        assertTrue(courseSearchService.searchCategories(randomCondition).isEmpty());
+        assertEquals(EnumSet.of(Category.CAFE, Category.SPORTS),
+                courseSearchService.searchCategories(direct));
     }
 
     @Test
-    @DisplayName("장소 결과를 후보로 바꿀 때 대분류는 이름으로 바꾸고, 주소는 도로명을 먼저 쓰고, 카카오맵 링크도 담는다")
+    @DisplayName("장소 결과를 후보로 바꿀 때 대분류는 그대로, 주소는 도로명을 먼저 쓰고, 카카오맵 링크도 담는다")
     void toPlaceCandidate_convertsFields() {
         PlaceCandidate candidate = courseSearchService.toPlaceCandidate(
                 nearby("101", "서울 성동구 왕십리로 1", "서울 성동구 성수동 1"));
@@ -296,7 +295,7 @@ class CourseSearchServiceTest {
     }
 
     private NearbyPlaceResult nearby(String id, String roadAddress, String address) {
-        return new NearbyPlaceResult(id, "당구장 A", PlaceCategory.SPORTS, "당구",
+        return new NearbyPlaceResult(id, "당구장 A", Category.SPORTS, "당구",
                 address, roadAddress, 37.545, 127.056, 120, "https://place.map.kakao.com/" + id);
     }
 
