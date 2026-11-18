@@ -6,6 +6,8 @@ export interface AuthUser {
   memberId?: number
   email: string
   nickname: string
+  /** 관리자면 true (로그인 응답의 admin). 관리자 화면(/admin) 진입 조건 */
+  admin?: boolean
 }
 
 interface AuthState {

@@ -2,6 +2,8 @@ package com.teumteum.member.repository;
 
 import com.teumteum.member.domain.Member;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /*
@@ -35,4 +37,7 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
 
     /** 이메일이 이미 가입돼 있는지 — 회원가입 중복 확인(REQ-001)에 사용 */
     boolean existsByEmail(String email);
+
+    /** 관리자 회원 목록 검색 (REQ-045): 이메일 또는 닉네임에 검색어가 들어간 회원. 최신 가입순은 Pageable 의 정렬로 */
+    Page<Member> findByEmailContainingIgnoreCaseOrNicknameContainingIgnoreCase(String email, String nickname, Pageable pageable);
 }

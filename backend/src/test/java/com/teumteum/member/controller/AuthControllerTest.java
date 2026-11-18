@@ -44,7 +44,7 @@ class AuthControllerTest {
     @DisplayName("로그인 성공 → 200, data 에 토큰과 회원 정보")
     void login() throws Exception {
         given(memberService.login(any(LoginRequest.class)))
-                .willReturn(new LoginResponse("token-value", "Bearer", 3600, 1L, "user@email.com", "틈틈이"));
+                .willReturn(new LoginResponse("token-value", "Bearer", 3600, 1L, "user@email.com", "틈틈이", false));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

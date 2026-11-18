@@ -73,4 +73,13 @@ class JwtAuthenticationFilterTest {
         assertThat(runFilter("Bearer " + forged)).isNull();
         assertThat(runFilter("Bearer not-a-jwt")).isNull();
     }
+
+    @Test
+    @DisplayName("관리자 토큰이면 ROLE_ADMIN 권한이 붙는다")
+    void adminToken() throws Exception {
+        Authentication auth = runFilter("Bearer " + jwtProvider.createAccessToken(1L, true));
+
+        assertThat(auth.getAuthorities()).extracting(Object::toString).containsExactly("ROLE_ADMIN");
+        assertThat(runFilter("Bearer " + jwtProvider.createAccessToken(2L)).getAuthorities()).isEmpty();
+    }
 }

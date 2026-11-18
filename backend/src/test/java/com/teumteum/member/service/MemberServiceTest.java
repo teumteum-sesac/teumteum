@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.teumteum.admin.service.AdminService;
 import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.member.domain.Member;
@@ -48,6 +49,9 @@ class MemberServiceTest {
     @Mock
     private MemberRepository memberRepository;
 
+    @Mock
+    private AdminService adminService;   // 관리자 여부: 기본은 false (Mockito 기본값)
+
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final JwtProvider jwtProvider = new JwtProvider("test-secret-key-for-teumteum-jwt-0123456789", 3600);
 
@@ -55,7 +59,7 @@ class MemberServiceTest {
 
     @BeforeEach   // 각 테스트 실행 전에 매번 새로 만든다
     void setUp() {
-        memberService = new MemberService(memberRepository, passwordEncoder, jwtProvider);
+        memberService = new MemberService(memberRepository, passwordEncoder, jwtProvider, adminService);
     }
 
     /** DB 에 저장된 것처럼 id 가 매겨진 회원을 만든다 (id 는 원래 DB 가 매기므로 테스트에서는 직접 넣는다) */
@@ -172,5 +176,28 @@ class MemberServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode")
                 .isEqualTo(MemberErrorCode.LOGIN_FAILED);
+    }
+
+    @Test
+    @DisplayName("관리자 회원이 로그인하면 토큰과 응답에 관리자 표시가 들어간다 (REQ-044)")
+    void loginAdmin() {
+        given(memberRepository.findByEmail("user@email.com")).willReturn(Optional.of(savedMember(5L, "abc12345")));
+        given(adminService.isAdmin(5L)).willReturn(true);
+
+        LoginResponse response = memberService.login(new LoginRequest("user@email.com", "abc12345"));
+
+        assertThat(response.admin()).isTrue();
+        assertThat(jwtProvider.parse(response.accessToken()).admin()).isTrue();
+    }
+
+    @Test
+    @DisplayName("일반 회원 토큰에는 관리자 표시가 없다")
+    void loginNormalMember() {
+        given(memberRepository.findByEmail("user@email.com")).willReturn(Optional.of(savedMember(5L, "abc12345")));
+
+        LoginResponse response = memberService.login(new LoginRequest("user@email.com", "abc12345"));
+
+        assertThat(response.admin()).isFalse();
+        assertThat(jwtProvider.parse(response.accessToken()).admin()).isFalse();
     }
 }

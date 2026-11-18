@@ -89,7 +89,7 @@ export default function SignupForm() {
     try {
       const res = await signup({ email: form.email.trim(), password: form.password, nickname: form.nickname.trim() })
       // 가입 응답에 토큰이 있다 → 바로 로그인 상태 (REQ-001 가입 후 자동 로그인)
-      setLogin(res.accessToken, { memberId: res.memberId, email: res.email, nickname: res.nickname })
+      setLogin(res.accessToken, { memberId: res.memberId, email: res.email, nickname: res.nickname, admin: res.admin })
     } catch (err) {
       setSubmitting(false)
       if (!(err instanceof ApiError)) {

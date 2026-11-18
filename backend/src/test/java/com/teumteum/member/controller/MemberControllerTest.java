@@ -54,7 +54,7 @@ class MemberControllerTest {
     @DisplayName("회원가입 성공 → 201, data 에 토큰·회원 정보, 비밀번호는 응답에 없음")
     void signup() throws Exception {
         given(memberService.signup(any(SignupRequest.class)))
-                .willReturn(new LoginResponse("token-value", "Bearer", 3600, 1L, "user@email.com", "틈틈이"));
+                .willReturn(new LoginResponse("token-value", "Bearer", 3600, 1L, "user@email.com", "틈틈이", false));
 
         mockMvc.perform(post("/api/members")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -1,5 +1,6 @@
 package com.teumteum.member.service;
 
+import com.teumteum.admin.service.AdminService;
 import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.member.domain.Member;
@@ -8,6 +9,9 @@ import com.teumteum.member.dto.LoginResponse;
 import com.teumteum.member.dto.SignupRequest;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.repository.MemberRepository;
+import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -35,6 +39,7 @@ public class MemberService {
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;   // global/config/PasswordEncoderConfig 에서 등록한 BCrypt
     private final JwtProvider jwtProvider;           // global/auth/JwtProvider: 로그인 토큰 발급
+    private final AdminService adminService;         // admin/service: 관리자인지 확인 (토큰에 관리자 표시)
 
     /**
      * 회원가입 (REQ-001). 가입 직후 바로 로그인된 상태가 되도록 토큰까지 발급한다 (화면설계서 AUT-02 "가입 후 자동 로그인").
@@ -89,7 +94,32 @@ public class MemberService {
 
     /** 회원 ID 로 토큰을 만들어 로그인 응답으로 감싼다 (가입·로그인 공통) */
     private LoginResponse issueToken(Member member) {
-        String accessToken = jwtProvider.createAccessToken(member.getId());
-        return LoginResponse.of(member, accessToken, jwtProvider.getValiditySeconds());
+        // 관리자면 토큰에 관리자 표시를 넣는다 → /api/admin/** 통과 (SecurityConfig)
+        boolean admin = adminService.isAdmin(member.getId());
+        String accessToken = jwtProvider.createAccessToken(member.getId(), admin);
+        return LoginResponse.of(member, accessToken, jwtProvider.getValiditySeconds(), admin);
+    }
+
+    // ===== 관리자 회원 관리용 (REQ-045). 관리자 도메인은 MemberRepository 대신 이 메서드들을 쓴다 =====
+
+    /** 회원 목록. keyword 가 비어 있으면 전체, 있으면 이메일·닉네임 검색 */
+    public Page<Member> searchMembers(String keyword, Pageable pageable) {
+        if (keyword == null || keyword.isBlank()) {
+            return memberRepository.findAll(pageable);
+        }
+        String k = keyword.trim();
+        return memberRepository.findByEmailContainingIgnoreCaseOrNicknameContainingIgnoreCase(k, k, pageable);
+    }
+
+    /** 회원 한 명. 없으면 empty */
+    public Optional<Member> findMember(Long memberId) {
+        return memberRepository.findById(memberId);
+    }
+
+    /** 탈퇴 처리 (상태만 WITHDRAWN 으로). 바뀐 회원을 돌려준다 */
+    @Transactional
+    public Member withdraw(Member member) {
+        member.withdraw();
+        return member;
     }
 }

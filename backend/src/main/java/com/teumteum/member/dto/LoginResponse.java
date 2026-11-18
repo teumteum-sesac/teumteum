@@ -27,12 +27,14 @@ public record LoginResponse(
         long expiresIn,
         Long memberId,
         String email,
-        String nickname
+        String nickname,
+        /** 관리자면 true. 프론트가 마이페이지에 [관리자] 메뉴를 보여 줄 때 쓴다 (REQ-044) */
+        boolean admin
 ) {
 
     private static final String BEARER = "Bearer";
 
-    public static LoginResponse of(Member member, String accessToken, long expiresIn) {
-        return new LoginResponse(accessToken, BEARER, expiresIn, member.getId(), member.getEmail(), member.getNickname());
+    public static LoginResponse of(Member member, String accessToken, long expiresIn, boolean admin) {
+        return new LoginResponse(accessToken, BEARER, expiresIn, member.getId(), member.getEmail(), member.getNickname(), admin);
     }
 }

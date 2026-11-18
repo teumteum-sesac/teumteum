@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -37,6 +38,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
+    /** Spring Security 권한 이름 규칙: hasRole("ADMIN") 은 "ROLE_ADMIN" 권한을 찾는다 */
+    private static final String ROLE_ADMIN = "ROLE_ADMIN";
 
     private final JwtProvider jwtProvider;
 
@@ -50,9 +53,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = resolveToken(request);
         if (token != null) {
             try {
-                Long memberId = jwtProvider.getMemberId(token);
-                // principal(누구인가) = 회원 ID, 비밀번호 자리 = null, 권한 = 없음(관리자 권한은 관리자 기능에서 추가 예정)
-                var authentication = new UsernamePasswordAuthenticationToken(memberId, null, List.of());
+                JwtProvider.TokenClaims claims = jwtProvider.parse(token);
+                // principal(누구인가) = 회원 ID, 비밀번호 자리 = null, 권한 = 관리자면 ROLE_ADMIN (SecurityConfig 의 hasRole("ADMIN"))
+                List<SimpleGrantedAuthority> authorities = claims.admin() ? List.of(new SimpleGrantedAuthority(ROLE_ADMIN)) : List.of();
+                var authentication = new UsernamePasswordAuthenticationToken(claims.memberId(), null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (CustomException e) {
                 // 위조·만료·형식 오류: 인증 정보 없이 진행 (회원 전용 경로면 SecurityConfig 가 401 로 막는다)

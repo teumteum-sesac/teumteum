@@ -2,6 +2,7 @@ package com.teumteum.global.auth;
 
 import com.teumteum.global.exception.CommonErrorCode;
 import com.teumteum.global.exception.CustomException;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -34,6 +35,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class JwtProvider {
 
+    /** 토큰 안에 관리자 표시를 넣는 칸 이름과 값 */
+    private static final String ROLE_CLAIM = "role";
+    private static final String ROLE_ADMIN = "ADMIN";
+
     private final SecretKey secretKey;
     private final long validitySeconds;
 
@@ -54,37 +59,50 @@ public class JwtProvider {
      *   subject(주인) = 회원 ID, issuedAt = 지금, expiration = 지금 + 유효 시간, 마지막에 비밀키로 서명
      */
     public String createAccessToken(Long memberId) {
-        Date now = new Date();
-        Date expiresAt = new Date(now.getTime() + validitySeconds * 1000);
-
-        return Jwts.builder()
-                .subject(String.valueOf(memberId))
-                .issuedAt(now)
-                .expiration(expiresAt)
-                .signWith(secretKey)
-                .compact();
+        return createAccessToken(memberId, false);
     }
 
     /**
-     * 토큰을 검증하고 회원 ID 를 꺼낸다.
-     * 서명이 안 맞거나(위조), 만료됐거나, 형식이 이상하면 401 UNAUTHORIZED("로그인이 필요해요.")
+     * 관리자면 토큰에 role=ADMIN 표시를 넣는다 (REQ-044).
+     * 관리자 여부는 로그인할 때 admin 테이블로 확인해 토큰에 담고, 요청마다 DB 를 다시 보지 않는다.
+     * → 관리자로 새로 지정·해제된 사람은 다시 로그인해야 반영된다.
      */
+    public String createAccessToken(Long memberId, boolean admin) {
+        Date now = new Date();
+        Date expiresAt = new Date(now.getTime() + validitySeconds * 1000);
+
+        var builder = Jwts.builder()
+                .subject(String.valueOf(memberId))
+                .issuedAt(now)
+                .expiration(expiresAt);
+        if (admin) {
+            builder.claim(ROLE_CLAIM, ROLE_ADMIN);
+        }
+        return builder.signWith(secretKey).compact();
+    }
+
     public Long getMemberId(String token) {
+        return parse(token).memberId();
+    }
+
+    /** 토큰 검증 후 회원 ID 와 관리자 여부를 꺼낸다. 위조·만료·형식 오류면 401 */
+    public TokenClaims parse(String token) {
         try {
-            String subject = Jwts.parser()
+            Claims claims = Jwts.parser()
                     .verifyWith(secretKey)          // 이 비밀키로 만든 서명인지 확인
                     .build()
                     .parseSignedClaims(token)       // 서명·만료 시각 검사 (실패하면 JwtException)
-                    .getPayload()
-                    .getSubject();
-            return Long.valueOf(subject);
+                    .getPayload();
+            return new TokenClaims(Long.valueOf(claims.getSubject()), ROLE_ADMIN.equals(claims.get(ROLE_CLAIM, String.class)));
         } catch (JwtException | IllegalArgumentException e) {
-            // IllegalArgumentException: 토큰이 비었거나 subject 가 숫자가 아님
             throw new CustomException(CommonErrorCode.UNAUTHORIZED, e);
         }
     }
 
-    /** 토큰 유효 시간(초). 프론트에 "몇 초 뒤 만료"를 알려 줄 때 쓴다 */
+    /** 토큰에서 꺼낸 값: 회원 ID, 관리자 여부 */
+    public record TokenClaims(Long memberId, boolean admin) {
+    }
+
     public long getValiditySeconds() {
         return validitySeconds;
     }

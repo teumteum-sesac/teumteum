@@ -41,7 +41,7 @@ export default function LoginForm() {
     setSubmitting(true)
     try {
       const res = await login({ email: email.trim(), password })
-      setLogin(res.accessToken, { memberId: res.memberId, email: res.email, nickname: res.nickname })
+      setLogin(res.accessToken, { memberId: res.memberId, email: res.email, nickname: res.nickname, admin: res.admin })
     } catch (err) {
       // 401 LOGIN_FAILED: "이메일 또는 비밀번호가 맞지 않아요." / 서버 꺼짐: NETWORK_ERROR 안내 문구
       setFormError(err instanceof ApiError ? err.message : DEFAULT_ERROR_MESSAGE)
