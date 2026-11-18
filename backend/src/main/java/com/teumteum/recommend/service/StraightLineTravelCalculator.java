@@ -35,7 +35,15 @@ public class StraightLineTravelCalculator {
     static final double CAR_SPEED_KMH = 20.0;     // 서울 시내 신호·정체 감안
 
     /**
+     * 대중교통이어도 이 거리(직선, km) 안이면 걸어간다고 본다.
+     * ODsay 가 출발·도착이 700m 이내면 계산하지 않기 때문에(오류 -98) 같은 기준을 쓴다. 실제로도 걷는 거리다.
+     */
+    static final double TRANSIT_WALK_DISTANCE_KM = 0.7;
+
+    /**
      * 두 좌표 사이 이동시간(분)을 직선거리로 추정한다.
+     * 대중교통이라도 700m 이내면 걷는 속도로 계산한다 (실제 계산인 TravelTimeService 도 이 구간은 도보로 계산).
+     * → 코스를 고를 때의 어림값과 확정할 때의 실제값이 같은 기준이 된다.
      *
      * @param transportType 이동수단 (TRANSIT / WALK / CAR)
      * @return 올림한 이동시간(분). 같은 좌표면 0
@@ -44,9 +52,25 @@ public class StraightLineTravelCalculator {
                                       double fromLatitude, double fromLongitude,
                                       double toLatitude, double toLongitude) {
         double distanceKm = calculateDistanceKm(fromLatitude, fromLongitude, toLatitude, toLongitude);
+        double speed = isTransitWalkingDistance(transportType, distanceKm) ? WALK_SPEED_KMH : speedOf(transportType);
         double roadDistanceKm = distanceKm * DETOUR_FACTOR;
-        double hours = roadDistanceKm / speedOf(transportType);
+        double hours = roadDistanceKm / speed;
         return (int) Math.ceil(hours * 60);
+    }
+
+    /**
+     * 대중교통인데 걸어갈 거리(700m 이내)인지.
+     * TravelTimeService 가 "ODsay 대신 도보 API 를 부를지" 정할 때도 이 메서드를 쓴다 (기준을 한 곳에 둔다).
+     */
+    public boolean isTransitWalkingDistance(TransportType transportType,
+                                            double fromLatitude, double fromLongitude,
+                                            double toLatitude, double toLongitude) {
+        return isTransitWalkingDistance(transportType,
+                calculateDistanceKm(fromLatitude, fromLongitude, toLatitude, toLongitude));
+    }
+
+    private boolean isTransitWalkingDistance(TransportType transportType, double distanceKm) {
+        return transportType == TransportType.TRANSIT && distanceKm < TRANSIT_WALK_DISTANCE_KM;
     }
 
     /**

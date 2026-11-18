@@ -16,6 +16,7 @@ import java.util.Optional;
  * <p>
  * 1. 고른 이동수단에 맞는 API 하나만 부른다
  *    CAR → 카카오모빌리티 · WALK → OpenRouteService · TRANSIT → ODsay
+ *    (단, 대중교통이어도 700m 이내 구간은 걸어가므로 OpenRouteService)
  * 2. API 가 실패하면(Optional.empty) 오류로 끝내지 않고 직선거리로 추정한다 → estimated true
  * <p>
  * 코스 구성·추천·장소 교체는 클라이언트를 직접 부르지 않고 이 서비스만 부른다.
@@ -28,6 +29,9 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class TravelTimeService {
+
+    /** 대중교통 코스 안에서 걸어가는 구간(700m 이내)의 노선 정보 */
+    static final String WALK_TRANSIT_INFO = "도보";
 
     private final KakaoMobilityClient kakaoMobilityClient;
     private final OrsClient orsClient;
@@ -43,11 +47,32 @@ public class TravelTimeService {
     public TravelRoute findRoute(TransportType transportType,
                                  double fromLatitude, double fromLongitude,
                                  double toLatitude, double toLongitude) {
+        if (straightLineTravelCalculator.isTransitWalkingDistance(
+                transportType, fromLatitude, fromLongitude, toLatitude, toLongitude)) {
+            return walkInsteadOfTransit(fromLatitude, fromLongitude, toLatitude, toLongitude);
+        }
+
         Optional<TravelRoute> route = callApi(transportType, fromLatitude, fromLongitude, toLatitude, toLongitude);
 
         // orElseGet: 값이 없을 때만 괄호 안 코드를 실행한다 (성공하면 직선거리 계산을 아예 안 함)
         return route.orElseGet(() ->
                 estimateByStraightLine(transportType, fromLatitude, fromLongitude, toLatitude, toLongitude));
+    }
+
+    /**
+     * 대중교통인데 700m 이내인 구간 → ODsay 대신 도보 경로(OpenRouteService)로 계산한다.
+     * <p>
+     * ODsay 는 700m 이내면 계산하지 않고(오류 -98), 실제로도 걸어가는 거리라서다.
+     * 덕분에 지도에 실제 도보 경로가 그려지고, 하루 한도가 작은 ODsay 호출도 줄어든다.
+     * 도보 API 도 실패하면 걷는 속도로 직선 추정한다.
+     * 화면에서 "도보 5분" 으로 보이도록 노선 정보 자리에 WALK_TRANSIT_INFO("도보")를 넣는다.
+     */
+    private TravelRoute walkInsteadOfTransit(double fromLatitude, double fromLongitude,
+                                             double toLatitude, double toLongitude) {
+        TravelRoute walk = orsClient.findWalkRoute(fromLatitude, fromLongitude, toLatitude, toLongitude)
+                .orElseGet(() -> estimateByStraightLine(
+                        TransportType.WALK, fromLatitude, fromLongitude, toLatitude, toLongitude));
+        return new TravelRoute(walk.travelMinutes(), walk.coordinates(), WALK_TRANSIT_INFO, walk.estimated());
     }
 
     /**
