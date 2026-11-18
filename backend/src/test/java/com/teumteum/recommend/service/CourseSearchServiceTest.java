@@ -98,12 +98,28 @@ class CourseSearchServiceTest {
     }
 
     @Test
-    @DisplayName("5km 까지 넓혀도 코스가 없으면 빈 목록이다 (오류 아님)")
-    void findCourses_returnsEmpty_afterAllRadii() {
+    @DisplayName("도보는 2km 까지만 넓히고, 그래도 코스가 없으면 빈 목록이다 (오류 아님)")
+    void findCourses_walk_stopsAt2km() {
         givenNearbyResults();
         given(courseComposer.compose(eq(randomCondition), anyList(), anyList())).willReturn(List.of());
 
         List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
+
+        assertTrue(courses.isEmpty());
+        verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(1_000));
+        verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(2_000));
+        verify(nearbyPlaceService, never()).findCandidates(anyDouble(), anyDouble(), any(), eq(3_000));
+        verify(nearbyPlaceService, never()).findCandidates(anyDouble(), anyDouble(), any(), eq(5_000));
+    }
+
+    @Test
+    @DisplayName("대중교통은 5km 까지 넓히고, 그래도 코스가 없으면 빈 목록이다 (오류 아님)")
+    void findCourses_transit_widensTo5km() {
+        CourseCondition transit = new CourseCondition(ORIGIN, null, 180, TransportType.TRANSIT, List.of());
+        givenNearbyResults();
+        given(courseComposer.compose(eq(transit), anyList(), anyList())).willReturn(List.of());
+
+        List<CoursePlan> courses = courseSearchService.findCourses(transit).plans();
 
         assertTrue(courses.isEmpty());
         for (int radius : List.of(1_000, 2_000, 3_000, 5_000)) {
@@ -215,6 +231,60 @@ class CourseSearchServiceTest {
     @DisplayName("반경 단계는 1·2·3·5km 다")
     void radiusSteps() {
         assertEquals(List.of(1_000, 2_000, 3_000, 5_000), CourseSearchService.RADIUS_STEPS);
+    }
+
+    @Test
+    @DisplayName("이동수단별 반경 단계: 도보 1·2km, 대중교통·차량 1·2·3·5km")
+    void radiusStepsFor_eachTransport() {
+        assertEquals(List.of(1_000, 2_000), courseSearchService.radiusStepsFor(conditionOf(TransportType.WALK)));
+        assertEquals(List.of(1_000, 2_000, 3_000, 5_000), courseSearchService.radiusStepsFor(conditionOf(TransportType.TRANSIT)));
+        assertEquals(List.of(1_000, 2_000, 3_000, 5_000), courseSearchService.radiusStepsFor(conditionOf(TransportType.CAR)));
+    }
+
+    private CourseCondition conditionOf(TransportType transportType) {
+        return new CourseCondition(ORIGIN, null, 180, transportType, List.of());
+    }
+
+    // ===================== 경로 모드: 출발지·중간·도착지 검색 (#170) =====================
+
+    private static final Coordinate DESTINATION = new Coordinate(37.5746, 127.0559); // 출발지 북쪽 약 3.3km
+    private final CourseCondition routeCondition =
+            new CourseCondition(ORIGIN, DESTINATION, 240, TransportType.TRANSIT, List.of());
+
+    @Test
+    @DisplayName("경로 모드가 아니면 출발지 한 곳만 검색한다")
+    void searchCenters_originOnly() {
+        given(courseComposer.isRouteMode(randomCondition)).willReturn(false);
+
+        assertEquals(List.of(ORIGIN), courseSearchService.searchCenters(randomCondition));
+    }
+
+    @Test
+    @DisplayName("경로 모드면 출발지·중간 지점·도착지 세 곳 주변을 검색한다")
+    void findCourses_routeMode_searchesThreeCenters() {
+        given(courseComposer.isRouteMode(routeCondition)).willReturn(true);
+        givenNearbyResults();
+        given(courseComposer.compose(eq(routeCondition), anyList(), anyList()))
+                .willReturn(List.of(course("1"), course("2"), course("3")));
+
+        courseSearchService.findCourses(routeCondition);
+
+        verify(nearbyPlaceService).findCandidates(eq(37.5446), eq(127.0559), any(), eq(1_000)); // 출발지
+        verify(nearbyPlaceService).findCandidates(eq(37.5596), eq(127.0559), any(), eq(1_000)); // 중간
+        verify(nearbyPlaceService).findCandidates(eq(37.5746), eq(127.0559), any(), eq(1_000)); // 도착지
+    }
+
+    @Test
+    @DisplayName("경로 모드에서 여러 지점에 같은 장소가 나오면 코스 조합에는 한 번만 넘긴다")
+    void findCourses_routeMode_mergesDuplicates() {
+        given(courseComposer.isRouteMode(routeCondition)).willReturn(true);
+        givenNearbyResults(); // 세 지점 모두 같은 장소 101 을 돌려준다
+        given(courseComposer.compose(eq(routeCondition), candidatesCaptor.capture(), anyList()))
+                .willReturn(List.of(course("1"), course("2"), course("3")));
+
+        courseSearchService.findCourses(routeCondition);
+
+        assertEquals(1, candidatesCaptor.getValue().size());
     }
 
     // ===================== 도우미 =====================

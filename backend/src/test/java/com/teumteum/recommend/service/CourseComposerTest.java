@@ -281,6 +281,212 @@ class CourseComposerTest {
         verifyNoInteractions(travelTimeService);
     }
 
+    // ===================== 너무 먼 곳 막기 (#170) =====================
+
+    @Test
+    @DisplayName("도보 한 구간이 25분을 넘는 장소는 시간이 남아도 코스에 넣지 않는다")
+    void compose_walk_skipsPlaceOverLegLimit() {
+        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);   // 약 111m → 도보 약 3분
+        PlaceCandidate far = place("far", CategoryCode.NATURE, "공원", 0.013);   // 약 1.4km → 도보 약 29분 (> 25분)
+
+        List<CoursePlan> courses = composer.compose(randomCondition(300), List.of(near, far)); // 5시간: 시간은 충분
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertFalse(course.placeIds().contains("far"), "먼 장소가 들어감: " + course.placeIds());
+        }
+    }
+
+    @Test
+    @DisplayName("한 구간 판단: 출발지 → 장소, 장소 → 장소 구간만 보고 마지막 장소 → 도착지 구간은 보지 않는다")
+    void isWithinLegLimit_ignoresFinalTravelToDestination() {
+        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);
+        PlaceCandidate far = place("far", CategoryCode.NATURE, "공원", 0.013);
+        Coordinate farDestination = new Coordinate(ORIGIN.latitude() + 0.05, ORIGIN.longitude()); // 약 5.6km
+        CourseCondition withFarDestination =
+                new CourseCondition(ORIGIN, farDestination, 300, TransportType.WALK, List.of());
+
+        assertTrue(composer.isWithinLegLimit(randomCondition(300), List.of(near)));
+        assertFalse(composer.isWithinLegLimit(randomCondition(300), List.of(far)));
+        assertFalse(composer.isWithinLegLimit(randomCondition(300), List.of(near, far))); // 카페 → 공원 구간이 김
+        assertTrue(composer.isWithinLegLimit(withFarDestination, List.of(near)));         // 도착지까지 먼 건 괜찮다
+    }
+
+    @Test
+    @DisplayName("가까운 후보 먼저: 많이 먼 장소는 항상 뒤에 온다")
+    void orderNearFirst_putsMuchFartherPlaceLast() {
+        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);    // 약 0.1km
+        PlaceCandidate far = place("far", CategoryCode.CAFE, "디저트", 0.009);    // 약 1.0km (섞는 거리 0.5km 보다 훨씬 멂)
+
+        for (int i = 0; i < 30; i++) { // 무작위가 들어가니 여러 번 돌려서 확인
+            List<PlaceCandidate> ordered = composer.orderNearFirst(randomCondition(180), List.of(far, near));
+            assertEquals("near", ordered.get(0).placeId());
+        }
+    }
+
+    @Test
+    @DisplayName("가까운 후보 먼저: 거리가 비슷하면 순서가 바뀌기도 한다 (코스가 매번 같지 않게)")
+    void orderNearFirst_mixesSimilarDistances() {
+        PlaceCandidate a = place("a", CategoryCode.CAFE, "카페", 0.001);    // 약 0.1km
+        PlaceCandidate b = place("b", CategoryCode.CAFE, "디저트", 0.002);  // 약 0.2km
+
+        Set<String> firsts = new java.util.HashSet<>();
+        for (int i = 0; i < 30; i++) {
+            firsts.add(composer.orderNearFirst(randomCondition(180), List.of(a, b)).get(0).placeId());
+        }
+        assertEquals(Set.of("a", "b"), firsts); // 둘 다 1등을 해 본 적이 있다
+    }
+
+    // ===================== 한 코스에 넣지 않을 조합 (#170) =====================
+
+    @Test
+    @DisplayName("음식/맛집은 한 코스에 1곳만: 한식 → 일식 같은 '밥 두 번' 코스는 없다")
+    void compose_foodOnlyOnce() {
+        List<PlaceCandidate> candidates = List.of(
+                place("1", CategoryCode.FOOD, "한식", 0.001),
+                place("2", CategoryCode.FOOD, "일식", 0.002),
+                place("3", CategoryCode.FOOD, "중식", 0.003),
+                place("4", CategoryCode.NATURE, "공원", 0.002));
+
+        List<CoursePlan> courses = composer.compose(randomCondition(300), candidates); // 5시간: 3곳까지 가능
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertTrue(countOf(course, CategoryCode.FOOD) <= 1, "음식점이 두 번: " + subCategoriesOf(course));
+        }
+    }
+
+    @Test
+    @DisplayName("카페/디저트도 한 코스에 1곳만, 음식점 → 카페 는 함께 들어갈 수 있다")
+    void compose_cafeOnlyOnce_butFoodAndCafeTogether() {
+        List<PlaceCandidate> candidates = List.of(
+                place("1", CategoryCode.CAFE, "카페", 0.001),
+                place("2", CategoryCode.CAFE, "디저트", 0.002),
+                place("3", CategoryCode.FOOD, "한식", 0.001));
+
+        List<CoursePlan> courses = composer.compose(directCondition(300, CategoryCode.FOOD, CategoryCode.CAFE), candidates);
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertTrue(countOf(course, CategoryCode.CAFE) <= 1, "카페가 두 번: " + subCategoriesOf(course));
+        }
+        assertTrue(courses.stream().anyMatch(c -> countOf(c, CategoryCode.FOOD) == 1 && countOf(c, CategoryCode.CAFE) == 1),
+                "음식점 + 카페 코스가 하나도 없음");
+    }
+
+    @Test
+    @DisplayName("음식/맛집만 골랐으면 시간이 남아도 1곳짜리 코스다")
+    void compose_foodOnly_makesOnePlaceCourse() {
+        List<PlaceCandidate> candidates = List.of(
+                place("1", CategoryCode.FOOD, "한식", 0.001),
+                place("2", CategoryCode.FOOD, "일식", 0.002));
+
+        List<CoursePlan> courses = composer.compose(directCondition(300, CategoryCode.FOOD), candidates);
+
+        assertFalse(courses.isEmpty());
+        courses.forEach(course -> assertEquals(1, course.stops().size()));
+    }
+
+    @Test
+    @DisplayName("같은 브랜드(체인)는 두 번 넣지 않는다: 메가커피 성수역점 → 메가커피 뚝섬점 X")
+    void compose_skipsSameBrand() {
+        PlaceCandidate megaA = named("1", "메가MGC커피 성수역점", CategoryCode.CAFE, "카페", 0.001);
+        PlaceCandidate megaB = named("2", "메가MGC커피 뚝섬점", CategoryCode.SHOPPING, "소품샵", 0.002); // 대분류가 달라도 같은 브랜드
+        PlaceCandidate park = named("3", "성수동구두테마공원", CategoryCode.NATURE, "공원", 0.003);
+
+        List<CoursePlan> courses = composer.compose(randomCondition(300), List.of(megaA, megaB, park));
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertFalse(course.placeIds().containsAll(Set.of("1", "2")), "같은 브랜드가 두 번: " + course.placeIds());
+        }
+    }
+
+    @Test
+    @DisplayName("브랜드 이름: 마지막 단어가 '점' 으로 끝나면 지점명으로 보고 뗀다")
+    void brandOf() {
+        assertEquals("메가MGC커피", composer.brandOf("메가MGC커피 성수역점"));
+        assertEquals("프랑스루브르바게트", composer.brandOf("프랑스루브르바게트 성수점"));
+        assertEquals("성수동구두테마공원", composer.brandOf("성수동구두테마공원"));        // 지점명 없음
+        assertEquals("자연과의만남추구 정원", composer.brandOf("자연과의만남추구 정원"));  // '점' 으로 안 끝남
+        assertEquals("", composer.brandOf(null));
+    }
+
+    private long countOf(CoursePlan course, CategoryCode category) {
+        return course.stops().stream().filter(stop -> stop.place().category() == category).count();
+    }
+
+    private PlaceCandidate named(String id, String name, CategoryCode category, String subCategory, double latOffset) {
+        return new PlaceCandidate(id, name, category, subCategory, "서울 성동구",
+                ORIGIN.latitude() + latOffset, ORIGIN.longitude());
+    }
+
+    // ===================== 경로 모드: 도착지 방향 (#170) =====================
+    // 도착지는 출발지에서 북쪽으로 0.03도(약 3.3km). 그 사이에 있는 장소가 "가는 길" 이다.
+
+    private static final Coordinate NORTH_DESTINATION = new Coordinate(ORIGIN.latitude() + 0.03, ORIGIN.longitude());
+
+    @Test
+    @DisplayName("경로 모드는 도착지가 1km 이상 멀 때만이다")
+    void isRouteMode() {
+        Coordinate near = new Coordinate(ORIGIN.latitude() + 0.005, ORIGIN.longitude()); // 약 0.56km
+
+        assertTrue(composer.isRouteMode(routeCondition(TransportType.WALK, 240)));
+        assertFalse(composer.isRouteMode(new CourseCondition(ORIGIN, near, 240, TransportType.WALK, List.of())));
+        assertFalse(composer.isRouteMode(randomCondition(240))); // 도착지 없음
+    }
+
+    @Test
+    @DisplayName("경로 모드: 가는 길을 많이 벗어난 장소(출발지 반대쪽)는 넣지 않는다")
+    void compose_routeMode_skipsPlaceOffTheWay() {
+        PlaceCandidate onTheWay = place("on", CategoryCode.CAFE, "카페", 0.01);     // 북쪽, 가는 길 위 (우회 0km)
+        PlaceCandidate behind = place("behind", CategoryCode.NATURE, "공원", -0.01); // 남쪽, 우회 약 2.2km (> 도보 1km)
+
+        List<CoursePlan> courses = composer.compose(routeCondition(TransportType.WALK, 240), List.of(onTheWay, behind));
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertFalse(course.placeIds().contains("behind"), "가는 길을 벗어난 장소가 들어감: " + course.placeIds());
+        }
+    }
+
+    @Test
+    @DisplayName("경로 모드: 가까움은 우회 거리로 본다. 출발지에서 멀어도 길 위면 옆길 장소보다 앞에 온다")
+    void orderNearFirst_routeMode_prefersPlaceOnTheWay() {
+        PlaceCandidate onTheWay = place("on", CategoryCode.CAFE, "카페", 0.015);       // 출발지에서 약 1.7km, 우회 0
+        PlaceCandidate behind = place("behind", CategoryCode.CAFE, "디저트", -0.004);  // 출발지에서 약 0.4km, 우회 약 0.9km
+
+        for (int i = 0; i < 30; i++) {
+            List<PlaceCandidate> ordered =
+                    composer.orderNearFirst(routeCondition(TransportType.WALK, 240), List.of(behind, onTheWay));
+            assertEquals("on", ordered.get(0).placeId());
+        }
+    }
+
+    @Test
+    @DisplayName("경로 모드 방문 순서: 도착지 쪽으로 점점 가까워지는 순 (출발지에서 가까운 순이면 되돌아가는 순서가 나옴)")
+    void orderForVisit_routeMode_movesTowardDestination() {
+        // side : 북쪽 0.001 + 동쪽 0.013 (출발지에서 약 1.15km, 출발지 옆쪽)
+        // ahead: 북쪽 0.010              (출발지에서 약 1.11km, 도착지 쪽)
+        PlaceCandidate side = new PlaceCandidate("side", "옆", CategoryCode.CAFE, "카페", "서울 성동구",
+                ORIGIN.latitude() + 0.001, ORIGIN.longitude() + 0.013);
+        PlaceCandidate ahead = place("ahead", CategoryCode.NATURE, "공원", 0.010);
+
+        // 출발지에서 가까운 순(④)은 ahead → side: 도착지 쪽으로 갔다가 옆으로 되돌아온다
+        assertEquals(List.of("ahead", "side"), idsOf(composer.orderByNearest(ORIGIN, List.of(side, ahead))));
+        // 경로 모드는 side → ahead: 도착지 쪽으로 점점 가까워진다
+        assertEquals(List.of("side", "ahead"),
+                idsOf(composer.orderForVisit(routeCondition(TransportType.TRANSIT, 240), List.of(ahead, side))));
+    }
+
+    private CourseCondition routeCondition(TransportType transportType, int availableMinutes) {
+        return new CourseCondition(ORIGIN, NORTH_DESTINATION, availableMinutes, transportType, List.of());
+    }
+
+    private List<String> idsOf(List<PlaceCandidate> places) {
+        return places.stream().map(PlaceCandidate::placeId).toList();
+    }
+
     // ===================== 조건 정리 =====================
 
     @Test
