@@ -14,7 +14,8 @@
 | 인증 | 로그인 | POST | `/api/auth/login` | 🔓 | ✅ | 김용현 | AUT-01 | [2.1](#21-로그인) |
 | 회원 | 회원가입 (+자동 로그인) | POST | `/api/members` | 🔓 | ✅ | 김용현 | AUT-02 | [2.2](#22-회원가입) |
 | 회원 | 이메일 중복 확인 | GET | `/api/members/email-exists?email=` | 🔓 | ✅ | 김용현 | AUT-02 | [2.3](#23-이메일-중복-확인) |
-| 회원 | 내 정보 조회·수정·탈퇴 | GET·PATCH·DELETE | `/api/members/me` | 🔒 | ⬜ | 김하윤 | MY-01·MY-04 | 명세 작성 전 |
+| 회원 | 내 정보 조회 | GET | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-01·MY-04 | [2.4](#24-내-회원-정보-조회) |
+| 회원 | 내 정보 수정·탈퇴 | PATCH·DELETE | `/api/members/me` | 🔒 | ⬜ | 김하윤 | MY-04 | 명세 작성 전 |
 | 장소 | 장소·주소 검색 | GET | `/api/places/search?query=&lat=&lng=` | 🔓 | ✅ | 정종일 | HOM-01, CON-02 | [3.1](#31-장소주소-검색) |
 | 장소 | 좌표 → 주소 | GET | `/api/places/address?lat=&lng=` | 🔓 | ✅ | 정종일 | CON-02, 지도 핀 | [3.2](#32-좌표--주소) |
 | 장소 | 주변 장소 | GET | `/api/places/nearby?lat=&lng=&categories=&radius=` | 🔓 | ✅ | 정종일 | HOM-02 | [3.3](#33-주변-장소) |
@@ -73,7 +74,7 @@
 도메인 오류 코드는 각 도메인 `exception/XxxErrorCode` 와 상세 명세를 본다.
 프론트에서 서버에 연결하지 못하면(서버 꺼짐·시간 초과) `NETWORK_ERROR` 로 처리한다 (`shared/api/apiError.ts`).
 
-## 2. 인증·회원 (김용현)
+## 2. 인증·회원 (가입·로그인: 김용현 / 본인 정보 조회: 김하윤)
 
 ### 2.1 로그인
 `POST /api/auth/login` · 🔓 · 화면 AUT-01 · REQ-002
@@ -128,6 +129,27 @@
 { "exists": true }
 ```
 실패: 400 `INVALID_REQUEST` (빈 값·이메일 형식 아님)
+
+### 2.4 내 회원 정보 조회
+`GET /api/members/me` · 🔒 · 화면 MY-01·MY-04 · REQ-004
+
+요청 본문·쿼리 파라미터 없음. `Authorization: Bearer {accessToken}`으로 인증한 회원 ID를 사용하며 클라이언트가 조회할 회원 ID를 지정하지 않는다.
+
+성공 200 (`MemberResponse`, 아래 JSON은 공통 응답의 `data`)
+```json
+{ "email": "user@email.com", "nickname": "틈틈이" }
+```
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| email | string | 가입 이메일 |
+| nickname | string | 현재 회원 닉네임 |
+
+비밀번호·비밀번호 해시·로그인 토큰은 응답에 포함하지 않는다. 수정·탈퇴 기능은 별도 API로 구현한다.
+
+| HTTP | code | 언제 |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | 토큰 없음·만료·위조, 회원이 없거나 탈퇴한 경우 |
 
 ## 3. 장소 (정종일)
 
@@ -186,5 +208,6 @@
 ## 변경 이력
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-18 | 내 회원 정보 조회(GET /api/members/me) 응답·인증·오류 명세 추가 (#142) |
 | 2026-11-18 | 첫 취합 (인증·회원·장소 상세, 추천·코스는 도메인 문서 연결, 구현 상태 표시) |
 | 2026-11-18 | 추천 API 4개(다시 추천·코스 상세·장소 교체 후보·장소 교체) 구현 상태 ✅ 로 변경 (나혜빈) |

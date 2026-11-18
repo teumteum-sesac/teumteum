@@ -2,10 +2,12 @@ package com.teumteum.member.service;
 
 import com.teumteum.admin.service.AdminService;
 import com.teumteum.global.auth.JwtProvider;
+import com.teumteum.global.exception.CommonErrorCode;
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.member.domain.Member;
 import com.teumteum.member.dto.LoginRequest;
 import com.teumteum.member.dto.LoginResponse;
+import com.teumteum.member.dto.MemberResponse;
 import com.teumteum.member.dto.SignupRequest;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.repository.MemberRepository;
@@ -121,5 +123,27 @@ public class MemberService {
     public Member withdraw(Member member) {
         member.withdraw();
         return member;
+    }
+
+    /** 인증된 회원 본인의 이메일·닉네임을 조회한다. 없거나 탈퇴한 회원은 401로 거절한다. */
+    public MemberResponse getMyInfo(Long memberId) {
+        Optional<Member> member = findMember(memberId);
+
+        // 조회된 회원이 없으면 여기서 예외를 던지고 메서드를 끝낸다.
+        if (member.isEmpty()) {
+            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+        }
+
+        // 위 검사를 통과했으므로 Optional에서 실제 회원을 꺼낼 수 있다.
+        Member foundMember = member.get();
+
+        if (!foundMember.isActive()) {
+            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+        }
+
+        return new MemberResponse(
+                foundMember.getEmail(),
+                foundMember.getNickname()
+        );
     }
 }
