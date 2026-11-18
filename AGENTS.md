@@ -55,7 +55,7 @@ teumteum/
 │   ├── place/       # 카카오 로컬 연동, 장소 검색·상세 (정종일)
 │   ├── recommend/   # 소요시간 계산, 장소 추천 (나혜빈)
 │   ├── course/      # 코스 저장·조회·삭제 (김하윤)
-│   └── admin/       # 관리자 기능 (정종화)
+│   └── admin/       # 관리자 기능 (김용현)
 ├── frontend/src/
 │   ├── app/         # App.tsx, router.tsx (전체 라우트 목록)
 │   ├── pages/       # 화면 단위 컴포넌트 (HomePage.tsx 등). features 조합만 하고 로직은 두지 않음
@@ -69,12 +69,11 @@ teumteum/
 
 | 담당 | 영역 |
 |---|---|
-| 김용현 | 공통 기반·인증, 초기 세팅, 공통 레이아웃, API 명세서 취합, 시연 서버 배포 |
+| 김용현 | 공통 기반·인증, 초기 세팅, 공통 레이아웃, API 명세서 취합, 시연 서버 배포, 관리자 기능(`/admin`) — 회원 관리, 공지사항·전체 알림 |
 | 정종일 | 장소(카카오 로컬 API), 외출 조건 설정, 공통 응답·예외 처리, Swagger |
 | 나혜빈 | 추천 로직(체류·이동·총 소요시간), 추천 API, 추천 결과·결과 상세 |
 | 유지수 | 카카오 지도, 마커·방문 순서, 화면 설계서·화면-API 매핑표, 시연 시나리오 |
 | 김하윤 | ERD·테이블 정의서, 코스 저장·조회·삭제, 회원 정보 조회, 마이페이지 |
-| 정종화 | 관리자 기능(`/admin`) — 회원 관리, 공지사항·전체 알림 |
 
 ### 폴더별 담당자
 
@@ -88,14 +87,14 @@ teumteum/
 | `backend/.../place` | 장소 | 정종일 |
 | `backend/.../recommend` | 추천 | 나혜빈 |
 | `backend/.../course` | 코스 저장 | 김하윤 |
-| `backend/.../admin` | 관리자 | 정종화 |
+| `backend/.../admin` | 관리자 | 김용현 |
 | `frontend/src/app`, `shared/` | 라우터, 공통 레이아웃·API 클라이언트 | 김용현 |
 | `frontend/src/features/auth` | 로그인·회원가입 화면 | 김용현 |
 | `frontend/src/features/condition` | 외출 조건·카테고리 선택 화면 | 정종일 |
 | `frontend/src/features/recommend` | 추천 결과·결과 상세 화면 | 나혜빈 |
 | `frontend/src/features/map` | 카카오 지도·마커 | 유지수 |
 | `frontend/src/features/mypage` | 마이페이지 | 김하윤 |
-| `frontend/src/features/admin` | 관리자 화면 | 정종화 |
+| `frontend/src/features/admin` | 관리자 화면 | 김용현 |
 | `frontend/src/pages` | 화면 조합 | 해당 화면의 feature 담당자 |
 | `docs/` | 문서 | `docs/README.md` 참고 |
 
@@ -167,7 +166,7 @@ npm run lint
 
 ### 프론트 API 연결 담당 (mock → 실제 API)
 
-화면 14개 중 **각자 메인 화면 1개는 본인이 직접 연결**하고, **나머지 화면은 전부 김용현이 연결**한다.
+화면 14개 중 **각자 메인 화면 1개는 본인이 직접 연결**하고, **나머지 화면은 전부 김용현이 연결**한다. (2026-11-18 팀 구성 변경: 정종화 제외, MY-04 연결·관리자 기능은 김용현이 맡는다)
 
 | 담당 | 메인 연결 화면 | 연결할 API |
 |---|---|---|
@@ -176,9 +175,8 @@ npm run lint
 | 나혜빈 | RES-01 추천 결과 목록 | `POST /api/recommendations`, `POST /api/recommendations/{recommendationSetId}/regenerate` |
 | 유지수 | HOM-02 주변 장소 탐색 | `GET /api/places/nearby` (예정) |
 | 김하윤 | MY-02 저장한 코스 목록 | `GET /api/courses`, `DELETE /api/courses/{courseId}` |
-| 정종화 | MY-04 회원 정보 수정·탈퇴 | `PATCH /api/members/me`, `DELETE /api/members/me` (예정) |
 
-**나머지 8개 화면은 김용현이 연결한다**: HOM-01 홈 검색창, CON-01 외출 조건 설정, DET-01 추천 결과 상세(저장 버튼 포함), DET-02 코스 지도 상세, DET-03 장소 교체, MY-01 마이페이지, MY-03 저장한 코스 상세, AUT-02 회원가입.
+**나머지 9개 화면은 김용현이 연결한다**: HOM-01 홈 검색창, CON-01 외출 조건 설정, DET-01 추천 결과 상세(저장 버튼 포함), DET-02 코스 지도 상세, DET-03 장소 교체, MY-01 마이페이지, MY-03 저장한 코스 상세, MY-04 회원 정보 수정·탈퇴(`PATCH`·`DELETE /api/members/me`), AUT-02 회원가입.
 (예정)이 붙은 주소는 API 를 만드는 사람이 확정하면 그 이름으로 맞춘다.
 
 #### 메인 연결 화면을 "맡는다"는 것
@@ -293,7 +291,6 @@ npm run lint
 | 03 | 나혜빈 | `be03` | `fe03` |
 | 04 | 유지수 | `be04` | `fe04` |
 | 05 | 김하윤 | `be05` | `fe05` |
-| 06 | 정종화 | `be06` | `fe06` |
 
 - 백엔드·프론트를 둘 다 건드리면 **주로 작업한 쪽** 코드를 쓴다. 가능하면 백엔드와 프론트 PR을 나눈다
 - 문서·설정(`docs/`, 루트 파일)만 바꾸면 더 관련 있는 쪽 코드를 쓴다
@@ -309,7 +306,7 @@ npm run lint
 | 나혜빈 · 소요시간 계산 | `be03/feature/16-recommend-time` | `[be03] feat: 총 소요시간 계산 로직 추가` |
 | 유지수 · 지도 마커 버그 | `fe04/fix/23-map-marker` | `[fe04] fix: 순번 마커 위치 오류 수정` |
 | 김하윤 · ERD 문서 | `be05/docs/30-erd` | `[be05] docs: ERD 초안 추가` |
-| 정종화 · 공지사항 API | `be06/feature/31-admin-notice` | `[be06] feat: 공지사항 등록 API 추가` |
+| 김용현 · 공지사항 API | `be01/feature/31-admin-notice` | `[be01] feat: 공지사항 등록 API 추가` |
 
 ### 커밋
 
