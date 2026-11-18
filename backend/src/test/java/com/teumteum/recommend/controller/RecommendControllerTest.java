@@ -3,13 +3,18 @@ package com.teumteum.recommend.controller;
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.global.exception.GlobalExceptionHandler;
 import com.teumteum.place.exception.PlaceErrorCode;
+import com.teumteum.recommend.domain.CategoryCode;
 import com.teumteum.recommend.domain.CategoryMode;
 import com.teumteum.recommend.domain.TransportType;
+import com.teumteum.recommend.dto.AlternativePlaceListResponse;
+import com.teumteum.recommend.dto.AlternativePlaceResponse;
+import com.teumteum.recommend.dto.CurrentPlaceResponse;
 import com.teumteum.recommend.dto.LocationResponse;
 import com.teumteum.recommend.dto.RecommendConditionResponse;
 import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendResponse;
 import com.teumteum.recommend.exception.RecommendErrorCode;
+import com.teumteum.recommend.service.PlaceReplaceService;
 import com.teumteum.recommend.service.RecommendService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,11 +44,13 @@ class RecommendControllerTest {
 
     private MockMvc mockMvc;
     private RecommendService recommendService;
+    private PlaceReplaceService placeReplaceService;
 
     @BeforeEach
     void setUp() {
         recommendService = mock(RecommendService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecommendController(recommendService))
+        placeReplaceService = mock(PlaceReplaceService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecommendController(recommendService, placeReplaceService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -99,11 +106,15 @@ class RecommendControllerTest {
     // ===================== 다시 추천 =====================
 
     @Test
-    @DisplayName("다시 추천: 요청 본문 없이 주소의 묶음 ID 를 서비스에 넘기고 200 으로 새 결과를 돌려준다")
+    @DisplayName("다시 추천: 요청 본문 없이 주소의 묶음 ID 와 요청 IP 를 서비스에 넘기고 200 으로 새 결과를 돌려준다")
     void regenerate_ok() throws Exception {
-        given(recommendService.regenerate("rs_1")).willReturn(emptyResponse());
+        given(recommendService.regenerate("rs_1", "203.0.113.7")).willReturn(emptyResponse());
 
-        mockMvc.perform(post("/api/recommendations/rs_1/regenerate"))
+        mockMvc.perform(post("/api/recommendations/rs_1/regenerate")
+                        .with(request -> {           // 요청 IP 를 정해서 보낸다 (안 정하면 127.0.0.1)
+                            request.setRemoteAddr("203.0.113.7");
+                            return request;
+                        }))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.recommendationSetId").value("rs_1"));
@@ -112,12 +123,24 @@ class RecommendControllerTest {
     @Test
     @DisplayName("다시 추천: 만료된 묶음이면 410 RECOMMENDATION_EXPIRED")
     void regenerate_expired() throws Exception {
-        given(recommendService.regenerate(any()))
+        given(recommendService.regenerate(any(), any()))
                 .willThrow(new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED));
 
         mockMvc.perform(post("/api/recommendations/rs_old/regenerate"))
                 .andExpect(status().isGone())
                 .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_EXPIRED"));
+    }
+
+    @Test
+    @DisplayName("다시 추천: 너무 자주 누르면 429 TOO_MANY_REQUESTS")
+    void regenerate_tooManyRequests() throws Exception {
+        given(recommendService.regenerate(any(), any()))
+                .willThrow(new CustomException(RecommendErrorCode.TOO_MANY_REQUESTS));
+
+        mockMvc.perform(post("/api/recommendations/rs_1/regenerate"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("TOO_MANY_REQUESTS"));
     }
 
     // ===================== 코스 상세 =====================
@@ -154,6 +177,36 @@ class RecommendControllerTest {
         mockMvc.perform(get("/api/recommendations/courses/rc_old"))
                 .andExpect(status().isGone())
                 .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_EXPIRED"));
+    }
+
+    // ===================== 장소 교체 후보 =====================
+
+    @Test
+    @DisplayName("교체 후보: 주소의 코스 ID·장소 ID 를 서비스에 넘기고 200 으로 후보 목록을 돌려준다")
+    void getAlternatives_ok() throws Exception {
+        AlternativePlaceListResponse response = new AlternativePlaceListResponse("rc_1",
+                new CurrentPlaceResponse("101", 1, "카페 A", CategoryCode.CAFE, "카페", 60),
+                List.of(new AlternativePlaceResponse("201", "카페 C", CategoryCode.CAFE, "카페", "서울",
+                        37.545, 127.057, null, 60, 8, null, -2, false, true)));
+        given(placeReplaceService.getAlternatives("rc_1", "101")).willReturn(response);
+
+        mockMvc.perform(get("/api/recommendations/courses/rc_1/places/101/alternatives"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentPlace.placeId").value("101"))
+                .andExpect(jsonPath("$.data.alternatives[0].placeId").value("201"))
+                .andExpect(jsonPath("$.data.alternatives[0].diffMinutes").value(-2))
+                .andExpect(jsonPath("$.data.alternatives[0].estimated").value(true));
+    }
+
+    @Test
+    @DisplayName("교체 후보: 코스에 없는 장소면 404 RECOMMENDATION_NOT_FOUND")
+    void getAlternatives_notFound() throws Exception {
+        given(placeReplaceService.getAlternatives(any(), any()))
+                .willThrow(new CustomException(RecommendErrorCode.RECOMMENDATION_NOT_FOUND));
+
+        mockMvc.perform(get("/api/recommendations/courses/rc_1/places/999/alternatives"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_NOT_FOUND"));
     }
 
     private RecommendCourseDetailResponse detailResponse() {
