@@ -14,16 +14,17 @@
 | 인증 | 로그인 | POST | `/api/auth/login` | 🔓 | ✅ | 김용현 | AUT-01 | [2.1](#21-로그인) |
 | 회원 | 회원가입 (+자동 로그인) | POST | `/api/members` | 🔓 | ✅ | 김용현 | AUT-02 | [2.2](#22-회원가입) |
 | 회원 | 이메일 중복 확인 | GET | `/api/members/email-exists?email=` | 🔓 | ✅ | 김용현 | AUT-02 | [2.3](#23-이메일-중복-확인) |
-| 회원 | 내 정보 조회·수정·탈퇴 | GET·PATCH·DELETE | `/api/members/me` | 🔒 | ⬜ | 김하윤 | MY-01·MY-04 | 명세 작성 전 |
+| 회원 | 내 정보 조회 | GET | `/api/members/me` | 🔒 | ✅ | 김하윤 | MY-01·MY-04 | [2.4](#24-내-회원-정보-조회) |
+| 회원 | 내 정보 수정·탈퇴 | PATCH·DELETE | `/api/members/me` | 🔒 | ⬜ | 김하윤 | MY-04 | 명세 작성 전 |
 | 장소 | 장소·주소 검색 | GET | `/api/places/search?query=&lat=&lng=` | 🔓 | ✅ | 정종일 | HOM-01, CON-02 | [3.1](#31-장소주소-검색) |
 | 장소 | 좌표 → 주소 | GET | `/api/places/address?lat=&lng=` | 🔓 | ✅ | 정종일 | CON-02, 지도 핀 | [3.2](#32-좌표--주소) |
 | 장소 | 주변 장소 | GET | `/api/places/nearby?lat=&lng=&categories=&radius=` | 🔓 | ✅ | 정종일 | HOM-02 | [3.3](#33-주변-장소) |
 | 장소 | 장소 상세 (TourAPI) | GET | 미정 | 🔓 | ⬜ | 정종일 | DET-01(장소 1곳) | 명세 작성 전 |
 | 추천 | 추천 생성 | POST | `/api/recommendations` | 🔓 | ✅ | 나혜빈 | CON-01 → RES-01 | [recommend-api.md 1](recommend-api.md#1-추천-생성) |
-| 추천 | 다시 추천 | POST | `/api/recommendations/{recommendationSetId}/regenerate` | 🔓 | ⬜ | 나혜빈 | RES-01 | [recommend-api.md 2](recommend-api.md#2-다시-추천-req-026) |
-| 추천 | 추천 코스 상세 | GET | `/api/recommendations/courses/{recommendationId}` | 🔓 | ⬜ | 나혜빈 | DET-01·DET-02 | [recommend-api.md 3](recommend-api.md#3-추천-코스-상세-det-01--det-02) |
-| 추천 | 장소 교체 후보 | GET | `/api/recommendations/courses/{recommendationId}/places/{placeId}/alternatives` | 🔓 | ⬜ | 나혜빈 | DET-03 | [recommend-api.md 4](recommend-api.md#4-장소-교체-후보-det-03) |
-| 추천 | 장소 교체 | POST | `/api/recommendations/courses/{recommendationId}/replace` | 🔓 | ⬜ | 나혜빈 | DET-03 | [recommend-api.md 5](recommend-api.md#5-장소-교체-req-029) |
+| 추천 | 다시 추천 | POST | `/api/recommendations/{recommendationSetId}/regenerate` | 🔓 | ✅ | 나혜빈 | RES-01 | [recommend-api.md 2](recommend-api.md#2-다시-추천-req-026) |
+| 추천 | 추천 코스 상세 | GET | `/api/recommendations/courses/{recommendationId}` | 🔓 | ✅ | 나혜빈 | DET-01·DET-02 | [recommend-api.md 3](recommend-api.md#3-추천-코스-상세-det-01--det-02) |
+| 추천 | 장소 교체 후보 | GET | `/api/recommendations/courses/{recommendationId}/places/{placeId}/alternatives` | 🔓 | ✅ | 나혜빈 | DET-03 | [recommend-api.md 4](recommend-api.md#4-장소-교체-후보-det-03) |
+| 추천 | 장소 교체 | POST | `/api/recommendations/courses/{recommendationId}/replace` | 🔓 | ✅ | 나혜빈 | DET-03 | [recommend-api.md 5](recommend-api.md#5-장소-교체-req-029) |
 | 코스 | 추천 코스 저장 | POST | `/api/courses` | 🔒 | ⬜ | 김하윤 | DET-01 [저장하기] | [course-api.md 1](course-api.md#1-추천-코스-저장) |
 | 코스 | 내 저장 코스 목록 | GET | `/api/courses?page=0&size=20` | 🔒 | ✅ | 김하윤 | MY-02, MY-01 건수 | [course-api.md 2](course-api.md#2-내-저장-코스-목록-조회) |
 | 코스 | 내 저장 코스 상세·지도 | GET | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-03, DET-02 | [course-api.md 3](course-api.md#3-내-저장-코스-상세지도-조회) |
@@ -73,7 +74,7 @@
 도메인 오류 코드는 각 도메인 `exception/XxxErrorCode` 와 상세 명세를 본다.
 프론트에서 서버에 연결하지 못하면(서버 꺼짐·시간 초과) `NETWORK_ERROR` 로 처리한다 (`shared/api/apiError.ts`).
 
-## 2. 인증·회원 (김용현)
+## 2. 인증·회원 (가입·로그인: 김용현 / 본인 정보 조회: 김하윤)
 
 ### 2.1 로그인
 `POST /api/auth/login` · 🔓 · 화면 AUT-01 · REQ-002
@@ -129,6 +130,27 @@
 ```
 실패: 400 `INVALID_REQUEST` (빈 값·이메일 형식 아님)
 
+### 2.4 내 회원 정보 조회
+`GET /api/members/me` · 🔒 · 화면 MY-01·MY-04 · REQ-004
+
+요청 본문·쿼리 파라미터 없음. `Authorization: Bearer {accessToken}`으로 인증한 회원 ID를 사용하며 클라이언트가 조회할 회원 ID를 지정하지 않는다.
+
+성공 200 (`MemberResponse`, 아래 JSON은 공통 응답의 `data`)
+```json
+{ "email": "user@email.com", "nickname": "틈틈이" }
+```
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| email | string | 가입 이메일 |
+| nickname | string | 현재 회원 닉네임 |
+
+비밀번호·비밀번호 해시·로그인 토큰은 응답에 포함하지 않는다. 수정·탈퇴 기능은 별도 API로 구현한다.
+
+| HTTP | code | 언제 |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | 토큰 없음·만료·위조, 회원이 없거나 탈퇴한 경우 |
+
 ## 3. 장소 (정종일)
 
 ### 3.1 장소·주소 검색
@@ -177,7 +199,7 @@
 ## 4. 추천 (나혜빈) · 코스 저장 (김하윤)
 
 요청·응답·오류가 길어서 도메인 문서에 있습니다.
-- 추천: [recommend-api.md](recommend-api.md) — 추천 생성(✅)·다시 추천·코스 상세·장소 교체
+- 추천: [recommend-api.md](recommend-api.md) — 추천 생성(✅)·다시 추천(✅)·코스 상세(✅)·장소 교체 후보(✅)·장소 교체(✅)
 - 저장 코스: [course-api.md](course-api.md) — 저장·목록(✅)·상세(✅)·삭제(✅)·최신 정보
 
 대분류 코드 (요청·응답 공통): `CULTURE` 문화생활 · `CAFE` 카페/디저트 · `FOOD` 음식/맛집 · `NATURE` 자연/휴식 · `ENTERTAINMENT` 오락/체험 · `SHOPPING` 쇼핑/구경 · `SPORTS` 스포츠활동 · `TOURISM` 관광/명소
@@ -186,4 +208,6 @@
 ## 변경 이력
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-18 | 내 회원 정보 조회(GET /api/members/me) 응답·인증·오류 명세 추가 (#142) |
 | 2026-11-18 | 첫 취합 (인증·회원·장소 상세, 추천·코스는 도메인 문서 연결, 구현 상태 표시) |
+| 2026-11-18 | 추천 API 4개(다시 추천·코스 상세·장소 교체 후보·장소 교체) 구현 상태 ✅ 로 변경 (나혜빈) |

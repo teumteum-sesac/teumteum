@@ -1,6 +1,8 @@
 package com.teumteum.member.controller;
 
+import com.teumteum.global.auth.LoginMember;
 import com.teumteum.global.config.OpenApiConfig;
+import com.teumteum.member.dto.MemberResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -70,5 +72,17 @@ public class MemberController {
     ) {
         boolean exists = memberService.existsByEmail(email);
         return ResponseEntity.ok(ApiResponse.ok(new EmailExistsResponse(exists)));
+    }
+
+    @Operation(summary = "🔒 내 회원 정보 조회", description = "로그인한 회원의 이메일·닉네임을 반환한다. 인증이 없거나 회원이 없거나 탈퇴한 경우 401로 응답한다.")
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<MemberResponse>> getMyInfo(
+            // 회원 ID는 요청 파라미터가 아니라 JWT로 인증된 회원 정보에서 가져온다.
+            @Parameter(hidden = true) @LoginMember Long memberId
+    ) {
+        // 회원 조회와 탈퇴 여부 확인은 Service가 담당한다.
+        MemberResponse response = memberService.getMyInfo(memberId);
+        // HTTP 200과 공통 응답 형식으로 이메일·닉네임을 반환한다.
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }

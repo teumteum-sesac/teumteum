@@ -1,8 +1,9 @@
-# 추천 API 명세 (초안)
+# 추천 API 명세
 
-> 담당: 나혜빈 · 작성일: 2026-11-13 · 추천 생성·다시 추천·코스 상세·장소 교체 후보·장소 교체 5개 API의 초안입니다.
+> 담당: 나혜빈 · 작성일: 2026-11-13 · 수정일: 2026-11-18 · 추천 생성·다시 추천·코스 상세·장소 교체 후보·장소 교체 5개 API 명세입니다.
 > 기준: [REQ-019 ~ 029, 050, 056](requirements.md#14-장소-및-코스-추천), 화면설계서 v2.0 RES-01 · DET-01 · DET-02 · DET-03.
-> URL·DTO는 팀 확인 전 제안안입니다. 공통 응답(`ApiResponse`)·오류 형식은 dev 에 반영된 공통 코드(`global/common`, `global/exception`)를 따릅니다.
+> **5개 API 모두 구현되어 dev 에 반영됐습니다** (#114, #121, #125, #126, #133, #143). 이 문서는 실제 구현 기준입니다. Swagger UI(`/swagger-ui/index.html`)에서 바로 호출해 볼 수 있습니다.
+> 공통 응답(`ApiResponse`)·오류 형식은 공통 코드(`global/common`, `global/exception`)를 따릅니다.
 
 ## API 목록
 
@@ -24,7 +25,7 @@
 | 소속 | 위치 | 이 문서에서 쓰는 코드 |
 |---|---|---|
 | 공통 (`CommonErrorCode`, 정종일) | `global/exception` | `INVALID_REQUEST` 400, `INTERNAL_SERVER_ERROR` 500 |
-| 추천 (`RecommendErrorCode`, 나혜빈) | `recommend/exception` (추천 API 구현 때 추가) | `RECOMMENDATION_NOT_FOUND` 404, `AVAILABLE_TIME_EXCEEDED` 409, `RECOMMENDATION_EXPIRED` 410, `TOO_MANY_REQUESTS` 429 |
+| 추천 (`RecommendErrorCode`, 나혜빈) | `recommend/exception` | `RECOMMENDATION_NOT_FOUND` 404, `AVAILABLE_TIME_EXCEEDED` 409, `RECOMMENDATION_EXPIRED` 410, `TOO_MANY_REQUESTS` 429 |
 | 장소 (`PlaceErrorCode`, 정종일) | `place/exception` | `KAKAO_API_ERROR` 502, `KAKAO_API_RATE_LIMIT` 503 |
 
 - `TOO_MANY_REQUESTS` 는 지금은 다시 추천에서만 쓰므로 추천 쪽에 둔다. 다른 도메인에서도 필요해지면 공통으로 옮긴다.
@@ -86,6 +87,8 @@
 - 체류시간은 세분류별 예상 체류시간표(RES-01)를 쓴다. 세분류를 확인할 수 없으면 **기본 60분**.
 - 이동시간 API가 실패해 직선거리로 계산한 구간이 하나라도 있으면 코스의 `estimated` 가 `true` 다 (NFR-025).
 - **직선거리 추정 기준:** 하버사인 공식으로 직선거리(km)를 구하고 우회 보정 **1.3배**를 곱한 뒤, 평균 속도 도보 **4km/h** · 대중교통 **15km/h**(대기·환승 포함) · 차량 **20km/h**(시내 정체 감안)로 나눠 분으로 바꾼다. 소수는 **올림**한다 (이용 시간을 넘지 않게).
+- **대중교통 700m 이내 구간은 도보로 계산한다.** 대중교통 API(ODsay)는 출발지와 도착지가 700m 이내면 경로를 주지 않는다. 그래서 이 구간은 도보 API(OpenRouteService)로 계산하고 `transitInfo` 에 `"도보"` 를 넣는다. 지도에는 실제 도보 경로(`ACTUAL`)로 그린다. 도보 API도 실패하면 걷는 속도(4km/h)로 직선거리 추정한다. 코스를 고를 때의 직선거리 어림값도 같은 기준(700m 이내는 걷는 속도)을 쓴다.
+- 대중교통 API는 호출 사이에 최소 **300ms** 간격을 둔다. 연달아 빠르게 부르면 `429 Too Many Requests` 로 실패하기 때문이다 (#141).
 
 ---
 
@@ -147,7 +150,10 @@
     "categoryMode": "DIRECT",
     "categories": ["SPORTS", "SHOPPING"]
   },
-  "subCategoryFilters": ["당구", "볼링", "클라이밍", "소품샵", "팝업스토어", "시장", "백화점"],
+  "subCategoryFilters": [
+    { "category": "SPORTS", "categoryName": "스포츠활동", "subCategories": ["당구", "볼링", "클라이밍"] },
+    { "category": "SHOPPING", "categoryName": "쇼핑/구경", "subCategories": ["소품샵", "팝업스토어", "시장", "백화점"] }
+  ],
   "courses": [
     {
       "recommendationId": "rc_41b9",
@@ -163,7 +169,7 @@
           "placeId": "101", "visitOrder": 1,
           "placeName": "당구장 A", "category": "SPORTS", "subCategory": "당구",
           "address": "서울 성동구 ○○로 1", "latitude": 37.5470, "longitude": 127.0500,
-          "imageUrl": null, "openingHours": "10:00~24:00",
+          "imageUrl": null, "openingHours": null,
           "stayMinutes": 90, "travelMinutes": 15, "transitInfo": "버스 721 · 환승 0회"
         },
         {
@@ -171,7 +177,7 @@
           "placeName": "소품샵 B", "category": "SHOPPING", "subCategory": "소품샵",
           "address": "서울 성동구 ○○로 2", "latitude": 37.5460, "longitude": 127.0420,
           "imageUrl": null, "openingHours": null,
-          "stayMinutes": 40, "travelMinutes": 8, "transitInfo": null
+          "stayMinutes": 40, "travelMinutes": 8, "transitInfo": "도보"
         }
       ]
     }
@@ -184,8 +190,20 @@
 | `recommendationSetId` | string | 이번 추천 묶음 ID. 다시 추천에 사용 |
 | `expiresAt` | string | 보관 만료 시각 (생성 + 2시간) |
 | `condition` | RecommendConditionResponse | 서버가 실제로 적용한 조건. RES-01 조건 요약 칩과 '조건 바꾸기' 값 유지에 사용. `DIRECT` 인데 비어서 랜덤 처리했다면 `categoryMode` 는 `RANDOM` |
-| `subCategoryFilters` | string[] | 세분류 필터 칩 목록 (REQ-050). `DIRECT` 면 고른 대분류의 세분류 전체, `RANDOM` 이면 결과 장소들의 세분류. '전체' 칩은 프론트가 붙인다 |
+| `subCategoryFilters` | SubCategoryFilterResponse[] | 세분류 필터를 **대분류별로 묶은** 목록 (REQ-050). 아래 표 참고 |
 | `courses` | RecommendCourseResponse[] | 추천 코스 0 ~ 3개. **정렬 없음** (결정 3) |
+
+| `SubCategoryFilterResponse` 필드 | 타입 | 설명 |
+|---|---|---|
+| `category` | string | 대분류 코드 (예: `SPORTS`) |
+| `categoryName` | string | 대분류 화면 이름 (예: `스포츠활동`) |
+| `subCategories` | string[] | 세분류 이름 목록, 세분류 표 순서 (예: `["당구", "볼링", "클라이밍"]`) |
+
+- `DIRECT`: 고른 대분류 순서대로, 각 대분류의 세분류 **전체**.
+- `RANDOM`: 결과 코스에 **실제로 나온** 세분류만, 대분류 표 순서대로. 세분류 표에 없는 이름은 넣지 않는다.
+- 코스가 0개면 `RANDOM` 은 `[]`, `DIRECT` 는 고른 대분류의 세분류 전체가 그대로 온다 (프론트는 `courses` 가 비면 필터를 숨기면 된다).
+- '전체' 칩은 프론트가 붙인다. 칩을 눌렀을 때 어떤 코스를 보여줄지(걸러 보기)는 프론트가 코스 장소의 `subCategory` 로 정한다.
+- 대분류별로 묶어 두어 두 가지 화면 모두 그릴 수 있다. 두 단계: `[전체][스포츠활동][쇼핑/구경]` → 스포츠활동을 누르면 `[당구][볼링][클라이밍]`. 한 줄: 묶음을 펼쳐 `[전체][당구][볼링][클라이밍][소품샵]…`
 
 | `RecommendCourseResponse` 필드 | 타입 | 설명 |
 |---|---|---|
@@ -205,11 +223,11 @@
 | `category` · `subCategory` | string | 대분류 코드 · 세분류 이름 (예: `SPORTS`, `당구`) |
 | `address` | string 또는 null | 주소 |
 | `latitude` · `longitude` | number | 좌표 |
-| `imageUrl` | string 또는 null | 썸네일 (TourAPI 사진, 전시·공연은 포스터). null이면 프론트가 카테고리 기본 이미지 |
-| `openingHours` | string 또는 null | 운영시간 |
+| `imageUrl` | string 또는 null | 썸네일. **지금은 항상 null** (사진 데이터 연결 전, P1). null이면 프론트가 카테고리 기본 이미지 |
+| `openingHours` | string 또는 null | 운영시간. **지금은 항상 null** (REQ-018, P1) |
 | `stayMinutes` | integer | 예상 체류시간(분) |
 | `travelMinutes` | integer | 직전 지점 → 이 장소 이동시간(분) |
-| `transitInfo` | string 또는 null | 대중교통이면 노선·환승 (예: `버스 721 · 환승 0회`) |
+| `transitInfo` | string 또는 null | 대중교통일 때만 값이 있다. 노선·환승 (예: `수도권 2호선 · 환승 0회`), 700m 이내 도보 구간이면 `"도보"`, 대중교통 API 실패로 추정했으면 `null`. 도보·차량은 항상 `null` |
 
 방문 시각(도착·출발)은 `startTime` 과 시간 값으로 프론트가 계산한다 (`buildSchedule`).
 
@@ -261,7 +279,7 @@
 | 장소 수 | 상한 안에서 한 곳씩 넣으며, 어림한 총 소요시간이 이용 시간 안인 장소만 넣는다. 넣을 장소가 없으면 멈춘다 (예: 3시간 + 영화 150분 → 1곳, REQ-019) |
 | 방문 순서 | 출발지에서 가장 가까운 곳 → 그다음 가까운 곳 (직선거리) |
 | 같은 코스 | 장소 묶음이 같으면 같은 코스로 보고 하나만 남긴다 |
-| 대중교통 경로 | ODsay 경로 후보 중 첫 번째(ODsay 추천 순서)를 쓰고, 한 구간에 노선이 여러 개면 첫 노선을 표시한다 |
+| 대중교통 경로 | ODsay 경로 후보 중 첫 번째(ODsay 추천 순서)를 쓰고, 한 구간에 노선이 여러 개면 첫 노선을 표시한다. 700m 이내 구간은 도보로 계산한다 (시간 계산 규칙) |
 
 ---
 
@@ -282,8 +300,11 @@
 | 410 | `RECOMMENDATION_EXPIRED` (추천) | 2시간이 지나 조건이 사라짐 | 프론트가 가진 조건으로 추천 생성 API 호출 |
 | 429 | `TOO_MANY_REQUESTS` (추천) | 같은 사용자가 최근 1분 안에 다시 추천을 5번 넘게 요청 | "잠시 후 다시 시도해 주세요" |
 
-- **다시 추천 제한:** 같은 사용자 기준 **최근 1분 동안 5번까지** 허용하고 6번째부터 `429` 를 반환한다. 다시 추천은 호출할 때마다 새 `recommendationSetId` 가 생기므로 묶음 ID가 아니라 사용자 기준으로 센다. 비회원도 이용하므로 사용자 구분 방법(IP 등)은 구현 단계에서 정한다.
-- 외부 API 무료 한도를 지키기 위한 제한이다 (NFR-014).
+- **다시 추천 제한:** 같은 사용자 기준 **최근 1분 동안 5번까지** 허용하고 6번째부터 `429` 를 반환한다. 다시 추천은 호출할 때마다 새 `recommendationSetId` 가 생기므로 묶음 ID가 아니라 사용자 기준으로 센다.
+- **사용자 구분은 요청 IP** 로 한다. 비회원도 이용하므로 로그인 정보로는 구분할 수 없다. `429` 로 막힌 요청은 횟수에 세지 않는다 (1분이 지나면 다시 가능).
+- 배포 때 Nginx 같은 프록시 뒤에 두면 모든 요청 IP가 프록시 IP 하나로 보인다. 이때는 `server.forward-headers-strategy: framework` 설정이 필요하다 (배포 담당과 확인).
+- 제한 확인은 외부 API를 부르기 전에 맨 먼저 한다. 외부 API 무료 한도를 지키기 위한 제한이다 (NFR-014).
+- 첫 추천 생성(`POST /api/recommendations`)은 제한하지 않는다.
 
 ---
 
@@ -321,9 +342,16 @@
 | `recommendationSetId` · `expiresAt` | string | 소속 묶음 ID · 만료 시각 |
 | `origin` · `destination` | LocationResponse / null | 출발지 · 도착지 |
 | `transportType` · `availableMinutes` | string · integer | 요청 조건. 교체 시 시간 초과 판단에 사용 |
-| `places[].description` | string 또는 null | 소개 (펼침 영역) |
-| `places[].kakaoMapUrl` | string 또는 null | 정보가 없는 장소의 '카카오맵에서 보기' 링크 |
-| `routeLegs` | RouteLegResponse[] | 지도 경로. 형식은 [course-api.md 3.2](course-api.md) `CourseRouteLegResponse` 와 같다. 차량·도보는 `ACTUAL`(실제 경로), 대중교통과 직선 대체는 `STRAIGHT` |
+| `places[].description` | string 또는 null | 소개 (펼침 영역). **지금은 항상 null** (소개 데이터 연결 전, P1) |
+| `places[].kakaoMapUrl` | string 또는 null | 카카오 장소 페이지 링크 ('카카오맵에서 보기'). 카카오 로컬 응답의 `place_url` |
+| `routeLegs` | RouteLegResponse[] | 지도 경로. 형식은 [course-api.md 3.2](course-api.md) `CourseRouteLegResponse` 와 같다. 아래 표 참고 |
+
+`RouteLegResponse`: `fromVisitOrder`, `toVisitOrder`(출발지 0, 장소 1 ~ N, 도착지가 있으면 N + 1), `pathType`, `coordinates`(진행 방향 순서, 2개 이상).
+
+| `pathType` | 언제 | `coordinates` |
+|---|---|---|
+| `ACTUAL` | 차량·도보 API 성공, 대중교통의 700m 이내 도보 구간 | API가 준 실제 경로 좌표 |
+| `STRAIGHT` | 대중교통 구간(1차 버전), API 실패로 직선거리 추정한 구간 | 앞 지점과 뒤 지점 2개 |
 
 - 이동시간은 추천할 때 계산해 보관한 값을 쓴다. 상세 조회에서 이동시간 API를 다시 부르지 않는다.
 - 오류: `404 RECOMMENDATION_NOT_FOUND`, `410 RECOMMENDATION_EXPIRED`.
@@ -347,8 +375,8 @@
       "placeId": "201", "placeName": "당구장 F", "category": "SPORTS", "subCategory": "당구",
       "address": "서울 성동구 ○○로 5", "latitude": 37.5455, "longitude": 127.0510,
       "imageUrl": null, "stayMinutes": 90,
-      "travelMinutes": 12, "transitInfo": "버스 2014 · 환승 0회",
-      "diffMinutes": -3, "exceedsAvailableTime": false
+      "travelMinutes": 12, "transitInfo": null,
+      "diffMinutes": -3, "exceedsAvailableTime": false, "estimated": true
     }
   ]
 }
@@ -357,12 +385,15 @@
 | `AlternativePlaceResponse` 필드 | 타입 | 설명 |
 |---|---|---|
 | `placeId` ~ `stayMinutes` | | `RecommendPlaceResponse` 와 같은 의미 |
-| `travelMinutes` · `transitInfo` | integer · string/null | 직전 지점 → 후보 장소 이동 정보 (화면의 "버스 12분") |
-| `diffMinutes` | integer | 이 후보로 바꿨을 때 총 소요시간 변화. 음수면 줄어듦 |
-| `exceedsAvailableTime` | boolean | 바꾸면 이용 시간을 넘는지 |
+| `travelMinutes` | integer | 직전 지점 → 후보 장소 예상 이동시간 (직선거리 추정) |
+| `transitInfo` | null | **항상 null.** 후보 목록에서는 이동시간 API를 부르지 않아 노선 정보가 없다 |
+| `diffMinutes` | integer | 이 후보로 바꿨을 때 총 소요시간 변화(예상). 음수면 줄어듦 |
+| `exceedsAvailableTime` | boolean | 바꾸면 이용 시간을 넘는지 (예상 시간 기준) |
+| `estimated` | boolean | 이동시간이 직선거리 추정이면 true. **지금은 항상 true**. 프론트는 "약 12분" 처럼 예상 시간으로 표시한다 (NFR-025) |
 
-- 후보: **같은 세분류**(없으면 같은 대분류) 중 코스에 없는 장소를 앞뒤 장소와 가까운 순으로 5곳 정도. 추천할 때 받아 둔 후보를 쓴다.
-- `diffMinutes` 계산에 필요한 앞뒤 구간 이동시간만 새로 계산한다 (NFR-014). 대중교통 API 호출 횟수가 많으면 직선거리 추정으로 대신하고 교체 확정 때 정확히 계산하는 안도 검토한다.
+- 후보: 바꿀 장소와 **같은 대분류** 중 코스에 없는 장소, 최대 **5곳**. **같은 세분류를 먼저**, 그다음 같은 대분류의 다른 세분류 순서이고, 각각 앞뒤 장소를 거쳐 가는 거리가 짧은 순이다. 추천할 때 받아 둔 후보를 쓴다 (장소 API를 다시 부르지 않음).
+- 후보 목록에서는 **이동시간 API를 부르지 않고 직선거리로 추정**한다. 후보 5곳마다 앞뒤 구간을 부르면 외부 API 호출이 너무 많아지기 때문이다 (NFR-014). 정확한 시간은 5번 교체 확정 때 실제 API로 다시 계산한다.
+- 그래서 확정 후 실제 총 소요시간은 `diffMinutes` 로 예상한 값과 조금 다를 수 있다.
 - 프론트는 `exceedsAvailableTime: true` 인 후보를 **회색(선택 불가)으로 표시**해, 누르기 전에 시간 초과를 알 수 있게 한다.
 - 후보가 없으면 `alternatives: []` 로 `200`.
 - 오류: `404 RECOMMENDATION_NOT_FOUND`(코스 없음 또는 코스에 없는 `placeId`), `410 RECOMMENDATION_EXPIRED`.
@@ -389,9 +420,9 @@
 | `targetPlaceId` | string | O | 바꿀 장소 (현재 코스에 있어야 함) |
 | `newPlaceId` | string | O | 4번 API가 돌려준 후보 중 하나 |
 
-- 바뀐 앞뒤 구간 이동시간만 다시 계산해 총 소요시간을 갱신한다.
-- 교체 결과는 **새 `recommendationId`** 로 보관한다. 원래 버전도 만료 전까지 남겨 두어, 저장 API가 사용자가 실제로 본 버전을 저장할 수 있게 한다 (course-api 1.2). 만료 시각은 원래 묶음과 같다.
-- 프론트는 응답의 새 ID로 상세 화면(`/results/{새 recommendationId}`)을 갱신한다.
+- 바뀐 앞뒤 구간 이동시간만 고른 이동수단 API로 다시 계산해 총 소요시간을 갱신한다. 마지막 장소를 바꾸면 도착지까지 구간도 다시 계산한다.
+- 교체 결과는 **새 `recommendationId`** 로 보관한다. 원래 코스는 바뀌지 않고 만료 전까지 그대로 남는다. 저장 API가 사용자가 실제로 본 버전을 저장할 수 있게 하기 위해서다 (course-api 1.2). 새 코스의 `recommendationSetId` 와 만료 시각은 원래 묶음과 같다.
+- **프론트는 응답의 새 ID를 써야 한다.** 상세 화면을 `/results/{새 recommendationId}` 로 바꾸고, 이후 저장·지도·다시 교체도 새 ID로 요청한다. 옛 ID로 저장하면 교체 전 코스가 저장된다.
 
 | HTTP 상태 | 오류 코드 (소속) | 발생 상황 | 화면 처리 |
 |---|---|---|---|
@@ -424,6 +455,13 @@
 | 장소 후보 | 장소 서비스 `NearbyPlaceService.findCandidates` 결과(세분류 이름 포함)를 추천 쪽 후보 모양으로 바꿔 쓴다. 세분류를 정할 수 없는 장소는 장소 쪽에서 제외 | 정종일 (#81), 나혜빈 (#83) |
 | 코스 구성 규칙 | 1.6 코스 구성 규칙 표 | REQ-019·020, NFR-014, 나혜빈 결정 (2026-11-17) |
 | 보관 위치 | 서버 메모리 + 만료 시각. 정리 이후·서버 재시작 후의 ID 는 `404` | REQ-056, 나혜빈 결정 (2026-11-17) |
+| 세분류 필터 형식 | 대분류별로 묶은 `SubCategoryFilterResponse[]`. 화면은 두 단계(대분류 → 세분류) 필터 | REQ-050, 나혜빈 (#121) |
+| 다시 추천 사용자 구분 | 요청 IP. 막힌 요청은 횟수에 세지 않음 | 나혜빈 (#125) |
+| 코스 저장 연결 | 저장(코스 도메인)은 `RecommendService.getCourseDetail(recommendationId)` 로 상세 응답을 받아 쓴다. 다른 도메인이 추천 보관소를 직접 보지 않는다 | 나혜빈·김하윤 (#126) |
+| 지도 경로 | 추천할 때 받은 경로 좌표를 코스와 함께 보관하고, 상세 조회에서 `routeLegs` 로 돌려준다 (API 다시 호출 안 함) | 나혜빈 (#126) |
+| 교체 후보 이동시간 | 직선거리 추정(`estimated: true`, `transitInfo: null`). 교체 확정 때만 실제 API | NFR-014, 나혜빈 (#133) |
+| 교체 후 ID | 교체하면 새 `recommendationId`, 원래 코스는 그대로 | course-api 1.2, 나혜빈 (#133) |
+| 대중교통 700m 이내 | 도보 API로 계산, `transitInfo: "도보"`. ODsay 호출 간격 300ms | 나혜빈 (#141) |
 
 ### 6.2 남은 항목
 
@@ -431,9 +469,10 @@
 |---|---|---|
 | 세분류 ↔ 카카오 분류 | 장소 쪽 분류 규칙(토큰)이 실제 카카오 응답에서 잘 맞는지 확인·보정 | 정종일·나혜빈 |
 | 대분류·세분류 enum 중복 | 추천(`CategoryCode`, `SubCategory`)과 장소(`PlaceCategory`, `SubCategory`)에 각각 있음. 지금은 이름으로 변환해서 쓰고, 통일 여부는 팀 논의 | 나혜빈·정종일 |
-| 코스 저장 연결 | 저장 API가 `recommendationId` 로 추천 결과를 조회하는 서비스 메서드 | 나혜빈·김하윤 |
-| 지도 경로 | `routeLegs` 좌표를 추천 시 함께 보관하는 범위 | 나혜빈·유지수 |
-| 프론트 타입 | `features/recommend/types.ts` 필드 이름(`courseId`, `name`, `lat`/`lng`)과 이 명세 맞추기 | 나혜빈 |
+| 사진·운영시간·소개 | `imageUrl`·`openingHours`·`description` 이 지금은 null. 데이터 출처(TourAPI 등) 연결 (P1) | 나혜빈·정종일 |
+| 대중교통 지도 경로 | 대중교통 구간은 지금 직선(`STRAIGHT`). 실제 경로는 2차 버전 | 나혜빈·유지수 |
+| 프론트 타입 | `features/recommend/types.ts` 필드 이름(`courseId`, `name`, `lat`/`lng`)과 이 명세 맞추기 (RES-01 연결 때) | 나혜빈 |
+| 배포 시 IP | 프록시 뒤 배포면 `server.forward-headers-strategy: framework` 필요 | 김용현 |
 
 추천 결과는 서버 메모리에 보관하므로 ERD 의 `recommendation_history` 테이블은 2시간 보관에 쓰지 않는다. 이 테이블은 관리자 추천 이력 조회(REQ-047, P2)용 기록으로 남겨 두고, 그 기능을 만들 때 추천 시 기록을 남기는 기능을 추가한다. 만료 후 정리까지 남겨 두는 시간과 ID 생성 방식은 구현 단계에서 정한다.
 
@@ -448,3 +487,4 @@
 | 2026-11-16 | 공통 `ApiResponse`·`ErrorCode` 반영: 실패 응답 예시 추가, 오류 코드 소속(공통·추천·장소) 표시, 이용 시간 검증을 `30 ~ 360` 으로, 대분류 중복은 서버에서 정리 |
 | 2026-11-16 | 직선거리 추정 기준 확정 (우회 1.3배, 도보 4 · 대중교통 15 · 차량 20 km/h, 올림) |
 | 2026-11-17 | 장소 오류 코드 확정(`KAKAO_API_ERROR` 502·`KAKAO_API_RATE_LIMIT` 503), 검색 반경 1·2·3·5km, 코스 구성 규칙, 보관 위치 서버 메모리(정리 후·재시작 후 404) 반영 |
+| 2026-11-18 | 구현 완료 반영: 세분류 필터를 대분류별 묶음으로(1.3), 다시 추천 사용자 구분 = IP(2장), `routeLegs` 의 `pathType` 규칙(3장), 교체 후보 `estimated` 추가·`transitInfo` null·후보 고르는 순서(4장), 교체 후 새 ID 사용 안내(5장), 대중교통 700m 이내 도보 계산·ODsay 호출 간격(시간 계산 규칙), 사진·운영시간·소개는 지금 null, 6장 정리 |

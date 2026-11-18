@@ -3,21 +3,28 @@ package com.teumteum.member.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.teumteum.global.exception.CustomException;
+import com.teumteum.global.exception.CommonErrorCode;
+import com.teumteum.global.auth.LoginMemberArgumentResolver;
 import com.teumteum.global.exception.GlobalExceptionHandler;
 import com.teumteum.member.dto.SignupRequest;
 import com.teumteum.member.dto.LoginResponse;
+import com.teumteum.member.dto.MemberResponse;
 import com.teumteum.member.exception.MemberErrorCode;
 import com.teumteum.member.service.MemberService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import java.util.List;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -46,8 +53,48 @@ class MemberControllerTest {
     void setUp() {
         memberService = mock(MemberService.class);
         mockMvc = MockMvcBuilders.standaloneSetup(new MemberController(memberService))
+                .setCustomArgumentResolvers(new LoginMemberArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())   // 예외 → 공통 응답 변환도 실제처럼 붙인다
                 .build();
+    }
+
+    @Test
+    @DisplayName("본인 정보 조회는 인증된 회원 ID를 사용하고 이메일·닉네임만 반환한다")
+    void getMyInfo() throws Exception {
+        given(memberService.getMyInfo(7L))
+                .willReturn(new MemberResponse("user@email.com", "틈틈이"));
+
+        mockMvc.perform(get("/api/members/me")
+                        .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
+                        .param("memberId", "99"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.email").value("user@email.com"))
+                .andExpect(jsonPath("$.data.nickname").value("틈틈이"))
+                .andExpect(jsonPath("$.data.password").doesNotExist())
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
+        verify(memberService).getMyInfo(7L);
+    }
+
+    @Test
+    @DisplayName("본인 정보 조회에 인증이 없으면 401이며 서비스를 호출하지 않는다")
+    void getMyInfoWithoutAuthentication() throws Exception {
+        mockMvc.perform(get("/api/members/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        verifyNoInteractions(memberService);
+    }
+
+    @Test
+    @DisplayName("존재하지 않거나 탈퇴한 회원의 조회 오류를 공통 응답으로 반환한다")
+    void getMyInfoUnavailableMember() throws Exception {
+        given(memberService.getMyInfo(7L))
+                .willThrow(new CustomException(CommonErrorCode.UNAUTHORIZED));
+        mockMvc.perform(get("/api/members/me")
+                        .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of())))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }
 
     @Test
