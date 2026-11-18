@@ -281,6 +281,62 @@ class CourseComposerTest {
         verifyNoInteractions(travelTimeService);
     }
 
+    // ===================== 너무 먼 곳 막기 (#170) =====================
+
+    @Test
+    @DisplayName("도보 한 구간이 25분을 넘는 장소는 시간이 남아도 코스에 넣지 않는다")
+    void compose_walk_skipsPlaceOverLegLimit() {
+        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);   // 약 111m → 도보 약 3분
+        PlaceCandidate far = place("far", CategoryCode.NATURE, "공원", 0.013);   // 약 1.4km → 도보 약 29분 (> 25분)
+
+        List<CoursePlan> courses = composer.compose(randomCondition(300), List.of(near, far)); // 5시간: 시간은 충분
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertFalse(course.placeIds().contains("far"), "먼 장소가 들어감: " + course.placeIds());
+        }
+    }
+
+    @Test
+    @DisplayName("한 구간 판단: 출발지 → 장소, 장소 → 장소 구간만 보고 마지막 장소 → 도착지 구간은 보지 않는다")
+    void isWithinLegLimit_ignoresFinalTravelToDestination() {
+        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);
+        PlaceCandidate far = place("far", CategoryCode.NATURE, "공원", 0.013);
+        Coordinate farDestination = new Coordinate(ORIGIN.latitude() + 0.05, ORIGIN.longitude()); // 약 5.6km
+        CourseCondition withFarDestination =
+                new CourseCondition(ORIGIN, farDestination, 300, TransportType.WALK, List.of());
+
+        assertTrue(composer.isWithinLegLimit(randomCondition(300), List.of(near)));
+        assertFalse(composer.isWithinLegLimit(randomCondition(300), List.of(far)));
+        assertFalse(composer.isWithinLegLimit(randomCondition(300), List.of(near, far))); // 카페 → 공원 구간이 김
+        assertTrue(composer.isWithinLegLimit(withFarDestination, List.of(near)));         // 도착지까지 먼 건 괜찮다
+    }
+
+    @Test
+    @DisplayName("가까운 후보 먼저: 많이 먼 장소는 항상 뒤에 온다")
+    void orderNearFirst_putsMuchFartherPlaceLast() {
+        PlaceCandidate near = place("near", CategoryCode.CAFE, "카페", 0.001);    // 약 0.1km
+        PlaceCandidate far = place("far", CategoryCode.CAFE, "디저트", 0.009);    // 약 1.0km (섞는 거리 0.5km 보다 훨씬 멂)
+
+        for (int i = 0; i < 30; i++) { // 무작위가 들어가니 여러 번 돌려서 확인
+            List<PlaceCandidate> ordered = composer.orderNearFirst(randomCondition(180), List.of(far, near));
+            assertEquals("near", ordered.get(0).placeId());
+        }
+    }
+
+    @Test
+    @DisplayName("가까운 후보 먼저: 거리가 비슷하면 순서가 바뀌기도 한다 (코스가 매번 같지 않게)")
+    void orderNearFirst_mixesSimilarDistances() {
+        PlaceCandidate a = place("a", CategoryCode.CAFE, "카페", 0.001);    // 약 0.1km
+        PlaceCandidate b = place("b", CategoryCode.CAFE, "디저트", 0.002);  // 약 0.2km
+
+        Set<String> firsts = new java.util.HashSet<>();
+        for (int i = 0; i < 30; i++) {
+            firsts.add(composer.orderNearFirst(randomCondition(180), List.of(a, b)).get(0).placeId());
+        }
+        assertEquals(Set.of("a", "b"), firsts); // 둘 다 1등을 해 본 적이 있다
+    }
+
     // ===================== 조건 정리 =====================
 
     @Test

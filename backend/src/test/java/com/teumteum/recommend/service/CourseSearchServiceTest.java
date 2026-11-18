@@ -98,12 +98,28 @@ class CourseSearchServiceTest {
     }
 
     @Test
-    @DisplayName("5km 까지 넓혀도 코스가 없으면 빈 목록이다 (오류 아님)")
-    void findCourses_returnsEmpty_afterAllRadii() {
+    @DisplayName("도보는 2km 까지만 넓히고, 그래도 코스가 없으면 빈 목록이다 (오류 아님)")
+    void findCourses_walk_stopsAt2km() {
         givenNearbyResults();
         given(courseComposer.compose(eq(randomCondition), anyList(), anyList())).willReturn(List.of());
 
         List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
+
+        assertTrue(courses.isEmpty());
+        verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(1_000));
+        verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(2_000));
+        verify(nearbyPlaceService, never()).findCandidates(anyDouble(), anyDouble(), any(), eq(3_000));
+        verify(nearbyPlaceService, never()).findCandidates(anyDouble(), anyDouble(), any(), eq(5_000));
+    }
+
+    @Test
+    @DisplayName("대중교통은 5km 까지 넓히고, 그래도 코스가 없으면 빈 목록이다 (오류 아님)")
+    void findCourses_transit_widensTo5km() {
+        CourseCondition transit = new CourseCondition(ORIGIN, null, 180, TransportType.TRANSIT, List.of());
+        givenNearbyResults();
+        given(courseComposer.compose(eq(transit), anyList(), anyList())).willReturn(List.of());
+
+        List<CoursePlan> courses = courseSearchService.findCourses(transit).plans();
 
         assertTrue(courses.isEmpty());
         for (int radius : List.of(1_000, 2_000, 3_000, 5_000)) {
@@ -215,6 +231,18 @@ class CourseSearchServiceTest {
     @DisplayName("반경 단계는 1·2·3·5km 다")
     void radiusSteps() {
         assertEquals(List.of(1_000, 2_000, 3_000, 5_000), CourseSearchService.RADIUS_STEPS);
+    }
+
+    @Test
+    @DisplayName("이동수단별 반경 단계: 도보 1·2km, 대중교통·차량 1·2·3·5km")
+    void radiusStepsFor_eachTransport() {
+        assertEquals(List.of(1_000, 2_000), courseSearchService.radiusStepsFor(conditionOf(TransportType.WALK)));
+        assertEquals(List.of(1_000, 2_000, 3_000, 5_000), courseSearchService.radiusStepsFor(conditionOf(TransportType.TRANSIT)));
+        assertEquals(List.of(1_000, 2_000, 3_000, 5_000), courseSearchService.radiusStepsFor(conditionOf(TransportType.CAR)));
+    }
+
+    private CourseCondition conditionOf(TransportType transportType) {
+        return new CourseCondition(ORIGIN, null, 180, transportType, List.of());
     }
 
     // ===================== 도우미 =====================

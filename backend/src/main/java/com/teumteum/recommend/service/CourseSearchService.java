@@ -27,7 +27,7 @@ import java.util.Set;
  * <pre>
  * 반경 1km → 후보 검색(장소 도메인) → 코스 조합(CourseComposer) → 3개 모이면 끝
  *          ↓ 모자라면
- * 반경 2km → 3km → 5km 차례로, 모자란 만큼만 더 찾는다
+ * 반경 2km → 3km → 5km 차례로, 모자란 만큼만 더 찾는다 (이동수단 최대 반경까지만. 도보는 2km)
  * 끝까지 넓혀도 없으면 빈 목록 (오류 아님 → 프론트가 "조건에 맞는 코스가 없어요" 안내)
  * </pre>
  * 장소 도메인은 NearbyPlaceService(서비스)를 통해서만 부른다 (도메인 경계 규칙).
@@ -73,7 +73,7 @@ public class CourseSearchService {
         Map<String, PlaceCandidate> seenCandidates = new LinkedHashMap<>();
         Set<PlaceCategory> placeCategories = toPlaceCategories(condition);
 
-        for (int radius : RADIUS_STEPS) {
+        for (int radius : radiusStepsFor(condition)) {
             List<PlaceCandidate> candidates;
             try {
                 List<PlaceCandidate> all = nearbyPlaceService.findCandidates(
@@ -102,6 +102,19 @@ public class CourseSearchService {
             log.info("반경 {}m 에서 코스 {}개 → 반경을 넓혀 다시 찾음", radius, found.size());
         }
         return new CourseSearchResult(found, List.copyOf(seenCandidates.values()));
+    }
+
+    /**
+     * 이 이동수단으로 넓혀 볼 반경 단계. 이동수단의 최대 반경을 넘는 단계는 뺀다.
+     * 예) 도보(최대 2km) → [1km, 2km] / 대중교통·차량(최대 5km) → [1km, 2km, 3km, 5km]
+     * <p>
+     * 도보인데 5km 까지 넓히면 "편도 1시간 넘게 걸어가기" 같은 코스가 나와서 막는다 (#170).
+     */
+    List<Integer> radiusStepsFor(CourseCondition condition) {
+        int maxRadius = condition.transportType().getMaxSearchRadiusMeters();
+        return RADIUS_STEPS.stream()
+                .filter(radius -> radius <= maxRadius)
+                .toList();
     }
 
     /**
