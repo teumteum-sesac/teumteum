@@ -1,6 +1,11 @@
 package com.teumteum.global.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.anyLong;
+import com.teumteum.member.service.MemberService;
+import org.junit.jupiter.api.BeforeEach;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,7 +28,19 @@ class JwtAuthenticationFilterTest {
     private static final String SECRET = "test-secret-key-for-teumteum-jwt-0123456789";
 
     private final JwtProvider jwtProvider = new JwtProvider(SECRET, 3600);
-    private final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtProvider);
+    private final MemberService memberService = mock(MemberService.class);
+    private final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtProvider, memberService);
+
+    @BeforeEach
+    void activeMembers() {
+        given(memberService.isActiveMember(anyLong())).willReturn(true);
+    }
+
+    @Test
+    void withdrawnOrMissingMemberIsNotAuthenticatedEvenWithValidToken() throws Exception {
+        given(memberService.isActiveMember(5L)).willReturn(false);
+        assertThat(runFilter("Bearer " + jwtProvider.createAccessToken(5L))).isNull();
+    }
 
     @AfterEach
     void clear() {

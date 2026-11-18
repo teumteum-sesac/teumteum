@@ -32,7 +32,9 @@ public enum MemberErrorCode implements ErrorCode {
      * 이메일이 없는 경우·비밀번호가 틀린 경우·탈퇴한 회원을 모두 같은 문구로 응답한다.
      * 구분해서 알려 주면 "이 이메일은 가입돼 있다"는 정보가 새어 나가기 때문이다.
      */
-    LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 맞지 않아요.");
+    LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 맞지 않아요."),
+
+    WITHDRAWAL_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 맞지 않아요.");
 
     private final HttpStatus status;
     private final String message;
