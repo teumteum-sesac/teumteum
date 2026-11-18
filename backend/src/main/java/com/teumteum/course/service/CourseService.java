@@ -3,14 +3,7 @@ package com.teumteum.course.service;
 import com.teumteum.course.domain.Course;
 import com.teumteum.course.domain.CoursePlace;
 import com.teumteum.course.domain.CourseRouteLeg;
-import com.teumteum.course.dto.CourseCoordinateResponse;
-import com.teumteum.course.dto.CourseDeleteResponse;
-import com.teumteum.course.dto.CourseListResponse;
-import com.teumteum.course.dto.CourseLocationResponse;
-import com.teumteum.course.dto.CoursePlaceResponse;
-import com.teumteum.course.dto.CourseResponse;
-import com.teumteum.course.dto.CourseRouteLegResponse;
-import com.teumteum.course.dto.CourseSummaryResponse;
+import com.teumteum.course.dto.*;
 import com.teumteum.course.exception.CourseErrorCode;
 import com.teumteum.course.repository.CoursePlaceCount;
 import com.teumteum.course.repository.CoursePlaceRepository;
@@ -18,11 +11,15 @@ import com.teumteum.course.repository.CourseRepository;
 import com.teumteum.course.repository.CourseRouteLegRepository;
 import com.teumteum.global.exception.CommonErrorCode;
 import com.teumteum.global.exception.CustomException;
+import java.math.BigDecimal;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,6 +27,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.teumteum.recommend.service.RecommendService;
+import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
+import com.teumteum.recommend.dto.RouteLegResponse;
+
 
 @Service // Spring이 관리하는 서비스 객체로 등록한다.
 @RequiredArgsConstructor // final 필드를 받는 생성자를 만들고 Repository를 주입받는다.
@@ -39,6 +40,7 @@ public class CourseService {
     private final CourseRepository courseRepository;
     private final CoursePlaceRepository coursePlaceRepository;
     private final CourseRouteLegRepository courseRouteLegRepository;
+    private final RecommendService recommendService;
 
     // memberId는 요청 파라미터가 아니라 Controller가 인증 정보에서 확인한 회원 ID여야 한다.
     public CourseListResponse getCourses(Long memberId, int page, int size) {
@@ -260,5 +262,132 @@ public class CourseService {
 
         // 트랜잭션 커밋에 실패하면 정상 응답 대신 예외가 전달된다.
         return new CourseDeleteResponse(course.getCourseId().toString(), true);
+    }
+
+    // 클래스의 readOnly=true 설정을 덮어써 저장 작업을 쓰기 트랜잭션으로 실행한다.
+    @Transactional
+    public CourseSaveResponse saveCourse(Long memberId, String recommendationId) {
+        // 회원 ID는 Controller가 인증 정보에서 전달한다. 잘못된 회원 ID로 DB를 조회하지 않는다.
+        if (memberId == null || memberId <= 0) {
+            throw new CustomException(CommonErrorCode.UNAUTHORIZED);
+        }
+        // Controller의 DTO 검증과 별개로 Service에서도 잘못된 추천 ID를 거절한다.
+        if (recommendationId == null || recommendationId.isBlank() || recommendationId.length() > 128) {
+            throw new CustomException(CommonErrorCode.INVALID_REQUEST);
+        }
+
+        // 동일 회원이 동일 추천 버전을 이미 저장했는지 확인한다.
+        // Optional은 조회 결과가 있을 수도, 없을 수도 있음을 나타낸다.
+        Optional<Course> existingCourse =
+                courseRepository.findByMemberIdAndSourceRecommendationId(memberId, recommendationId);
+
+        // isPresent()가 true면 이미 저장된 코스가 있다는 뜻이다.
+        // 추천 조회보다 먼저 처리하므로 원래 추천이 만료돼도 기존 저장본을 반환할 수 있다.
+        if (existingCourse.isPresent()) {
+            Course course = existingCourse.get(); // Optional 안에 들어 있는 실제 코스 객체를 꺼낸다.
+            String createdAt = course.getCreatedAt()
+                    .atZone(ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+
+            // 새로 저장하지 않았으므로 created는 false다. ID·이름·저장 시각은 기존 값을 유지한다.
+            // return하면 이 메서드가 끝나므로 아래 신규 저장 경로로 넘어가지 않는다.
+            return new CourseSaveResponse(
+                    course.getCourseId().toString(),
+                    course.getCourseName(),
+                    createdAt,
+                    false
+            );
+        }
+
+        // 기존 저장본이 없을 때만 추천 서비스에서 장소·일정·경로가 담긴 상세 정보를 받는다.
+        // 추천이 없으면 404, 만료됐으면 410 예외가 발생하며 저장 처리는 진행하지 않는다.
+        RecommendCourseDetailResponse detail =
+                recommendService.getCourseDetail(recommendationId);
+
+        // 추천 응답의 위치 정보를 꺼낸다. 도착지는 설정하지 않았으면 null이다.
+        var origin = detail.origin();
+        var destination = detail.destination();
+
+        // Course.create()는 값을 채운 엔티티 객체만 만든다. 이 시점에는 DB에 저장하지 않는다.
+        // 추천 DTO의 double 좌표는 BigDecimal, "HH:mm" 문자열은 LocalTime으로 변환한다.
+        Course course = Course.create(
+                memberId,
+                detail.recommendationId(),
+                detail.courseName(),
+                origin.name(),
+                origin.address(),
+                BigDecimal.valueOf(origin.latitude()),
+                BigDecimal.valueOf(origin.longitude()),
+                destination == null ? null : destination.name(),
+                destination == null ? null : destination.address(),
+                destination == null ? null : BigDecimal.valueOf(destination.latitude()),
+                destination == null ? null : BigDecimal.valueOf(destination.longitude()),
+                Course.TransportType.valueOf(detail.transportType().name()),
+                LocalTime.parse(detail.startTime()),
+                toMinutes(detail.totalMinutes()),
+                toMinutes(detail.totalTravelMinutes()),
+                toMinutes(detail.finalTravelMinutes()),
+                detail.estimated()
+        );
+
+        // 추천의 경로 구간과 좌표를 저장용 엔티티로 복사하고 같은 코스 객체에 연결한다.
+        // 여기서는 객체만 생성한다. 아직 코스와 경로를 DB에 저장하지 않는다.
+        List<CourseRouteLeg> routeLegs = createRouteLegs(course, detail.routeLegs());
+
+        // TODO: 장소 담당 서비스에서 카카오 장소 ID에 대응하는 내부 place_id를 받은 뒤,
+        // CoursePlace를 생성하고 코스·장소·위에서 만든 routeLegs를 함께 저장한다.
+        // [임시] 추천의 placeId는 카카오 ID이고 DB의 place_id는 별도 내부 ID다.
+        // 장소 ID 연결이 준비될 때까지 신규 저장을 중단해 불완전한 코스가 저장되지 않게 한다.
+        throw new CustomException(CommonErrorCode.INTERNAL_SERVER_ERROR);
+    }
+
+    // 구간 목록의 순서와 각 구간 안의 좌표 순서를 유지하며 저장용 객체 목록을 만든다.
+    List<CourseRouteLeg> createRouteLegs(Course course, List<RouteLegResponse> routeLegs) {
+        if (routeLegs == null || routeLegs.isEmpty()) {
+            throw new CustomException(CommonErrorCode.INVALID_REQUEST);
+        }
+
+        return routeLegs.stream().map(leg -> {
+            // 출발지 0, 장소 1~4, 도착지 최대 5다. 한 구간은 바로 다음 지점으로 이어진다.
+            if (leg == null || leg.fromVisitOrder() < 0 || leg.fromVisitOrder() > 4
+                    || leg.toVisitOrder() != leg.fromVisitOrder() + 1
+                    || leg.pathType() == null || leg.coordinates() == null
+                    || leg.coordinates().size() < 2) {
+                throw new CustomException(CommonErrorCode.INVALID_REQUEST);
+            }
+
+            List<CourseRouteLeg.Coordinate> coordinates = leg.coordinates().stream()
+                    .map(coordinate -> {
+                        // NaN·무한대와 지도 범위를 벗어난 좌표는 저장할 수 없다.
+                        if (coordinate == null || !Double.isFinite(coordinate.latitude())
+                                || !Double.isFinite(coordinate.longitude())
+                                || Math.abs(coordinate.latitude()) > 90
+                                || Math.abs(coordinate.longitude()) > 180) {
+                            throw new CustomException(CommonErrorCode.INVALID_REQUEST);
+                        }
+                        return new CourseRouteLeg.Coordinate(
+                                BigDecimal.valueOf(coordinate.latitude()),
+                                BigDecimal.valueOf(coordinate.longitude())
+                        );
+                    }).toList();
+
+            // 추천 도메인과 저장 도메인의 enum은 별도 타입이므로 같은 이름으로 변환한다.
+            // 위에서 순서 범위를 검사했으므로 Short로 변환해도 값이 넘치지 않는다.
+            return CourseRouteLeg.create(
+                    course,
+                    (short) leg.fromVisitOrder(),
+                    (short) leg.toVisitOrder(),
+                    CourseRouteLeg.PathType.valueOf(leg.pathType().name()),
+                    coordinates
+            );
+        }).toList();
+    }
+
+    // int를 무조건 short로 바꾸면 큰 값이 음수로 바뀔 수 있어 범위를 검사한 뒤 변환한다.
+    private short toMinutes(int minutes) {
+        if (minutes < 0 || minutes > Short.MAX_VALUE) {
+            throw new CustomException(CommonErrorCode.INVALID_REQUEST);
+        }
+        return (short) minutes;
     }
 }

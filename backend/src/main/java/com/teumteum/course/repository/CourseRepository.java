@@ -18,4 +18,8 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     // 해당 회원의 코스를 페이지 단위로 조회한다. Pageable로 페이지 번호(0부터), 크기, 정렬을 전달한다.
     // Page<Course>는 Course 목록과 전체 건수·페이지 수를 담는다. 조회 결과가 없으면 목록이 비어 있다.
     Page<Course> findByMemberId(Long memberId, Pageable pageable);
+
+    Optional<Course> findByMemberIdAndSourceRecommendationId(
+            Long memberId,
+            String sourceRecommendationId);
 }
