@@ -20,6 +20,9 @@ import type { NearbyPlaceResult } from '../types'
 import { straightDistance } from '../format'
 import { useNearbySearch, type NearbySearchItem } from '../hooks/useNearbySearch'
 
+/** 주변 탐색 진입 시 이 시간(ms) 안에 받은 현재 위치는 다시 쓴다 */
+const REUSE_POSITION_MS = 2 * 60 * 1000
+
 // ── 주변 탐색 (HOM-02) 반경 맞춤 ──
 /** 반경 원에 맞출 때 지도 가장자리 여백(px). 위쪽은 검색창 묶음 아래끝 + 이 값 */
 const RADIUS_FIT_GAP = 12
@@ -77,7 +80,11 @@ interface HomeScreenProps {
 export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const navigate = useNavigate()
   // 홈은 권한 변경·화면 복귀 시 내 위치 버튼 상태를 다시 판단한다
-  const { position, denied, loading, fixId, locate } = useCurrentPosition({ watchPermission: !nearby })
+  // 주변 탐색은 홈에서 2분 안에 받은 위치가 있으면 위치를 다시 묻지 않고 바로 주변 장소를 부른다 (첫 로딩 단축)
+  const { position, denied, loading, fixId, locate } = useCurrentPosition({
+    watchPermission: !nearby,
+    reuseRecentMs: nearby ? REUSE_POSITION_MS : undefined,
+  })
   const setOrigin = useConditionStore((s) => s.setOrigin)
   const [radius, setRadius] = useState(1000)
   // 주변 탐색(HOM-02) 대분류 필터. null = 전체. 지도 마커와 시트 목록이 같은 값을 쓴다

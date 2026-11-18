@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_ERROR_MESSAGE } from '../../../shared/api/apiError'
 import type { LatLng } from '../../../shared/types/domain'
 import { getNearbyPlaces } from '../api/nearbyApi'
@@ -29,11 +29,26 @@ export function useNearbyPlaces(position: LatLng, radius: number, enabled: boole
   // 지금 화면이 원하는 요청. 받은 결과의 requestKey 와 다르면 아직 불러오는 중이다
   const requestKey = `${lat},${lng},${radius},${retryCount}`
 
+  // 진행 중인 요청. 같은 요청(requestKey)이 또 오면 새로 부르지 않고 이 응답을 같이 쓴다
+  // (개발 모드 StrictMode 가 effect 를 두 번 돌려 같은 요청이 동시에 두 번 나가고, 늦은 쪽을 기다리던 문제 방지)
+  const inflightRef = useRef<{ key: string; promise: Promise<NearbyPlaceResult[]> } | null>(null)
+
   useEffect(() => {
     if (!enabled) return
     // 이 요청이 아직 최신인지. 위치·반경이 바뀌어 effect 가 정리(cleanup)되면 false 가 된다
     let latest = true
-    getNearbyPlaces({ lat, lng, radius })
+    let inflight = inflightRef.current
+    if (!inflight || inflight.key !== requestKey) {
+      const promise = getNearbyPlaces({ lat, lng, radius })
+      inflight = { key: requestKey, promise }
+      inflightRef.current = inflight
+      // 끝나면 비워서, 같은 조건으로 '다시 시도'하거나 다시 들어왔을 때는 새로 부르게 한다
+      const done = () => {
+        if (inflightRef.current?.promise === promise) inflightRef.current = null
+      }
+      promise.then(done, done)
+    }
+    inflight.promise
       .then((places) => {
         if (latest) setLoaded({ requestKey, places, errorMessage: null })
       })

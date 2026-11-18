@@ -245,10 +245,11 @@ export default function NearbySheet({
         ) : (
           listNotice(status, errorMessage, onRetry, places.length, radiusEmpty) ?? (
           <>
-            {/* 반경을 바꿔 다시 불러오는 동안에는 이전 목록을 그대로 두고 작게 알린다 */}
+            {/* 반경을 바꿔 다시 불러오는 동안에는 이전 목록을 그대로 두고, 진행 중임을 위쪽에 분명히 알린다 */}
             {status === 'loading' && (
-              <p role="status" className="pb-2 text-xs text-neutral-400">
-                새로 불러오는 중…
+              <p role="status" className="mb-2 flex items-center gap-2 rounded-lg bg-primary-light px-3 py-2 text-xs font-bold text-primary-dark">
+                <Spinner />
+                반경 {formatDistance(radius)} 안의 장소를 새로 불러오는 중…
               </p>
             )}
             <ul className="flex flex-col gap-2">
@@ -277,6 +278,16 @@ export default function NearbySheet({
         )}
       </div>
     </div>
+  )
+}
+
+/** 작은 회전 표시 (움직임 줄이기 설정이면 멈춤) */
+function Spinner() {
+  return (
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0 motion-safe:animate-spin">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
   )
 }
 
@@ -375,8 +386,9 @@ function listNotice(
     )
   }
   if (count > 0) return null
-  if (status === 'idle') return <EmptyState message="현재 위치를 확인하고 있어요." />
-  if (status === 'loading') return <EmptyState message="주변 장소를 불러오고 있어요." />
+  // 처음 불러올 때는 카드 모양 자리표시로 어디에 무엇이 나올지 보여 준다 (위치 확인 → 장소 불러오기 2단계 문구)
+  if (status === 'idle') return <PlaceCardSkeletonList label="현재 위치를 확인하고 있어요…" />
+  if (status === 'loading') return <PlaceCardSkeletonList label="주변 장소를 불러오고 있어요…" />
   return (
     <EmptyState
       message={radiusEmpty ? '이 반경에 장소가 없어요. 반경을 넓혀보세요.' : '이 카테고리의 장소가 없어요. 다른 카테고리를 골라보세요.'}
