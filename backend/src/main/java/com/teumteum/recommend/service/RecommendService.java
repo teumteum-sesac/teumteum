@@ -2,6 +2,7 @@ package com.teumteum.recommend.service;
 
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.recommend.domain.CoursePlan;
+import com.teumteum.recommend.domain.CourseSearchResult;
 import com.teumteum.recommend.domain.RecommendCondition;
 import com.teumteum.recommend.domain.RecommendCondition.Location;
 import com.teumteum.recommend.domain.RecommendationSet;
@@ -87,9 +88,9 @@ public class RecommendService {
 
     public RecommendResponse recommend(RecommendRequest request) {
         RecommendCondition condition = toCondition(request);
-        List<CoursePlan> plans = courseSearchService.findCourses(condition.toCourseCondition());
+        CourseSearchResult searchResult = courseSearchService.findCourses(condition.toCourseCondition());
 
-        RecommendationSet recommendationSet = createSet(condition, plans);
+        RecommendationSet recommendationSet = createSet(condition, searchResult);
         recommendationStore.save(recommendationSet);
 
         return responseMapper.toResponse(recommendationSet);
@@ -114,12 +115,13 @@ public class RecommendService {
         RecommendationSet previous = findValidSet(recommendationSetId);
         RecommendCondition condition = previous.condition();
 
-        List<CoursePlan> plans = courseSearchService.findCourses(condition.toCourseCondition(), placeIdsIn(previous));
-        if (plans.isEmpty() && !previous.courses().isEmpty()) {
-            plans = courseSearchService.findCourses(condition.toCourseCondition()); // 겹쳐도 되니 다시 찾기
+        CourseSearchResult searchResult =
+                courseSearchService.findCourses(condition.toCourseCondition(), placeIdsIn(previous));
+        if (searchResult.plans().isEmpty() && !previous.courses().isEmpty()) {
+            searchResult = courseSearchService.findCourses(condition.toCourseCondition()); // 겹쳐도 되니 다시 찾기
         }
 
-        RecommendationSet recommendationSet = createSet(condition, plans);
+        RecommendationSet recommendationSet = createSet(condition, searchResult);
         recommendationStore.save(recommendationSet);
         return responseMapper.toResponse(recommendationSet);
     }
@@ -152,17 +154,31 @@ public class RecommendService {
      * @throws CustomException 없거나 정리된 ID → 404 RECOMMENDATION_NOT_FOUND, 2시간 지난 ID → 410 RECOMMENDATION_EXPIRED
      */
     public RecommendCourseDetailResponse getCourseDetail(String recommendationId) {
+        RecommendedCourse course = findValidCourse(recommendationId);
+        RecommendationSet recommendationSet = findSetOf(course);
+        return responseMapper.toCourseDetailResponse(course, recommendationSet.condition());
+    }
+
+    /**
+     * 코스 꺼내기. 없거나 정리됐으면 404, 2시간 지났으면 410.
+     * 장소 교체(PlaceReplaceService)도 같은 규칙으로 코스를 꺼내므로 package-private 으로 열어 둔다.
+     */
+    RecommendedCourse findValidCourse(String recommendationId) {
         RecommendedCourse course = recommendationStore.findCourse(recommendationId)
                 .orElseThrow(() -> new CustomException(RecommendErrorCode.RECOMMENDATION_NOT_FOUND));
         if (course.isExpiredAt(OffsetDateTime.now(clock))) {
             throw new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED);
         }
+        return course;
+    }
 
-        // 출발지·이동수단 같은 조건은 묶음에 있다. 코스와 묶음은 같이 보관·정리되므로 보통 항상 있다
-        RecommendationSet recommendationSet = recommendationStore.findSet(course.recommendationSetId())
+    /**
+     * 코스가 속한 묶음 꺼내기 (출발지·이동수단 같은 조건과 장소 후보가 묶음에 있다).
+     * 코스와 묶음은 같이 보관·정리되므로 보통 항상 있다. 없으면 404.
+     */
+    RecommendationSet findSetOf(RecommendedCourse course) {
+        return recommendationStore.findSet(course.recommendationSetId())
                 .orElseThrow(() -> new CustomException(RecommendErrorCode.RECOMMENDATION_NOT_FOUND));
-
-        return responseMapper.toCourseDetailResponse(course, recommendationSet.condition());
     }
 
     /** 요청 DTO → 조건 도메인. 정리 규칙은 RecommendCondition 생성자가 처리한다 */
@@ -181,18 +197,19 @@ public class RecommendService {
         return new Location(location.name(), location.address(), location.latitude(), location.longitude());
     }
 
-    /** 코스마다 ID 를 붙이고 같은 만료 시각으로 묶는다 */
-    private RecommendationSet createSet(RecommendCondition condition, List<CoursePlan> plans) {
+    /** 코스마다 ID 를 붙이고 같은 만료 시각으로 묶는다. 장소 후보도 교체용으로 함께 보관한다 */
+    private RecommendationSet createSet(RecommendCondition condition, CourseSearchResult searchResult) {
         // 초 단위로 자른다: 응답이 "15:00:00+09:00" 처럼 나가게 (소수점 아래 나노초 제거)
         OffsetDateTime now = OffsetDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
         OffsetDateTime expiresAt = now.plus(RETENTION);
         String recommendationSetId = newId("rs_");
 
         List<RecommendedCourse> courses = new ArrayList<>();
-        for (CoursePlan plan : plans) {
+        for (CoursePlan plan : searchResult.plans()) {
             courses.add(new RecommendedCourse(newId("rc_"), recommendationSetId, plan, expiresAt));
         }
-        return new RecommendationSet(recommendationSetId, condition, courses, now, expiresAt);
+        return new RecommendationSet(recommendationSetId, condition, courses, now, expiresAt,
+                searchResult.candidates());
     }
 
     /**

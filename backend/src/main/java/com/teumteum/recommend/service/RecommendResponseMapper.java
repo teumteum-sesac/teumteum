@@ -4,6 +4,7 @@ import com.teumteum.recommend.domain.CategoryCode;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseStop;
 import com.teumteum.recommend.domain.PathType;
+import com.teumteum.recommend.domain.PlaceAlternative;
 import com.teumteum.recommend.domain.PlaceCandidate;
 import com.teumteum.recommend.domain.RecommendCondition;
 import com.teumteum.recommend.domain.RecommendCondition.Location;
@@ -12,7 +13,10 @@ import com.teumteum.recommend.domain.RecommendedCourse;
 import com.teumteum.recommend.domain.SubCategory;
 import com.teumteum.recommend.domain.TravelRoute;
 import com.teumteum.recommend.domain.TravelRoute.Coordinate;
+import com.teumteum.recommend.dto.AlternativePlaceListResponse;
+import com.teumteum.recommend.dto.AlternativePlaceResponse;
 import com.teumteum.recommend.dto.CoordinateResponse;
+import com.teumteum.recommend.dto.CurrentPlaceResponse;
 import com.teumteum.recommend.dto.LocationResponse;
 import com.teumteum.recommend.dto.RecommendConditionResponse;
 import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
@@ -218,6 +222,46 @@ public class RecommendResponseMapper {
         return coordinates.stream()
                 .map(c -> new CoordinateResponse(c.latitude(), c.longitude()))
                 .toList();
+    }
+
+    // ===================== 장소 교체 후보 =====================
+
+    /**
+     * 교체 후보 응답 (명세 4장). 위쪽 "지금: 카페 A" + 후보 목록.
+     *
+     * @param targetIndex 바꿀 장소의 위치 (0부터). 응답의 visitOrder 는 1부터라 + 1
+     */
+    public AlternativePlaceListResponse toAlternativeListResponse(RecommendedCourse course, int targetIndex,
+                                                                  List<PlaceAlternative> alternatives) {
+        CourseStop target = course.plan().stops().get(targetIndex);
+        PlaceCandidate place = target.place();
+        CurrentPlaceResponse currentPlace = new CurrentPlaceResponse(
+                place.placeId(), targetIndex + 1, place.placeName(),
+                place.category(), place.subCategory(), target.stayMinutes());
+
+        List<AlternativePlaceResponse> responses = alternatives.stream()
+                .map(this::toAlternativeResponse)
+                .toList();
+        return new AlternativePlaceListResponse(course.recommendationId(), currentPlace, responses);
+    }
+
+    private AlternativePlaceResponse toAlternativeResponse(PlaceAlternative alternative) {
+        PlaceCandidate place = alternative.place();
+        return new AlternativePlaceResponse(
+                place.placeId(),
+                place.placeName(),
+                place.category(),
+                place.subCategory(),
+                place.address(),
+                place.latitude(),
+                place.longitude(),
+                null,                               // imageUrl: 아직 데이터 없음
+                alternative.stayMinutes(),
+                alternative.travelMinutes(),
+                null,                               // transitInfo: 직선 추정이라 노선 정보 없음
+                alternative.diffMinutes(),
+                alternative.exceedsAvailableTime(),
+                true);                              // estimated: 후보 목록은 항상 직선 추정 (AlternativeFinder)
     }
 
     // ===================== 세분류 필터 =====================

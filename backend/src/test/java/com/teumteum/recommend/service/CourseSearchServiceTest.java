@@ -8,6 +8,7 @@ import com.teumteum.place.service.NearbyPlaceService;
 import com.teumteum.recommend.domain.CategoryCode;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
+import com.teumteum.recommend.domain.CourseSearchResult;
 import com.teumteum.recommend.domain.CourseStop;
 import com.teumteum.recommend.domain.PlaceCandidate;
 import com.teumteum.recommend.domain.TransportType;
@@ -75,7 +76,7 @@ class CourseSearchServiceTest {
         given(courseComposer.compose(eq(randomCondition), anyList(), anyList()))
                 .willReturn(List.of(course("1"), course("2"), course("3")));
 
-        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition);
+        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
 
         assertEquals(3, courses.size());
         verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(1_000));
@@ -89,7 +90,7 @@ class CourseSearchServiceTest {
         given(courseComposer.compose(eq(randomCondition), anyList(), anyList()))
                 .willReturn(List.of(course("1")), List.of(course("2"), course("3"))); // 1번째 호출, 2번째 호출
 
-        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition);
+        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
 
         assertEquals(3, courses.size());
         verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(2_000));
@@ -102,7 +103,7 @@ class CourseSearchServiceTest {
         givenNearbyResults();
         given(courseComposer.compose(eq(randomCondition), anyList(), anyList())).willReturn(List.of());
 
-        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition);
+        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
 
         assertTrue(courses.isEmpty());
         for (int radius : List.of(1_000, 2_000, 3_000, 5_000)) {
@@ -121,12 +122,31 @@ class CourseSearchServiceTest {
         given(courseComposer.compose(eq(randomCondition), anyList(), anyList()))
                 .willReturn(List.of(course("1"), course("2"), course("3")));
 
-        courseSearchService.findCourses(randomCondition, Set.of("101"));
+        CourseSearchResult result = courseSearchService.findCourses(randomCondition, Set.of("101"));
 
         verify(courseComposer).compose(eq(randomCondition), candidatesCaptor.capture(), anyList());
         List<PlaceCandidate> passed = candidatesCaptor.getValue();
         assertEquals(1, passed.size());
-        assertEquals("102", passed.get(0).placeId()); // 101 은 빠졌다
+        assertEquals("102", passed.get(0).placeId()); // 코스 조합에서는 101 이 빠졌다
+        // 교체 후보로 보관할 목록에는 101 도 들어 있다 (제외는 새 코스 만들 때만)
+        assertEquals(List.of("101", "102"), result.candidates().stream().map(PlaceCandidate::placeId).toList());
+    }
+
+    // ===================== 후보 보관 (장소 교체용) =====================
+
+    @Test
+    @DisplayName("반경을 넓히며 받은 후보를 장소 ID 로 중복 없이, 처음 받은 순서대로 돌려준다")
+    void findCourses_returnsCandidatesWithoutDuplicates() {
+        given(nearbyPlaceService.findCandidates(anyDouble(), anyDouble(), any(), anyInt()))
+                .willReturn(List.of(nearby("101", "도로 1", null)))                              // 1km
+                .willReturn(List.of(nearby("101", "도로 1", null), nearby("102", "도로 2", null))); // 2km (101 또 나옴)
+        given(courseComposer.compose(eq(randomCondition), anyList(), anyList()))
+                .willReturn(List.of(course("1")), List.of(course("2"), course("3")));
+
+        CourseSearchResult result = courseSearchService.findCourses(randomCondition);
+
+        assertEquals(List.of("101", "102"), result.candidates().stream().map(PlaceCandidate::placeId).toList());
+        assertEquals(3, result.plans().size());
     }
 
     // ===================== 장소 검색 실패 =====================
@@ -151,7 +171,7 @@ class CourseSearchServiceTest {
                 .willThrow(new CustomException(PlaceErrorCode.KAKAO_API_RATE_LIMIT)); // 2km 에서 실패
         given(courseComposer.compose(eq(randomCondition), anyList(), anyList())).willReturn(List.of(course("1")));
 
-        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition);
+        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
 
         assertEquals(1, courses.size());
     }
