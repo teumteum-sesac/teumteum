@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { ApiError, DEFAULT_ERROR_MESSAGE } from "../../../shared/api/apiError";
 import {getAddress, searchPlaces, toLocationValue} from "../api/conditionApi";
 import Icon from '../../../shared/components/Icon'
-import type { LocationValue } from '../../../shared/types/domain'
+import { DEFAULT_POSITION, type LocationValue } from '../../../shared/types/domain'
+import MapCenterPicker from '../../map/components/MapCenterPicker'
 import { useRecentLocationStore } from '../recentLocationStore'
 import { useConditionStore } from '../store'
 
@@ -29,11 +30,18 @@ function toErrorMessage(e: unknown): string {
  * 위치 설정 (CON-02): 검색(자동완성) · 현재 위치 사용 · 최근 검색 최대 5개 · 지도에서 직접 선택.
  * 선택하면 장소명·주소·좌표를 저장하고 조건 설정(CON-01)으로 돌아간다.
  * 검색은 GET /api/places/search, 현재 위치 주소는 GET /api/places/address (REQ-007)
- *  * TODO(유지수): 지도 중앙 핀으로 위치 지정
+ * 지도에서 직접 선택은 주소에 &map 을 붙여 지도 중앙 핀(MapCenterPicker) 화면으로 바꾼다.
+ * 기록을 하나 쌓으므로 뒤로가기를 누르면 지도 → 이 목록 → CON-01 순서로 돌아간다
  */
 export default function LocationSearch({ type }: LocationSearchProps) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const mapMode = searchParams.has('map')
+  // 이 목록에서 지도를 열었는지. 그렇다면 지도 → 목록 → CON-01 두 단계를 돌아가야 한다 (주소로 바로 들어온 경우는 한 단계)
+  const openedFromList = (location.state as { fromList?: boolean } | null)?.fromList === true
   const origin = useConditionStore((s) => s.origin)
+  const destination = useConditionStore((s) => s.destination)
   const setOrigin = useConditionStore((s) => s.setOrigin)
   const setDestination = useConditionStore((s) => s.setDestination)
   const { recent, add: addRecent } = useRecentLocationStore()
@@ -67,7 +75,22 @@ export default function LocationSearch({ type }: LocationSearchProps) {
     if (type === 'origin') setOrigin(location)
     else setDestination(location)
     if (remember) addRecent(location)
-    navigate(-1)
+    navigate(mapMode && openedFromList ? -2 : -1)
+  }
+
+  const openMap = () => {
+    const params = new URLSearchParams(searchParams)
+    params.set('map', '')
+    navigate({ search: params.toString() }, { state: { fromList: true } })
+  }
+
+  if (mapMode) {
+    // 처음 지도 중심: 이미 정한 위치 → (도착지면) 출발지 → 서울시청
+    const initialCenter = (type === 'origin' ? origin : (destination ?? origin)) ?? DEFAULT_POSITION
+    return (
+      // 화면 높이에서 상단 바(56px)를 뺀 만큼 지도를 채운다
+      <MapCenterPicker initialCenter={initialCenter} onConfirm={(picked) => select(picked)} className="h-[calc(100dvh-3.5rem)]" />
+    )
   }
 
   const selectCurrentLocation = () => {
@@ -156,11 +179,11 @@ export default function LocationSearch({ type }: LocationSearchProps) {
 
           <button
             type="button"
-            disabled
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line text-sm font-bold disabled:text-neutral-400"
+            onClick={openMap}
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line text-sm font-bold active:translate-y-0.5"
           >
             <Icon name="map" className="size-5" />
-            지도에서 직접 선택 (준비 중)
+            지도에서 직접 선택
           </button>
         </>
       )}
