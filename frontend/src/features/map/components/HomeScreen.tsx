@@ -26,9 +26,9 @@ const HOME_LEVEL = 4
 /** 첫 화면에서 더 확대할 수 있는 단계 수 */
 const ZOOM_STEPS_MAX = 3
 /** 컨트롤 묶음 바닥과 하단 패널 윗변 사이 간격(px) */
-const CONTROLS_GAP = 16
-/** 남은 지도 영역이 컨트롤 높이 + 이 값보다 작으면 컨트롤을 숨긴다 (검색창·패널과 겹치지 않게) */
-const CONTROLS_SPACE_MARGIN = 32
+const CONTROLS_GAP = 12
+/** 컨트롤 위끝과 검색창 묶음 사이 최소 간격(px). 이만큼도 남지 않으면(실제로 겹칠 때) 컨트롤을 숨긴다 */
+const CONTROLS_SPACE_MARGIN = 8
 /** 검색창 묶음(위쪽 떠 있는 영역)의 아래 padding(px). p-4 와 같은 값 */
 const TOP_OVERLAY_PADDING = 16
 /** 위치 안내 카드와 검색창 묶음 사이 간격(px) */
@@ -231,7 +231,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   }, [nearby, locateNearby, locate])
 
   // 남은 지도 영역이 부족하면 컨트롤을 숨긴다. 재기 전에도 숨겨 둔다
-  const controlsHidden = !layout || layout.sheetTop - layout.searchBottom < MAP_CONTROLS_HEIGHT + CONTROLS_SPACE_MARGIN
+  const controlsHidden = !layout || layout.sheetTop - layout.searchBottom < MAP_CONTROLS_HEIGHT + CONTROLS_GAP + CONTROLS_SPACE_MARGIN
 
   // 지금 외출 추천: 출발지 기본값은 현재 위치. 권한이 없으면 비운 채 진입해 직접 설정 안내
   const startRecommend = () => {

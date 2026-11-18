@@ -4,24 +4,24 @@ import type { CSSProperties } from 'react'
 export type LocateStatus = 'default' | 'off'
 
 /** 버튼 사이 간격(px): 확대·축소 그룹과 현재 위치 버튼 */
-const GROUP_GAP = 10
+const GROUP_GAP = 8
 
-/** 컨트롤 묶음 높이(px): 확대·축소 97(48 + 구분선 1 + 48) + 간격 10 + 현재 위치 48. 공간이 부족한지 판단할 때 쓴다 */
+/** 컨트롤 묶음 높이(px): 확대·축소 97(48 + 구분선 1 + 48) + 간격 8 + 현재 위치 48. 공간이 부족한지 판단할 때 쓴다 */
 export const MAP_CONTROLS_HEIGHT = 97 + GROUP_GAP + 48
 
 // 지도 컨트롤 디자인 (최종 추천안): 흰색 미니멀 버튼 + 핑크 현재 위치 버튼만 포인트
 // 포커스 링은 키보드 포커스(:focus-visible)에서만
 const FOCUS_RING = 'focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#D63F7C]'
 // Tailwind 는 소스의 클래스 문자열을 그대로 찾아 CSS 를 만들므로 클래스는 조합하지 말고 완성된 문자열로 둔다
-/** 현재 위치 버튼: 약한 그림자 */
-const LOCATE_SHADOW = 'shadow-[0_2px_8px_rgba(32,32,32,0.12)]'
-/** 확대·축소 그룹: 아주 연한 베이지 1px 테두리(box-shadow) + 약한 그림자 */
-const ZOOM_GROUP_SHADOW = 'shadow-[0_0_0_1px_#E6DAC2,0_2px_8px_rgba(32,32,32,0.12)]'
+/** 현재 위치 버튼: 그림자 (지도와 확실히 구분되게 조금 진하게) */
+const LOCATE_SHADOW = 'shadow-[0_2px_10px_rgba(32,32,32,0.2)]'
+/** 확대·축소 그룹: 진한 베이지 1.5px 테두리(box-shadow) + 그림자. 밝은 지도 배경과 구분되게 한다 */
+const ZOOM_GROUP_SHADOW = 'shadow-[0_0_0_1.5px_#C9B48E,0_2px_10px_rgba(32,32,32,0.2)]'
 
 /** 확대(+)·축소(−) 아이콘. 22px */
 function ZoomIcon({ plus }: { plus: boolean }) {
   return (
-    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
       <path d="M4 10h12" />
       {plus && <path d="M10 4v12" />}
     </svg>
@@ -31,7 +31,7 @@ function ZoomIcon({ plus }: { plus: boolean }) {
 /** locate-fixed 아이콘 (원 + 가운데 원 + 4방향 눈금). off 면 대각선 사선 */
 function LocateIcon({ off }: { off: boolean }) {
   return (
-    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
       <path d="M2 12h3M19 12h3M12 2v3M12 19v3" />
       <circle cx="12" cy="12" r="7" />
       {off ? <path d="M4 4l16 16" /> : <circle cx="12" cy="12" r="3" />}
@@ -55,8 +55,8 @@ export function LocateButton({ status, onClick }: LocateButtonProps) {
       type="button"
       aria-label={off ? '위치 꺼짐, 켜는 방법 보기' : '내 위치로 이동'}
       onClick={onClick}
-      className={`box-border flex size-12 items-center justify-center rounded-full border-[1.5px] bg-white ${LOCATE_SHADOW} transition-transform duration-[80ms] active:scale-95 ${
-        off ? 'border-[#D9CFC0] text-[#8C8173]' : 'border-[#F26FA8] text-[#C93D7A]'
+      className={`box-border flex size-12 items-center justify-center rounded-full border-2 bg-white ${LOCATE_SHADOW} transition-transform duration-[80ms] active:scale-95 ${
+        off ? 'border-[#B5AA98] text-[#8C8173]' : 'border-[#F26FA8] text-[#C93D7A]'
       } ${FOCUS_RING}`}
     >
       <LocateIcon off={off} />
