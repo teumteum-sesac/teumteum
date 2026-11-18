@@ -6,58 +6,86 @@ import Chip from '../../../shared/components/Chip'
 import ChipGroup from '../../../shared/components/ChipGroup'
 import EmptyState from '../../../shared/components/EmptyState'
 import Icon from '../../../shared/components/Icon'
+import LoadingState from '../../../shared/components/LoadingState'
 import Toast from '../../../shared/components/Toast'
-import { CATEGORIES } from '../../../shared/types/domain'
-import { isRandomCondition, useConditionStore } from '../../condition/store'
-import { useRecommendStore } from '../store'
+import { isExpiredError, useRecommendCourses, useRecommendStore } from '../store'
 import ConditionSummary from './ConditionSummary'
 import CourseCard from './CourseCard'
+import ExpiredState from './ExpiredState'
 
 const ALL = '전체'
 
-/** 한 번에 보여주는 코스 수 (화면설계서 결정 3: 3개, 정렬 없음) */
-const COURSE_COUNT = 3
-
 /**
  * 추천 결과 목록 (RES-01)
- * TODO(나혜빈): 추천 API 연동 (현재 mock). 빈 결과면 백엔드가 반경을 넓혀 다시 찾는다
+ * - 외출 조건 [추천받기] 가 POST /api/recommendations 를 부르고(store.request), 이 화면이 결과를 그린다
+ * - 계산 중: 공통 로딩 / 결과 없음(courses: []): 결과 없음 안내 / 2시간 지남(410): 만료 안내
+ * - 세분류 필터: 서버가 준 subCategoryFilters (REQ-050). '전체' 칩은 프론트가 붙인다
+ * - 다시 추천: POST /api/recommendations/{setId}/regenerate. 너무 자주 누르면 429 → 토스트
  */
 export default function RecommendResult() {
   const navigate = useNavigate()
-  const condition = useConditionStore()
-  const { courses, reload } = useRecommendStore()
+  const { result, loading, error, regenerate } = useRecommendStore()
+  const courses = useRecommendCourses()
   const [subCategory, setSubCategory] = useState(ALL)
   const [toast, setToast] = useState<string | null>(null)
   const closeToast = useCallback(() => setToast(null), [])
 
-  // 세분류 필터: 선택한 대분류의 세분류. 랜덤이면 결과 장소들의 세분류
-  const subCategories = isRandomCondition(condition)
-    ? [...new Set(courses.flatMap((c) => c.places.map((p) => p.subCategory)))]
-    : CATEGORIES.filter((c) => condition.categories.includes(c.code)).flatMap((c) => c.subCategories)
+  const subCategories = [...new Set(result?.subCategoryFilters.flatMap((f) => f.subCategories) ?? [])]
+  const filtered = courses.filter((c) => subCategory === ALL || c.places.some((p) => p.subCategory === subCategory))
 
-  const filtered = courses
-    .slice(0, COURSE_COUNT)
-    .filter((c) => subCategory === ALL || c.places.some((p) => p.subCategory === subCategory))
-
-  const handleReload = () => {
-    if (!reload()) {
-      setToast('잠시 후 다시 시도해 주세요')
+  const handleRegenerate = async () => {
+    const failed = await regenerate()
+    if (failed && !isExpiredError(failed.code)) {
+      setToast(failed.message) // 429 "잠시 후 다시 시도해 주세요" 등 서버 문구 그대로
       return
     }
     setSubCategory(ALL)
+  }
+
+  if (loading) return <LoadingState message="딱 맞는 코스를 찾고 있어요" />
+  if (error && isExpiredError(error.code)) return <ExpiredState />
+  if (error) {
+    return (
+      <EmptyState
+        sticker="sceneEmpty"
+        message="추천을 받지 못했어요"
+        description={error.message}
+        action={
+          <Button className="mx-auto w-auto px-8" onClick={() => navigate('/condition')}>
+            조건 다시 고르기
+          </Button>
+        }
+      />
+    )
+  }
+  if (!result) {
+    return (
+      <EmptyState
+        sticker="sceneHome"
+        message="아직 추천받은 코스가 없어요"
+        description="외출 조건을 고르고 [추천받기] 를 눌러 주세요"
+        action={
+          <Button className="mx-auto w-auto px-8" onClick={() => navigate('/condition')}>
+            외출 조건 고르기
+          </Button>
+        }
+      />
+    )
   }
 
   return (
     <>
       <div className="flex flex-col gap-3 px-4 pt-4">
         <ConditionSummary />
-        <ChipGroup>
-          {[ALL, ...subCategories].map((name) => (
-            <Chip key={name} selected={subCategory === name} onClick={() => setSubCategory(name)}>
-              {name}
-            </Chip>
-          ))}
-        </ChipGroup>
+        {subCategories.length > 0 && (
+          <ChipGroup>
+            {[ALL, ...subCategories].map((name) => (
+              <Chip key={name} selected={subCategory === name} onClick={() => setSubCategory(name)}>
+                {name}
+              </Chip>
+            ))}
+          </ChipGroup>
+        )}
       </div>
 
       {filtered.length > 0 ? (
@@ -70,11 +98,11 @@ export default function RecommendResult() {
           <li className="text-center text-xs text-neutral-400">이동·체류시간은 예상값이라 실제와 다를 수 있어요</li>
         </ul>
       ) : (
-        // 목업 '추천 결과 없음': 듀오가 지도 보며 고민하는 장면 + 친근한 문구. 버튼은 아래 고정 바에 있다
+        // 결과 없음 (REQ-027): 오류가 아니라 courses: [] 로 온다
         <EmptyState
           sticker="sceneEmpty"
-          message="조건에 맞는 추천이 없어요"
-          description="시간을 늘리거나 카테고리를 줄이면 새로운 코스를 찾아 올게요!"
+          message={courses.length === 0 ? '조건에 맞는 추천이 없어요' : `‘${subCategory}’ 코스가 없어요`}
+          description={courses.length === 0 ? '시간을 늘리거나 카테고리를 줄이면 새로운 코스를 찾아 올게요!' : '다른 세분류를 골라 보세요'}
         />
       )}
 
@@ -83,7 +111,7 @@ export default function RecommendResult() {
           <Icon name="sliders" className="size-5" />
           조건 바꾸기
         </Button>
-        <Button className="flex items-center justify-center gap-1.5" onClick={handleReload}>
+        <Button className="flex items-center justify-center gap-1.5" onClick={() => void handleRegenerate()}>
           <Icon name="refresh" className="size-5" strokeWidth={2.6} />
           다시 추천
         </Button>
