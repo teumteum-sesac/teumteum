@@ -1,22 +1,48 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { PAPER_STYLE, type StickerKey } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
 import Icon from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
 import BottomNav from '../../../shared/layout/BottomNav'
-import type { CategoryCode } from '../../../shared/types/domain'
+import { DEFAULT_POSITION, type CategoryCode } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
 import { useCurrentPosition } from '../hooks/useCurrentPosition'
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces'
 import { MAP_BOTTOM_CLASS, type SheetLevel } from '../sheetLayout'
 import NoticeBanner from '../../admin/components/NoticeBanner'
 import HomeSearchBar from './HomeSearchBar'
-import KakaoMap, { type BoundsPadding, type MapMarker } from './KakaoMap'
+import KakaoMap, { type BoundsPadding, type KakaoMapController, type MapMarker } from './KakaoMap'
+import LocationGuide from './LocationGuide'
+import MapControls, { MAP_CONTROLS_HEIGHT } from './MapControls'
 import NearbySheet from './NearbySheet'
 
 /** 홈(HOM-01) 하단 패널(헤드라인·듀오 장면·추천 버튼·바로가기) 높이 + 여유. 범위 맞춤 시 이 아래로 마커가 숨지 않게 한다 */
 const HOME_PANEL_PADDING = 330
+
+// ── 홈 지도 컨트롤 (HOM-01 내 위치 · 확대/축소) ──
+/** 홈 지도 첫 확대 수준 = 가장 멀리 볼 수 있는 수준 (카카오는 숫자가 작을수록 확대) */
+const HOME_LEVEL = 4
+/** 첫 화면에서 더 확대할 수 있는 단계 수 */
+const ZOOM_STEPS_MAX = 3
+/** 컨트롤 묶음 바닥과 하단 패널 윗변 사이 간격(px) */
+const CONTROLS_GAP = 16
+/** 남은 지도 영역이 컨트롤 높이 + 이 값보다 작으면 컨트롤을 숨긴다 (검색창·패널과 겹치지 않게) */
+const CONTROLS_SPACE_MARGIN = 32
+/** 검색창 묶음(위쪽 떠 있는 영역)의 아래 padding(px). p-4 와 같은 값 */
+const TOP_OVERLAY_PADDING = 16
+/** 위치 안내 카드와 검색창 묶음 사이 간격(px) */
+const GUIDE_GAP = 12
+
+/** 홈 지도 영역 안에서 잰 위치(px, 지도 영역 위쪽 기준) */
+interface HomeLayout {
+  /** 검색창 묶음(검색창 + 공지 + 위치 안내 문구) 아래끝 */
+  searchBottom: number
+  /** 하단 패널 윗변 */
+  sheetTop: number
+  /** 지도 영역 높이 */
+  height: number
+}
 
 /** 홈 하단 패널의 바로가기 카드 (목업: 스티커 + 짧은 라벨) */
 function QuickLink({ to, sticker, label }: { to: string; sticker: StickerKey; label: string }) {
@@ -41,7 +67,8 @@ interface HomeScreenProps {
  */
 export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const navigate = useNavigate()
-  const { position, denied, loading } = useCurrentPosition()
+  // 홈은 권한 변경·화면 복귀 시 내 위치 버튼 상태를 다시 판단한다
+  const { position, denied, loading, fixId, locate } = useCurrentPosition({ watchPermission: !nearby })
   const setOrigin = useConditionStore((s) => s.setOrigin)
   const [radius, setRadius] = useState(1000)
   // 주변 탐색(HOM-02) 대분류 필터. null = 전체. 지도 마커와 시트 목록이 같은 값을 쓴다
@@ -100,6 +127,70 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     setSelectedPlaceId(null)
   }
 
+  // ── 홈 지도 컨트롤 (HOM-01). 주변 탐색(HOM-02)에서는 쓰지 않는다 ──
+  const areaRef = useRef<HTMLDivElement>(null)
+  const topOverlayRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [layout, setLayout] = useState<HomeLayout | null>(null)
+  const [controller, setController] = useState<KakaoMapController | null>(null)
+  const [level, setLevel] = useState(HOME_LEVEL)
+  const [guideOpen, setGuideOpen] = useState(false)
+
+  // 지금 화면에서 검색창 묶음 아래끝·패널 윗변을 잰다 (화면에 붙어 있지 않으면 null)
+  const readLayout = useCallback((): HomeLayout | null => {
+    const area = areaRef.current
+    const top = topOverlayRef.current
+    const panel = panelRef.current
+    if (!area || !top || !panel) return null
+    const a = area.getBoundingClientRect()
+    return {
+      searchBottom: top.getBoundingClientRect().bottom - a.top - TOP_OVERLAY_PADDING,
+      sheetTop: panel.getBoundingClientRect().top - a.top,
+      height: a.height,
+    }
+  }, [])
+
+  // 공지·위치 안내 문구가 늦게 뜨거나 화면 크기가 바뀌면 다시 잰다
+  useEffect(() => {
+    const area = areaRef.current
+    const top = topOverlayRef.current
+    const panel = panelRef.current
+    if (nearby || !area || !top || !panel) return
+    const measure = () => setLayout(readLayout())
+    measure()
+    const observer = new ResizeObserver(measure)
+    for (const el of [area, top, panel]) observer.observe(el)
+    return () => observer.disconnect()
+  }, [nearby, readLayout])
+
+  // 위치를 새로 받을 때마다(첫 진입·내 위치 버튼·다시 시도·권한 허용) 확대 수준은 그대로 두고
+  // 내 위치를 검색창과 패널 사이, 보이는 지도 영역의 가운데로 부드럽게 옮긴다.
+  // 꺼짐 → 기본이 되면 같은 렌더에서 위치 안내 문구가 사라지므로, 저장된 값이 아니라 지금 화면을 바로 잰다
+  const pannedFixRef = useRef(0)
+  useEffect(() => {
+    if (nearby || !controller || fixId === pannedFixRef.current) return
+    const current = readLayout()
+    if (!current) return
+    pannedFixRef.current = fixId
+    controller.panToVisible(position, (current.searchBottom + current.sheetTop) / 2)
+  }, [nearby, controller, fixId, position, readLayout])
+
+  // 내 위치 버튼: 기본이면 위치를 다시 받아 이동, 실패하거나 꺼짐이면 안내 카드 (지도는 움직이지 않음)
+  const handleLocate = async () => {
+    if (denied) {
+      setGuideOpen(true)
+      return
+    }
+    if (!(await locate())) setGuideOpen(true)
+  }
+  const closeGuide = useCallback(() => setGuideOpen(false), [])
+  const retryLocate = useCallback(async () => {
+    if (await locate()) setGuideOpen(false)
+  }, [locate])
+
+  // 남은 지도 영역이 부족하면 컨트롤을 숨긴다. 재기 전에도 숨겨 둔다
+  const controlsHidden = !layout || layout.sheetTop - layout.searchBottom < MAP_CONTROLS_HEIGHT + CONTROLS_SPACE_MARGIN
+
   // 지금 외출 추천: 출발지 기본값은 현재 위치. 권한이 없으면 비운 채 진입해 직접 설정 안내
   const startRecommend = () => {
     setOrigin(denied ? null : { name: '현재 위치', ...position })
@@ -108,20 +199,35 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
 
   return (
     <div className="flex h-dvh flex-col">
-      <div className="relative flex-1">
+      <div ref={areaRef} className="relative flex-1">
         {/* 주변 탐색이면 지도 아래쪽을 시트 높이만큼 비워 시트와 겹치지 않게 한다. 위·아래가 정해진 absolute 라 높이가 0이 되지 않는다 */}
         <div className={`absolute inset-x-0 top-0 ${nearby ? MAP_BOTTOM_CLASS[sheetLevel] : 'bottom-0'}`}>
-          <KakaoMap
-            center={position}
-            markers={markers}
-            level={nearby && radius > 1000 ? 6 : 4}
-            fitBounds
-            boundsPadding={boundsPadding}
-            className="size-full"
-          />
+          {nearby ? (
+            <KakaoMap
+              center={position}
+              markers={markers}
+              level={radius > 1000 ? 6 : HOME_LEVEL}
+              fitBounds
+              boundsPadding={boundsPadding}
+              className="size-full"
+            />
+          ) : (
+            // 홈: 지도 이동은 내 위치를 받을 때 위 effect 가 보이는 영역 가운데로 맞춘다 (center 는 처음 값 고정)
+            // 확대 범위: 첫 화면(HOME_LEVEL)이 가장 멀리 본 상태, 3단계까지 확대. 핀치·휠도 같은 범위
+            <KakaoMap
+              center={DEFAULT_POSITION}
+              markers={markers}
+              level={HOME_LEVEL}
+              minLevel={HOME_LEVEL - ZOOM_STEPS_MAX}
+              maxLevel={HOME_LEVEL}
+              onLevelChange={setLevel}
+              onReady={setController}
+              className="size-full"
+            />
+          )}
         </div>
 
-        <div className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
+        <div ref={topOverlayRef} className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
           <HomeSearchBar center={loading || denied ? null : position} />
           {/* 전체 알림(REQ-053): 가장 최근 공지 1건. 주변 탐색 시트가 열려 있으면 지도를 가리지 않게 숨긴다 */}
           {!nearby && <NoticeBanner />}
@@ -131,6 +237,29 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             </p>
           )}
         </div>
+
+        {!nearby && (
+          <>
+            {/* 키보드 순서: 검색창 → 확대 → 축소 → 내 위치 → 하단 패널 (DOM 순서를 그대로 따른다) */}
+            <MapControls
+              locateStatus={denied ? 'off' : 'default'}
+              onLocate={() => void handleLocate()}
+              onZoomIn={() => controller?.zoomBy(-1)}
+              onZoomOut={() => controller?.zoomBy(1)}
+              zoomInDisabled={level <= HOME_LEVEL - ZOOM_STEPS_MAX}
+              zoomOutDisabled={level >= HOME_LEVEL}
+              hidden={controlsHidden}
+              style={
+                layout
+                  ? { bottom: layout.height - layout.sheetTop + CONTROLS_GAP, right: 'calc(16px + env(safe-area-inset-right))' }
+                  : { right: 'calc(16px + env(safe-area-inset-right))' }
+              }
+            />
+            {guideOpen && denied && layout && (
+              <LocationGuide top={layout.searchBottom + GUIDE_GAP} onClose={closeGuide} onRetry={retryLocate} />
+            )}
+          </>
+        )}
 
         {nearby ? (
           <NearbySheet
@@ -151,7 +280,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
         ) : (
           // 홈 하단 패널 (목업 HOM-01): 찢은 종이 위에 헤드라인 + 듀오 장면 + 노란 추천 버튼 + 바로가기 카드
           // 그림자는 바깥 div, 물결 자르기는 안쪽 div (같은 요소에 주면 그림자가 잘린다)
-          <div className="absolute inset-x-0 bottom-0 z-10 drop-shadow-[0_-4px_10px_rgba(32,32,32,0.12)]">
+          <div ref={panelRef} className="absolute inset-x-0 bottom-0 z-10 drop-shadow-[0_-4px_10px_rgba(32,32,32,0.12)]">
             <div className="torn-top bg-cream px-5 pt-6 pb-4" style={PAPER_STYLE}>
               <div className="flex items-end">
                 <div className="min-w-0 flex-1 pb-1">

@@ -36,6 +36,10 @@ export interface KakaoLatLng {
 
 export interface KakaoLatLngBounds {
   extend(latlng: KakaoLatLng): void
+  /** 남서쪽 모서리 */
+  getSouthWest(): KakaoLatLng
+  /** 북동쪽 모서리 */
+  getNorthEast(): KakaoLatLng
 }
 
 export interface KakaoMapInstance {
@@ -44,7 +48,15 @@ export interface KakaoMapInstance {
   panTo(latlng: KakaoLatLng): void
   /** 지도 중심을 화면 픽셀만큼 부드럽게 옮긴다 (dx > 0 이면 오른쪽, dy > 0 이면 아래쪽을 더 보여 줌) */
   panBy(dx: number, dy: number): void
-  setLevel(level: number): void
+  getLevel(): number
+  /** animate: true 면 확대·축소를 애니메이션으로 한다 (기준은 지도 중심) */
+  setLevel(level: number, options?: { animate?: boolean }): void
+  /** 확대할 수 있는 가장 작은 레벨 (SDK 버전에 따라 없을 수 있어 선택) */
+  setMinLevel?(level: number): void
+  /** 축소할 수 있는 가장 큰 레벨 (SDK 버전에 따라 없을 수 있어 선택) */
+  setMaxLevel?(level: number): void
+  /** 지금 지도에 보이는 범위 */
+  getBounds(): KakaoLatLngBounds
   /** padding(px)을 주면 지도 가장자리에서 그만큼 안쪽에 마커가 오도록 맞춘다 */
   setBounds(bounds: KakaoLatLngBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number): void
   relayout(): void
@@ -100,8 +112,8 @@ export interface KakaoMapsApi {
   /** 마커 클릭, 지도 이동·확대가 끝남(idle) 등 지도 객체 이벤트 */
   event: {
     addListener(target: KakaoOverlay, type: 'click', handler: () => void): void
-    addListener(target: KakaoMapInstance, type: 'idle' | 'click', handler: () => void): void
-    removeListener(target: KakaoMapInstance, type: 'idle' | 'click', handler: () => void): void
+    addListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed', handler: () => void): void
+    removeListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed', handler: () => void): void
   }
 }
 
