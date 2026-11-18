@@ -7,14 +7,14 @@ import StickerImage from '../../../shared/components/StickerImage'
 import BottomNav from '../../../shared/layout/BottomNav'
 import { DEFAULT_POSITION, type CategoryCode } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
-import { useCurrentPosition } from '../hooks/useCurrentPosition'
+import { requestCurrentPosition, useCurrentPosition } from '../hooks/useCurrentPosition'
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces'
 import { MAP_BOTTOM_CLASS, type SheetLevel } from '../sheetLayout'
 import NoticeBanner from '../../admin/components/NoticeBanner'
 import HomeSearchBar from './HomeSearchBar'
 import KakaoMap, { type BoundsPadding, type KakaoMapController, type MapMarker } from './KakaoMap'
 import LocationGuide from './LocationGuide'
-import MapControls, { MAP_CONTROLS_HEIGHT } from './MapControls'
+import MapControls, { LocateButton, MAP_CONTROLS_HEIGHT, type LocateStatus } from './MapControls'
 import NearbySheet from './NearbySheet'
 
 /** 홈(HOM-01) 하단 패널(헤드라인·듀오 장면·추천 버튼·바로가기) 높이 + 여유. 범위 맞춤 시 이 아래로 마커가 숨지 않게 한다 */
@@ -135,6 +135,8 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const [controller, setController] = useState<KakaoMapController | null>(null)
   const [level, setLevel] = useState(HOME_LEVEL)
   const [guideOpen, setGuideOpen] = useState(false)
+  // 주변 탐색 지도 영역 (시트 위에서 끝남). 현재 위치 이동 시 보이는 영역 높이를 잰다
+  const mapWrapRef = useRef<HTMLDivElement>(null)
 
   // 지금 화면에서 검색창 묶음 아래끝·패널 윗변을 잰다 (화면에 붙어 있지 않으면 null)
   const readLayout = useCallback((): HomeLayout | null => {
@@ -175,18 +177,58 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     controller.panToVisible(position, (current.searchBottom + current.sheetTop) / 2)
   }, [nearby, controller, fixId, position, readLayout])
 
-  // 내 위치 버튼: 기본이면 위치를 다시 받아 이동, 실패하거나 꺼짐이면 안내 카드 (지도는 움직이지 않음)
+  // ── 현재 위치 버튼 (HOM-01·HOM-02 공통) ──
+  // 주변 탐색은 지도만 옮기고 검색 기준 좌표(position)는 바꾸지 않는다 → 훅 상태를 건드리지 않는 requestCurrentPosition 사용.
+  // 그 결과로 버튼 상태를 정한다 (null = 아직 안 누름 → 처음 위치 조회 결과를 따름)
+  const [nearbyLocated, setNearbyLocated] = useState<boolean | null>(null)
+  const nearbyRequestRef = useRef<Promise<boolean> | null>(null)
+  const locateStatus: LocateStatus = (nearby ? (nearbyLocated === null ? denied : !nearbyLocated) : denied) ? 'off' : 'default'
+  const [guideTop, setGuideTop] = useState(0)
+
+  // 위치 안내 카드: 검색창 묶음(검색창 + 공지 + 위치 안내 문구) 바로 아래 + 12px
+  const openGuide = () => {
+    const area = areaRef.current
+    const top = topOverlayRef.current
+    if (area && top) {
+      setGuideTop(top.getBoundingClientRect().bottom - area.getBoundingClientRect().top - TOP_OVERLAY_PADDING + GUIDE_GAP)
+    }
+    setGuideOpen(true)
+  }
+
+  // 주변 탐색: 현재 위치를 받아 지도 중심만 옮긴다 (검색창 아래 ~ 시트 위, 보이는 지도 영역의 가운데). 요청 중 중복 탭은 무시
+  const locateNearby = useCallback((): Promise<boolean> => {
+    if (nearbyRequestRef.current) return nearbyRequestRef.current
+    const request = requestCurrentPosition()
+      .then((found) => {
+        setNearbyLocated(found !== null)
+        const area = areaRef.current
+        const top = topOverlayRef.current
+        const map = mapWrapRef.current
+        if (found && controller && area && top && map) {
+          const searchBottom = top.getBoundingClientRect().bottom - area.getBoundingClientRect().top - TOP_OVERLAY_PADDING
+          controller.panToVisible(found, (searchBottom + map.clientHeight) / 2)
+        }
+        return found !== null
+      })
+      .finally(() => {
+        nearbyRequestRef.current = null
+      })
+    nearbyRequestRef.current = request
+    return request
+  }, [controller])
+
+  // 버튼: 기본이면 위치를 다시 받아 이동, 실패하거나 꺼짐이면 안내 카드 (지도는 움직이지 않음)
   const handleLocate = async () => {
-    if (denied) {
-      setGuideOpen(true)
+    if (locateStatus === 'off') {
+      openGuide()
       return
     }
-    if (!(await locate())) setGuideOpen(true)
+    if (!(await (nearby ? locateNearby() : locate()))) openGuide()
   }
   const closeGuide = useCallback(() => setGuideOpen(false), [])
   const retryLocate = useCallback(async () => {
-    if (await locate()) setGuideOpen(false)
-  }, [locate])
+    if (await (nearby ? locateNearby() : locate())) setGuideOpen(false)
+  }, [nearby, locateNearby, locate])
 
   // 남은 지도 영역이 부족하면 컨트롤을 숨긴다. 재기 전에도 숨겨 둔다
   const controlsHidden = !layout || layout.sheetTop - layout.searchBottom < MAP_CONTROLS_HEIGHT + CONTROLS_SPACE_MARGIN
@@ -201,7 +243,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     <div className="flex h-dvh flex-col">
       <div ref={areaRef} className="relative flex-1">
         {/* 주변 탐색이면 지도 아래쪽을 시트 높이만큼 비워 시트와 겹치지 않게 한다. 위·아래가 정해진 absolute 라 높이가 0이 되지 않는다 */}
-        <div className={`absolute inset-x-0 top-0 ${nearby ? MAP_BOTTOM_CLASS[sheetLevel] : 'bottom-0'}`}>
+        <div ref={mapWrapRef} className={`absolute inset-x-0 top-0 ${nearby ? MAP_BOTTOM_CLASS[sheetLevel] : 'bottom-0'}`}>
           {nearby ? (
             <KakaoMap
               center={position}
@@ -209,6 +251,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
               level={radius > 1000 ? 6 : HOME_LEVEL}
               fitBounds
               boundsPadding={boundsPadding}
+              onReady={setController}
               className="size-full"
             />
           ) : (
@@ -242,7 +285,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
           <>
             {/* 키보드 순서: 검색창 → 확대 → 축소 → 내 위치 → 하단 패널 (DOM 순서를 그대로 따른다) */}
             <MapControls
-              locateStatus={denied ? 'off' : 'default'}
+              locateStatus={locateStatus}
               onLocate={() => void handleLocate()}
               onZoomIn={() => controller?.zoomBy(-1)}
               onZoomOut={() => controller?.zoomBy(1)}
@@ -255,11 +298,25 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
                   : { right: 'calc(16px + env(safe-area-inset-right))' }
               }
             />
-            {guideOpen && denied && layout && (
-              <LocationGuide top={layout.searchBottom + GUIDE_GAP} onClose={closeGuide} onRetry={retryLocate} />
-            )}
           </>
         )}
+
+        {/* 주변 탐색(HOM-02): 현재 위치 버튼만 (확대·축소는 핀치·휠). 지도 영역(시트 위에서 끝남)의 오른쪽 아래 16px.
+            시트를 끄는 동안에는 시트(z-20)가 위를 덮고, 전체로 펼치면 지도가 거의 없어 숨긴다 */}
+        {nearby && (
+          <div className={`pointer-events-none absolute inset-x-0 top-0 ${MAP_BOTTOM_CLASS[sheetLevel]}`}>
+            <div
+              inert={sheetLevel === 'full'}
+              className={`pointer-events-auto absolute right-[calc(16px+env(safe-area-inset-right))] bottom-4 z-[5] transition-opacity duration-150 ${
+                sheetLevel === 'full' ? 'pointer-events-none opacity-0' : 'opacity-100'
+              }`}
+            >
+              <LocateButton status={locateStatus} onClick={() => void handleLocate()} />
+            </div>
+          </div>
+        )}
+
+        {guideOpen && locateStatus === 'off' && <LocationGuide top={guideTop} onClose={closeGuide} onRetry={retryLocate} />}
 
         {nearby ? (
           <NearbySheet

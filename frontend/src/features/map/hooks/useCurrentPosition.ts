@@ -39,6 +39,21 @@ async function queryPermission(): Promise<PermissionStatus | null> {
   }
 }
 
+/**
+ * 현재 위치 좌표만 한 번 받아 온다. 이 훅의 상태(position·denied)는 바꾸지 않는다.
+ * 주변 탐색(HOM-02) 현재 위치 버튼처럼 지도만 옮기고 검색 기준 좌표는 그대로 둘 때 쓴다. 실패하면 null
+ */
+export function requestCurrentPosition(): Promise<LatLng | null> {
+  if (!hasGeolocation()) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      GEO_OPTIONS,
+    )
+  })
+}
+
 /** 현재 위치. 권한 거부·실패 시 서울시청을 기본 위치로 돌려준다. (화면설계서 HOM-01) */
 export function useCurrentPosition({ watchPermission = false }: Options = {}): CurrentPosition {
   const [state, setState] = useState<PositionState>(() =>
