@@ -48,7 +48,26 @@ interface KakaoMapProps {
    * 같은 마커를 다시 골라도 동작하도록 매번 새 객체로 넘긴다
    */
   selectMarker?: { id: string } | null
+  /** 가장 많이 확대할 수 있는 레벨 (작을수록 확대). 버튼·핀치·휠 모두 이 범위 안에서만 움직인다 */
+  minLevel?: number
+  /** 가장 멀리 볼 수 있는 레벨 */
+  maxLevel?: number
+  /** 확대 수준이 바뀔 때마다 (버튼·핀치·휠 모두). 처음 그릴 때도 한 번 알린다 */
+  onLevelChange?: (level: number) => void
+  /** 지도가 만들어지면 확대·이동 손잡이를 넘긴다 (홈 지도 컨트롤) */
+  onReady?: (controller: KakaoMapController) => void
   className?: string
+}
+
+/** 바깥(홈 지도 컨트롤)에서 지도를 움직이는 손잡이 */
+export interface KakaoMapController {
+  /** 지도 중심을 기준으로 한 단계 확대(-1)·축소(+1). minLevel~maxLevel 을 넘지 않는다 */
+  zoomBy(delta: -1 | 1): void
+  /**
+   * 확대 수준은 그대로 두고, 좌표가 지도 위 targetY(px, 지도 위쪽 기준) 높이에 오도록 부드럽게 옮긴다.
+   * 시트·검색창에 가리지 않는 영역의 가운데에 맞출 때 쓴다
+   */
+  panToVisible(target: LatLng, targetY: number): void
 }
 
 // 기본값을 바깥에 둬야 매 렌더마다 새 배열이 생겨 지도 effect가 다시 도는 것을 막는다
@@ -366,6 +385,10 @@ export default function KakaoMap({
   boundsPadding,
   onCenterChange,
   selectMarker,
+  minLevel,
+  maxLevel,
+  onLevelChange,
+  onReady,
   className = '',
 }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -521,6 +544,68 @@ export default function KakaoMap({
     if (!ready || !selectMarker) return
     selectLabelRef.current(selectMarker.id, false)
   }, [ready, selectMarker])
+
+  // ── 확대 범위 · 확대 수준 알림 · 바깥 손잡이 (홈 지도 컨트롤) ──
+  // 콜백·범위는 ref 로 최신 값을 읽어, 상위에서 새로 만들어도 이벤트를 다시 등록하지 않는다
+  const rangeRef = useRef({ minLevel, maxLevel })
+  const onLevelChangeRef = useRef(onLevelChange)
+  const onReadyRef = useRef(onReady)
+  useEffect(() => {
+    rangeRef.current = { minLevel, maxLevel }
+    onLevelChangeRef.current = onLevelChange
+    onReadyRef.current = onReady
+  })
+
+  // 확대 범위: SDK 의 범위 제한이 있으면 그걸로 막는다 (핀치·휠·더블탭 포함)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    if (minLevel !== undefined) map.setMinLevel?.(minLevel)
+    if (maxLevel !== undefined) map.setMaxLevel?.(maxLevel)
+  }, [ready, minLevel, maxLevel])
+
+  // 확대 수준이 바뀌면 알린다. 범위 제한이 없는 SDK 에서 범위를 넘으면 경계값으로 되돌린다
+  const watchesLevel = onLevelChange !== undefined || minLevel !== undefined || maxLevel !== undefined
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!ready || !maps || !map || !watchesLevel) return
+    const handleZoom = () => {
+      const { minLevel: lo, maxLevel: hi } = rangeRef.current
+      const current = map.getLevel()
+      const clamped = Math.min(Math.max(current, lo ?? current), hi ?? current)
+      // 되돌리면 zoom_changed 가 한 번 더 오므로 그때 알린다
+      if (clamped !== current) map.setLevel(clamped)
+      else onLevelChangeRef.current?.(current)
+    }
+    maps.event.addListener(map, 'zoom_changed', handleZoom)
+    onLevelChangeRef.current?.(map.getLevel())
+    return () => maps.event.removeListener(map, 'zoom_changed', handleZoom)
+  }, [ready, watchesLevel])
+
+  // 지도가 준비되면 바깥에 손잡이를 넘긴다
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    const container = containerRef.current
+    if (!ready || !maps || !map || !container) return
+    onReadyRef.current?.({
+      zoomBy: (delta) => {
+        const { minLevel: lo, maxLevel: hi } = rangeRef.current
+        const current = map.getLevel()
+        const next = Math.min(Math.max(current + delta, lo ?? current + delta), hi ?? current + delta)
+        if (next !== current) map.setLevel(next, { animate: true })
+      },
+      panToVisible: (target, targetY) => {
+        // 지금 보이는 범위로 화면 1px 당 위도를 구해, 좌표가 targetY 에 오도록 중심을 그만큼 남북으로 옮긴다
+        const bounds = map.getBounds()
+        const height = container.clientHeight
+        const latPerPx = (bounds.getNorthEast().getLat() - bounds.getSouthWest().getLat()) / height
+        const dy = height / 2 - targetY
+        map.panTo(new maps.LatLng(target.lat - dy * latPerPx, target.lng))
+      },
+    })
+  }, [ready])
 
   // 매 렌더 마지막에 실행: 범위 맞춤 표시는 그 렌더에서만 유효하게 초기화한다
   // (effect는 선언 순서대로 실행되므로 반드시 위 effect들 다음에 둔다)
