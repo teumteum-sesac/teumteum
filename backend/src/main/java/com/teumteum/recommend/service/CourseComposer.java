@@ -40,6 +40,10 @@ import java.util.Set;
  * ⑥ 가까운 후보를 먼저 본다. 완전 무작위로 섞으면 시간 안에만 들어가는 먼 곳도 자주 뽑혀서,
  *    "거리 + 무작위 거리" 순으로 줄 세운다. 가까울수록 앞에 오지만 순서가 매번 조금씩 달라진다 (#170)
  * ⑦ 한 구간 이동시간(직선 어림)이 이동수단 기준(TransportType.maxLegMinutes)을 넘는 장소는 넣지 않는다 (#170)
+ * ⑧ 경로 모드 (도착지가 1km 이상 멀 때, #170): "가는 길에 들르는" 코스
+ *    - 가까움 기준을 출발지 거리 대신 우회 거리(출발→장소 + 장소→도착 − 출발→도착)로 본다
+ *    - 우회 거리가 기준보다 큰 장소(가는 길에서 많이 벗어난 곳)는 넣지 않는다
+ *    - 방문 순서는 ④ 대신 "도착지 쪽으로 점점 가까워지는 순"
  * <p>
  * 장소 검색·반경 넓히기는 하지 않는다. 받은 후보 안에서만 고른다.
  */
@@ -62,6 +66,18 @@ public class CourseComposer {
      * 0 이면 항상 가까운 순(매번 같은 코스), 클수록 무작위에 가까워진다.
      */
     static final double NEAR_FIRST_SPREAD_RATIO = 0.25;
+
+    /**
+     * 도착지가 출발지에서 이만큼(km) 이상 떨어져 있으면 "경로 모드" 로 코스를 만든다 (규칙 ⑧).
+     * 이보다 가까우면 출발지 근처를 둘러보고 도착지로 가는 것과 같아서, 도착지가 없을 때처럼 만든다.
+     */
+    static final double ROUTE_MODE_MIN_KM = 1.0;
+
+    /**
+     * 경로 모드에서 허용하는 우회 거리 = 이동수단 최대 검색 반경 × 이 비율 (규칙 ⑧).
+     * 도보(2km) → 1km, 대중교통·차량(5km) → 2.5km
+     */
+    static final double DETOUR_LIMIT_RATIO = 0.5;
 
     private final PlaceCountCalculator placeCountCalculator;
     private final StayTimeCalculator stayTimeCalculator;
@@ -166,16 +182,49 @@ public class CourseComposer {
      * 점수를 후보마다 한 번만 뽑아 Map 에 넣어 둔다. 정렬 중에 비교할 때마다 새로 뽑으면 순서가 뒤엉킨다.
      */
     List<PlaceCandidate> orderNearFirst(CourseCondition condition, List<PlaceCandidate> candidates) {
-        double spreadKm = condition.transportType().getMaxSearchRadiusMeters() / 1000.0 * NEAR_FIRST_SPREAD_RATIO;
+        double spreadKm = maxSearchRadiusKm(condition) * NEAR_FIRST_SPREAD_RATIO;
         Map<String, Double> scores = new HashMap<>();
         for (PlaceCandidate candidate : candidates) {
-            double distance = distanceKm(condition.origin(), coordinateOf(candidate));
+            double distance = closenessKm(condition, candidate);
             scores.put(candidate.placeId(), distance + random.nextDouble() * spreadKm);
         }
 
         List<PlaceCandidate> ordered = new ArrayList<>(candidates);
         ordered.sort(Comparator.comparingDouble(candidate -> scores.get(candidate.placeId())));
         return ordered;
+    }
+
+    /**
+     * 도착지가 출발지에서 1km 이상 멀면 경로 모드 (규칙 ⑧).
+     * 장소 검색(CourseSearchService)도 이 메서드로 판단해서, 검색과 코스 조합이 같은 기준을 쓴다.
+     */
+    public boolean isRouteMode(CourseCondition condition) {
+        return condition.hasDestination()
+                && distanceKm(condition.origin(), condition.destination()) >= ROUTE_MODE_MIN_KM;
+    }
+
+    /**
+     * 이 후보가 얼마나 "가까운지"(km). 작을수록 가깝다.
+     * <pre>
+     * 보통       : 출발지 → 장소 거리
+     * 경로 모드  : 우회 거리 = 출발지 → 장소 + 장소 → 도착지 − 출발지 → 도착지
+     *              가는 길 위에 있으면 0 에 가깝고, 벗어날수록 커진다 (출발지에서 멀어도 길 위면 가깝다고 본다)
+     * </pre>
+     */
+    double closenessKm(CourseCondition condition, PlaceCandidate candidate) {
+        Coordinate place = coordinateOf(candidate);
+        if (!isRouteMode(condition)) {
+            return distanceKm(condition.origin(), place);
+        }
+        return distanceKm(condition.origin(), place)
+                + distanceKm(place, condition.destination())
+                - distanceKm(condition.origin(), condition.destination());
+    }
+
+    /** 경로 모드에서 가는 길을 너무 벗어나지 않았는지 (규칙 ⑧). 경로 모드가 아니면 항상 true */
+    private boolean isOnTheWay(CourseCondition condition, PlaceCandidate candidate) {
+        return !isRouteMode(condition)
+                || closenessKm(condition, candidate) <= maxSearchRadiusKm(condition) * DETOUR_LIMIT_RATIO;
     }
 
     /**
@@ -194,7 +243,7 @@ public class CourseComposer {
                 break; // 더 넣을 수 있는 장소가 없음 → 지금까지 고른 만큼만 (규칙 ③)
             }
             picked.add(next.get());
-            picked = orderByNearest(condition.origin(), picked); // 넣을 때마다 방문 순서 다시 정하기 (규칙 ④)
+            picked = orderForVisit(condition, picked); // 넣을 때마다 방문 순서 다시 정하기 (규칙 ④·⑧)
         }
         return picked;
     }
@@ -207,7 +256,7 @@ public class CourseComposer {
                                                        List<PlaceCandidate> picked, int turn) {
         for (CategoryCode category : categoryOrder(condition, turn)) {
             for (PlaceCandidate candidate : shuffled) {
-                if (!canAdd(candidate, category, picked)) {
+                if (!canAdd(candidate, category, picked) || !isOnTheWay(condition, candidate)) {
                     continue;
                 }
                 List<PlaceCandidate> tried = withPlace(picked, candidate);
@@ -230,7 +279,7 @@ public class CourseComposer {
     boolean isWithinLegLimit(CourseCondition condition, List<PlaceCandidate> places) {
         int maxLegMinutes = condition.transportType().getMaxLegMinutes();
         Coordinate from = condition.origin();
-        for (PlaceCandidate place : orderByNearest(condition.origin(), places)) {
+        for (PlaceCandidate place : orderForVisit(condition, places)) {
             if (straightLineMinutes(condition, from, coordinateOf(place)) > maxLegMinutes) {
                 return false;
             }
@@ -280,7 +329,7 @@ public class CourseComposer {
      * 넣을지 말지 판단만 하는 값이라 API 를 부르지 않는다.
      */
     int estimateTotalMinutes(CourseCondition condition, List<PlaceCandidate> places) {
-        List<PlaceCandidate> ordered = orderByNearest(condition.origin(), places);
+        List<PlaceCandidate> ordered = orderForVisit(condition, places);
         int total = 0;
         Coordinate from = condition.origin();
 
@@ -293,6 +342,25 @@ public class CourseComposer {
             total += straightLineMinutes(condition, from, condition.destination());
         }
         return total;
+    }
+
+    /**
+     * 방문 순서 정하기.
+     * <pre>
+     * 보통      : 지금 위치에서 가장 가까운 곳 → 그다음 가까운 곳 (규칙 ④, orderByNearest)
+     * 경로 모드 : 도착지 쪽으로 점점 가까워지는 순 (규칙 ⑧)
+     *             점수 = 출발지 → 장소 − 장소 → 도착지. 작을수록 출발지 쪽이라 먼저 간다
+     * </pre>
+     * 경로 모드에서 ④를 쓰면 출발지에서 조금 더 가까운 곳을 먼저 가느라 도착지 쪽으로 갔다가 되돌아오는 순서가 나올 수 있다.
+     */
+    List<PlaceCandidate> orderForVisit(CourseCondition condition, List<PlaceCandidate> places) {
+        if (!isRouteMode(condition)) {
+            return orderByNearest(condition.origin(), places);
+        }
+        List<PlaceCandidate> ordered = new ArrayList<>(places);
+        ordered.sort(Comparator.comparingDouble(place ->
+                distanceKm(condition.origin(), coordinateOf(place)) - distanceKm(coordinateOf(place), condition.destination())));
+        return ordered;
     }
 
     /**
@@ -367,6 +435,10 @@ public class CourseComposer {
     private double distanceKm(Coordinate from, Coordinate to) {
         return straightLineTravelCalculator.calculateDistanceKm(
                 from.latitude(), from.longitude(), to.latitude(), to.longitude());
+    }
+
+    private double maxSearchRadiusKm(CourseCondition condition) {
+        return condition.transportType().getMaxSearchRadiusMeters() / 1000.0;
     }
 
     private Coordinate coordinateOf(PlaceCandidate place) {

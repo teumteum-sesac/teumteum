@@ -337,6 +337,72 @@ class CourseComposerTest {
         assertEquals(Set.of("a", "b"), firsts); // 둘 다 1등을 해 본 적이 있다
     }
 
+    // ===================== 경로 모드: 도착지 방향 (#170) =====================
+    // 도착지는 출발지에서 북쪽으로 0.03도(약 3.3km). 그 사이에 있는 장소가 "가는 길" 이다.
+
+    private static final Coordinate NORTH_DESTINATION = new Coordinate(ORIGIN.latitude() + 0.03, ORIGIN.longitude());
+
+    @Test
+    @DisplayName("경로 모드는 도착지가 1km 이상 멀 때만이다")
+    void isRouteMode() {
+        Coordinate near = new Coordinate(ORIGIN.latitude() + 0.005, ORIGIN.longitude()); // 약 0.56km
+
+        assertTrue(composer.isRouteMode(routeCondition(TransportType.WALK, 240)));
+        assertFalse(composer.isRouteMode(new CourseCondition(ORIGIN, near, 240, TransportType.WALK, List.of())));
+        assertFalse(composer.isRouteMode(randomCondition(240))); // 도착지 없음
+    }
+
+    @Test
+    @DisplayName("경로 모드: 가는 길을 많이 벗어난 장소(출발지 반대쪽)는 넣지 않는다")
+    void compose_routeMode_skipsPlaceOffTheWay() {
+        PlaceCandidate onTheWay = place("on", CategoryCode.CAFE, "카페", 0.01);     // 북쪽, 가는 길 위 (우회 0km)
+        PlaceCandidate behind = place("behind", CategoryCode.NATURE, "공원", -0.01); // 남쪽, 우회 약 2.2km (> 도보 1km)
+
+        List<CoursePlan> courses = composer.compose(routeCondition(TransportType.WALK, 240), List.of(onTheWay, behind));
+
+        assertFalse(courses.isEmpty());
+        for (CoursePlan course : courses) {
+            assertFalse(course.placeIds().contains("behind"), "가는 길을 벗어난 장소가 들어감: " + course.placeIds());
+        }
+    }
+
+    @Test
+    @DisplayName("경로 모드: 가까움은 우회 거리로 본다. 출발지에서 멀어도 길 위면 옆길 장소보다 앞에 온다")
+    void orderNearFirst_routeMode_prefersPlaceOnTheWay() {
+        PlaceCandidate onTheWay = place("on", CategoryCode.CAFE, "카페", 0.015);       // 출발지에서 약 1.7km, 우회 0
+        PlaceCandidate behind = place("behind", CategoryCode.CAFE, "디저트", -0.004);  // 출발지에서 약 0.4km, 우회 약 0.9km
+
+        for (int i = 0; i < 30; i++) {
+            List<PlaceCandidate> ordered =
+                    composer.orderNearFirst(routeCondition(TransportType.WALK, 240), List.of(behind, onTheWay));
+            assertEquals("on", ordered.get(0).placeId());
+        }
+    }
+
+    @Test
+    @DisplayName("경로 모드 방문 순서: 도착지 쪽으로 점점 가까워지는 순 (출발지에서 가까운 순이면 되돌아가는 순서가 나옴)")
+    void orderForVisit_routeMode_movesTowardDestination() {
+        // side : 북쪽 0.001 + 동쪽 0.013 (출발지에서 약 1.15km, 출발지 옆쪽)
+        // ahead: 북쪽 0.010              (출발지에서 약 1.11km, 도착지 쪽)
+        PlaceCandidate side = new PlaceCandidate("side", "옆", CategoryCode.CAFE, "카페", "서울 성동구",
+                ORIGIN.latitude() + 0.001, ORIGIN.longitude() + 0.013);
+        PlaceCandidate ahead = place("ahead", CategoryCode.NATURE, "공원", 0.010);
+
+        // 출발지에서 가까운 순(④)은 ahead → side: 도착지 쪽으로 갔다가 옆으로 되돌아온다
+        assertEquals(List.of("ahead", "side"), idsOf(composer.orderByNearest(ORIGIN, List.of(side, ahead))));
+        // 경로 모드는 side → ahead: 도착지 쪽으로 점점 가까워진다
+        assertEquals(List.of("side", "ahead"),
+                idsOf(composer.orderForVisit(routeCondition(TransportType.TRANSIT, 240), List.of(ahead, side))));
+    }
+
+    private CourseCondition routeCondition(TransportType transportType, int availableMinutes) {
+        return new CourseCondition(ORIGIN, NORTH_DESTINATION, availableMinutes, transportType, List.of());
+    }
+
+    private List<String> idsOf(List<PlaceCandidate> places) {
+        return places.stream().map(PlaceCandidate::placeId).toList();
+    }
+
     // ===================== 조건 정리 =====================
 
     @Test

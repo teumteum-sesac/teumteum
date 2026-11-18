@@ -245,6 +245,48 @@ class CourseSearchServiceTest {
         return new CourseCondition(ORIGIN, null, 180, transportType, List.of());
     }
 
+    // ===================== 경로 모드: 출발지·중간·도착지 검색 (#170) =====================
+
+    private static final Coordinate DESTINATION = new Coordinate(37.5746, 127.0559); // 출발지 북쪽 약 3.3km
+    private final CourseCondition routeCondition =
+            new CourseCondition(ORIGIN, DESTINATION, 240, TransportType.TRANSIT, List.of());
+
+    @Test
+    @DisplayName("경로 모드가 아니면 출발지 한 곳만 검색한다")
+    void searchCenters_originOnly() {
+        given(courseComposer.isRouteMode(randomCondition)).willReturn(false);
+
+        assertEquals(List.of(ORIGIN), courseSearchService.searchCenters(randomCondition));
+    }
+
+    @Test
+    @DisplayName("경로 모드면 출발지·중간 지점·도착지 세 곳 주변을 검색한다")
+    void findCourses_routeMode_searchesThreeCenters() {
+        given(courseComposer.isRouteMode(routeCondition)).willReturn(true);
+        givenNearbyResults();
+        given(courseComposer.compose(eq(routeCondition), anyList(), anyList()))
+                .willReturn(List.of(course("1"), course("2"), course("3")));
+
+        courseSearchService.findCourses(routeCondition);
+
+        verify(nearbyPlaceService).findCandidates(eq(37.5446), eq(127.0559), any(), eq(1_000)); // 출발지
+        verify(nearbyPlaceService).findCandidates(eq(37.5596), eq(127.0559), any(), eq(1_000)); // 중간
+        verify(nearbyPlaceService).findCandidates(eq(37.5746), eq(127.0559), any(), eq(1_000)); // 도착지
+    }
+
+    @Test
+    @DisplayName("경로 모드에서 여러 지점에 같은 장소가 나오면 코스 조합에는 한 번만 넘긴다")
+    void findCourses_routeMode_mergesDuplicates() {
+        given(courseComposer.isRouteMode(routeCondition)).willReturn(true);
+        givenNearbyResults(); // 세 지점 모두 같은 장소 101 을 돌려준다
+        given(courseComposer.compose(eq(routeCondition), candidatesCaptor.capture(), anyList()))
+                .willReturn(List.of(course("1"), course("2"), course("3")));
+
+        courseSearchService.findCourses(routeCondition);
+
+        assertEquals(1, candidatesCaptor.getValue().size());
+    }
+
     // ===================== 도우미 =====================
 
     /** 어떤 반경으로 물어봐도 후보 1곳을 돌려주게 한다 */
