@@ -4,7 +4,7 @@ import Icon, { type IconName } from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
 import { getCategoryLabel, getKakaoMapLink } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
-import { buildSchedule, getLegMode, type Course, type CoursePlace } from '../types'
+import { buildSchedule, getLegMode, parseTransitInfo, type Course, type CoursePlace } from '../types'
 import PlaceThumbnail from './PlaceThumbnail'
 
 interface CourseScheduleProps {
@@ -108,12 +108,17 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
   )
 }
 
-/** 구간 이동: "버스 721 · 15분 · 환승 0회", "도보 8분". 이동수단 스티커가 붙은 작은 알약 */
+/**
+ * 구간 이동: 이동수단 스티커가 붙은 작은 알약
+ * - 노선이 있으면 "지하철 · 수도권 2호선 · 15분 · 환승 0회", "버스+지하철 · 버스 3411 → 수도권 2호선 · 25분 · 환승 1회"
+ * - 없으면 "도보 8분", "대중교통 12분"
+ */
 function Leg({ course, minutes, transitInfo }: { course: Course; minutes: number; transitInfo?: string }) {
   const mode = getLegMode(course, transitInfo)
+  const { lines, transfer } = transitInfo ? parseTransitInfo(transitInfo) : { lines: [], transfer: null }
   const text =
-    transitInfo && transitInfo !== mode
-      ? `${transitInfo.split(' · ')[0]} · ${formatMinutes(minutes)} · ${transitInfo.split(' · ').slice(1).join(' · ')}`
+    lines.length > 0
+      ? [mode, lines.join(' → '), formatMinutes(minutes), transfer].filter(Boolean).join(' · ')
       : `${mode} ${formatMinutes(minutes)}`
   return (
     <p className="mb-2 inline-flex items-center gap-1 rounded-full bg-cream/80 py-0.5 pr-2.5 pl-1 text-[11px] text-neutral-500">
