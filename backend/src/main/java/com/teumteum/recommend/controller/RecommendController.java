@@ -2,6 +2,7 @@ package com.teumteum.recommend.controller;
 
 import com.teumteum.global.common.ApiResponse;
 import com.teumteum.recommend.dto.AlternativePlaceListResponse;
+import com.teumteum.recommend.dto.PlaceReplaceRequest;
 import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendRequest;
 import com.teumteum.recommend.dto.RecommendResponse;
@@ -68,5 +69,15 @@ public class RecommendController {
     public ResponseEntity<ApiResponse<AlternativePlaceListResponse>> getAlternatives(
             @PathVariable String recommendationId, @PathVariable String placeId) {
         return ResponseEntity.ok(ApiResponse.ok(placeReplaceService.getAlternatives(recommendationId, placeId)));
+    }
+
+    /**
+     * 장소 교체 (DET-03 '이 장소로 교체'). 바뀐 코스를 새 recommendationId 로 보관하고 상세 형식으로 응답한다.
+     * 필드 누락·후보에 없는 장소 400, 없는 코스·코스에 없는 장소 404, 이용 시간 초과 409, 만료 410
+     */
+    @PostMapping("/courses/{recommendationId}/replace")
+    public ResponseEntity<ApiResponse<RecommendCourseDetailResponse>> replace(
+            @PathVariable String recommendationId, @Valid @RequestBody PlaceReplaceRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(placeReplaceService.replace(recommendationId, request)));
     }
 }

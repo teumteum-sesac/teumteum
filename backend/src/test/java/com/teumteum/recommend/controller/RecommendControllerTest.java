@@ -10,6 +10,7 @@ import com.teumteum.recommend.dto.AlternativePlaceListResponse;
 import com.teumteum.recommend.dto.AlternativePlaceResponse;
 import com.teumteum.recommend.dto.CurrentPlaceResponse;
 import com.teumteum.recommend.dto.LocationResponse;
+import com.teumteum.recommend.dto.PlaceReplaceRequest;
 import com.teumteum.recommend.dto.RecommendConditionResponse;
 import com.teumteum.recommend.dto.RecommendCourseDetailResponse;
 import com.teumteum.recommend.dto.RecommendResponse;
@@ -28,6 +29,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -207,6 +209,52 @@ class RecommendControllerTest {
         mockMvc.perform(get("/api/recommendations/courses/rc_1/places/999/alternatives"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("RECOMMENDATION_NOT_FOUND"));
+    }
+
+    // ===================== 장소 교체 =====================
+
+    @Test
+    @DisplayName("교체: 주소의 코스 ID 와 요청 본문을 서비스에 넘기고 200 으로 새 버전 상세를 돌려준다")
+    void replace_ok() throws Exception {
+        given(placeReplaceService.replace(eq("rc_1"), eq(new PlaceReplaceRequest("101", "201"))))
+                .willReturn(detailResponse());
+
+        mockMvc.perform(post("/api/recommendations/courses/rc_1/replace")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "targetPlaceId": "101", "newPlaceId": "201" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.recommendationId").value("rc_1"));
+    }
+
+    @Test
+    @DisplayName("교체: 새 장소 ID 가 비어 있으면 400 INVALID_REQUEST 이고 서비스는 부르지 않는다")
+    void replace_badRequest_whenBlank() throws Exception {
+        mockMvc.perform(post("/api/recommendations/courses/rc_1/replace")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "targetPlaceId": "101", "newPlaceId": "" }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+        verifyNoInteractions(placeReplaceService);
+    }
+
+    @Test
+    @DisplayName("교체: 이용 시간을 넘으면 409 AVAILABLE_TIME_EXCEEDED")
+    void replace_conflict() throws Exception {
+        given(placeReplaceService.replace(any(), any()))
+                .willThrow(new CustomException(RecommendErrorCode.AVAILABLE_TIME_EXCEEDED));
+
+        mockMvc.perform(post("/api/recommendations/courses/rc_1/replace")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "targetPlaceId": "101", "newPlaceId": "201" }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("AVAILABLE_TIME_EXCEEDED"));
     }
 
     private RecommendCourseDetailResponse detailResponse() {

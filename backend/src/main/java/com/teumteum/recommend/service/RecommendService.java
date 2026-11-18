@@ -181,6 +181,20 @@ public class RecommendService {
                 .orElseThrow(() -> new CustomException(RecommendErrorCode.RECOMMENDATION_NOT_FOUND));
     }
 
+    /**
+     * 장소를 교체한 코스를 새 버전으로 보관한다 (명세 5장).
+     * <p>
+     * 원래 코스는 고치지 않고 그대로 둔다 → 새 recommendationId 를 붙인 새 코스를 만든다.
+     * 묶음 ID·만료 시각은 원래 코스와 같다 (교체해도 2시간이 다시 늘어나지 않음).
+     * ID 만들기와 보관을 여기 한 곳에서만 하려고 PlaceReplaceService 가 이 메서드를 부른다.
+     */
+    RecommendedCourse saveReplacedCourse(RecommendedCourse original, CoursePlan replacedPlan) {
+        RecommendedCourse replaced = new RecommendedCourse(
+                newId("rc_"), original.recommendationSetId(), replacedPlan, original.expiresAt());
+        recommendationStore.saveCourse(replaced);
+        return replaced;
+    }
+
     /** 요청 DTO → 조건 도메인. 정리 규칙은 RecommendCondition 생성자가 처리한다 */
     RecommendCondition toCondition(RecommendRequest request) {
         return new RecommendCondition(
