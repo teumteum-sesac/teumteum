@@ -98,4 +98,56 @@ public class CoursePlace {
     // 선택적인 대중교통 설명. 예: "버스 721 · 환승 0회".
     @Column(name = "transit_info", length = 200)
     private String transitInfo;
+
+    /**
+     * 소속 코스와 저장 당시 장소 정보를 받아 새 엔티티를 만든다.
+     * Service에서 호출하며, 실제 DB 저장은 Repository의 save() 호출로 진행한다.
+     * 장소별로 이 메서드를 호출하므로 장소가 3곳이면 CoursePlace 객체도 3개를 만든다.
+     */
+    public static CoursePlace create(
+            Course course,
+            Long placeId,
+            String placeName,
+            String categoryCode,
+            String subCategoryName,
+            String address,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            String imageUrl,
+            String description,
+            String openingHours,
+            Short visitOrder,
+            Short stayMinutes,
+            Short travelMinutes,
+            String transitInfo
+    ) {
+        // 매번 새로운 저장 장소 객체를 만든다. 아직 DB에 저장된 상태는 아니다.
+        CoursePlace coursePlace = new CoursePlace();
+
+        // 이 장소가 속한 저장 코스를 연결한다. DB에는 연결된 Course의 ID가 들어간다.
+        coursePlace.course = course;
+        // 공용 장소 ID는 전달받는다. DB가 자동 생성하는 coursePlaceId와는 다르다.
+        coursePlace.placeId = placeId;
+
+        // 왼쪽은 @Column이 붙은 객체의 필드, 오른쪽은 매개변수로 전달받은 값이다.
+        // 추천 당시 정보를 복사해 두므로 나중에 공용 장소 정보가 바뀌어도 저장본은 유지된다.
+        coursePlace.placeName = placeName;
+        coursePlace.categoryCode = categoryCode;
+        coursePlace.subCategoryName = subCategoryName;
+        coursePlace.address = address;
+        coursePlace.latitude = latitude;
+        coursePlace.longitude = longitude;
+        coursePlace.imageUrl = imageUrl;
+        coursePlace.description = description;
+        coursePlace.openingHours = openingHours;
+
+        // 방문 순서와 계산된 체류·이동시간도 그대로 복사한다. 여기서 재계산하지 않는다.
+        coursePlace.visitOrder = visitOrder;
+        coursePlace.stayMinutes = stayMinutes;
+        coursePlace.travelMinutes = travelMinutes;
+        coursePlace.transitInfo = transitInfo;
+
+        // coursePlaceId는 null로 둔다. INSERT 시 DB가 생성하고 JPA가 객체에 채워 준다.
+        return coursePlace;
+    }
 }

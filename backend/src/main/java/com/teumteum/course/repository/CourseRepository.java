@@ -22,6 +22,9 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
     // Page<Course>는 Course 목록과 전체 건수·페이지 수를 담는다. 조회 결과가 없으면 목록이 비어 있다.
     Page<Course> findByMemberId(Long memberId, Pageable pageable);
 
+    Optional<Course> findByMemberIdAndSourceRecommendationId(
+            Long memberId,
+            String sourceRecommendationId);
     // 저장 장소·경로는 기존 DDL의 ON DELETE CASCADE로 함께 삭제한다.
     @Modifying(flushAutomatically = true)
     @Query("delete from Course c where c.memberId = :memberId")

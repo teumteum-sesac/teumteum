@@ -26,7 +26,7 @@
 | 추천 | 추천 코스 상세 | GET | `/api/recommendations/courses/{recommendationId}` | 🔓 | ✅ | 나혜빈 | DET-01·DET-02 | [recommend-api.md 3](recommend-api.md#3-추천-코스-상세-det-01--det-02) |
 | 추천 | 장소 교체 후보 | GET | `/api/recommendations/courses/{recommendationId}/places/{placeId}/alternatives` | 🔓 | ✅ | 나혜빈 | DET-03 | [recommend-api.md 4](recommend-api.md#4-장소-교체-후보-det-03) |
 | 추천 | 장소 교체 | POST | `/api/recommendations/courses/{recommendationId}/replace` | 🔓 | ✅ | 나혜빈 | DET-03 | [recommend-api.md 5](recommend-api.md#5-장소-교체-req-029) |
-| 코스 | 추천 코스 저장 | POST | `/api/courses` | 🔒 | ⬜ | 김하윤 | DET-01 [저장하기] | [course-api.md 1](course-api.md#1-추천-코스-저장) |
+| 코스 | 추천 코스 저장 | POST | `/api/courses` | 🔒 | ✅ | 김하윤 | DET-01 [저장하기] | [course-api.md 1](course-api.md#1-추천-코스-저장) |
 | 코스 | 내 저장 코스 목록 | GET | `/api/courses?page=0&size=20` | 🔒 | ✅ | 김하윤 | MY-02, MY-01 건수 | [course-api.md 2](course-api.md#2-내-저장-코스-목록-조회) |
 | 코스 | 내 저장 코스 상세·지도 | GET | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-03, DET-02 | [course-api.md 3](course-api.md#3-내-저장-코스-상세지도-조회) |
 | 코스 | 내 저장 코스 삭제 | DELETE | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-02·MY-03 | [course-api.md 4](course-api.md#4-내-저장-코스-삭제) |

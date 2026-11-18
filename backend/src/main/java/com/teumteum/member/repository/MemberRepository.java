@@ -29,6 +29,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface MemberRepository extends JpaRepository<Member, Long> {
 
+    // 저장·탈퇴가 같은 회원 행을 먼저 잠그도록 해 탈퇴 직후 새 코스가 남는 경쟁을 막는다.
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select m from Member m where m.id = :memberId")
+    Optional<Member> findByIdForUpdate(@org.springframework.data.repository.query.Param("memberId") Long memberId);
+
     /**
      * 이메일로 회원 찾기 — 로그인할 때 사용.
      * Optional: 결과가 없을 수도 있다는 뜻. null 대신 Optional.empty() 가 돌아와서 null 실수를 줄인다.

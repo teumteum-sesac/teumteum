@@ -47,6 +47,8 @@ public class Course {
     @Column(name = "course_name", nullable = false, length = 810)
     private String courseName;
 
+
+
     // 출발지 이름과 주소는 없어도 되지만, 출발지 좌표는 필수다.
     // nullable을 생략하면 기본값은 true다.
     @Column(name = "origin_name", length = 200)
@@ -107,6 +109,61 @@ public class Course {
     // 저장 시각은 수정하지 않는다. 시간대 정보 자체는 이 타입과 DB 컬럼에 포함되지 않는다.
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "DATETIME")
     private LocalDateTime createdAt;
+
+    /**
+     * 저장할 값을 채운 새 코스 엔티티를 만든다. 이 메서드 자체는 DB에 저장하지 않는다.
+     * Service가 추천 서비스에서 받은 데이터를 아래 매개변수로 전달하고,
+     * 반환된 객체를 courseRepository.save(course)에 넘겨 실제로 저장한다.
+     * 장소 목록과 지도 경로는 별도의 CoursePlace, CourseRouteLeg로 저장한다.
+     */
+    public static Course create(
+            Long memberId,
+            String sourceRecommendationId,
+            String courseName,
+            String originName,
+            String originAddress,
+            BigDecimal originLatitude,
+            BigDecimal originLongitude,
+            String destinationName,
+            String destinationAddress,
+            BigDecimal destinationLatitude,
+            BigDecimal destinationLongitude,
+            TransportType transportType,
+            LocalTime startTime,
+            Short totalMinutes,
+            Short totalTravelMinutes,
+            Short finalTravelMinutes,
+            boolean estimated
+    ) {
+        // 아직 DB에 저장되지 않은 빈 엔티티를 만든다.
+        Course course = new Course();
+
+        // 오른쪽은 전달받은 값, 왼쪽은 위에서 @Column으로 연결한 엔티티 필드다.
+        course.memberId = memberId;
+        course.sourceRecommendationId = sourceRecommendationId;
+        course.courseName = courseName;
+
+        // 추천 당시의 출발지·도착지를 복사한다. 도착지가 없으면 도착지 값들은 null이다.
+        course.originName = originName;
+        course.originAddress = originAddress;
+        course.originLatitude = originLatitude;
+        course.originLongitude = originLongitude;
+        course.destinationName = destinationName;
+        course.destinationAddress = destinationAddress;
+        course.destinationLatitude = destinationLatitude;
+        course.destinationLongitude = destinationLongitude;
+
+        // 추천 당시 계산된 일정과 추정 여부를 그대로 보관한다. 여기서 재계산하지 않는다.
+        course.transportType = transportType;
+        course.startTime = startTime;
+        course.totalMinutes = totalMinutes;
+        course.totalTravelMinutes = totalTravelMinutes;
+        course.finalTravelMinutes = finalTravelMinutes;
+        course.estimated = estimated;
+
+        // courseId는 INSERT 시 DB가 생성하고, createdAt은 아래 @PrePersist가 채운다.
+        return course;
+    }
 
     // JPA가 새 엔티티를 저장하기 전에 호출한다. 조회할 때마다 실행되는 메서드는 아니다.
     // INSERT에 null을 보내면 DB의 DEFAULT가 적용되지 않으므로 애플리케이션에서 값을 채운다.

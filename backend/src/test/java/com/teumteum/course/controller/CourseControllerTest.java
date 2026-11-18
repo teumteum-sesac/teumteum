@@ -5,6 +5,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import org.springframework.http.MediaType;
+import com.teumteum.course.dto.CourseSaveResponse;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +54,32 @@ class CourseControllerTest {
                 .setCustomArgumentResolvers(new LoginMemberArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    void createsCourseWithLocationAndReturnsExistingCourseWith200() throws Exception {
+        given(courseService.saveCourse(7L, "rc_test"))
+                .willReturn(new CourseSaveResponse("42", "저장 카페", "2026-11-18T13:00:00+09:00", true),
+                        new CourseSaveResponse("42", "저장 카페", "2026-11-18T13:00:00+09:00", false));
+        mockMvc.perform(post("/api/courses").principal(MEMBER_7).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recommendationId\":\"rc_test\"}"))
+                .andExpect(status().isCreated()).andExpect(header().string("Location", "/api/courses/42"))
+                .andExpect(jsonPath("$.data.courseId").value("42"))
+                .andExpect(jsonPath("$.data.created").value(true));
+        mockMvc.perform(post("/api/courses").principal(MEMBER_7).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recommendationId\":\"rc_test\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.created").value(false));
+    }
+
+    @Test
+    void rejectsSaveWithoutAuthenticationOrRecommendationId() throws Exception {
+        mockMvc.perform(post("/api/courses").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recommendationId\":\"rc_test\"}"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/courses").principal(MEMBER_7).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recommendationId\":\" \"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(courseService);
     }
 
     @Test

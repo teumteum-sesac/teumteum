@@ -19,6 +19,11 @@ import com.teumteum.course.repository.CoursePlaceRepository;
 import com.teumteum.course.repository.CourseRepository;
 import com.teumteum.course.repository.CourseRouteLegRepository;
 import com.teumteum.global.exception.CustomException;
+import com.teumteum.recommend.service.RecommendService;
+import com.teumteum.recommend.exception.RecommendErrorCode;
+import com.teumteum.recommend.dto.CoordinateResponse;
+import com.teumteum.recommend.dto.RouteLegResponse;
+import com.teumteum.recommend.domain.PathType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -49,11 +54,150 @@ class CourseServiceTest {
     private CoursePlaceRepository coursePlaceRepository;
     @Mock
     private CourseRouteLegRepository courseRouteLegRepository;
+    @Mock
+    private RecommendService recommendService;
+    @Mock
+    private CourseSaveWriter courseSaveWriter;
     private CourseService courseService;
 
     @BeforeEach
     void setUp() {
-        courseService = new CourseService(courseRepository, coursePlaceRepository, courseRouteLegRepository);
+        courseService = new CourseService(courseRepository, coursePlaceRepository,
+                courseRouteLegRepository, recommendService, courseSaveWriter);
+    }
+
+    @Test
+    void sendsValidatedRecommendationToWriter() {
+        var detail = CourseSaveFixtures.detail("rc_new", "external-test");
+        var response = new com.teumteum.course.dto.CourseSaveResponse("42", "저장 카페", "2026-11-18T13:00:00+09:00", true);
+        given(courseRepository.findByMemberIdAndSourceRecommendationId(7L, "rc_new"))
+                .willReturn(Optional.empty());
+        given(recommendService.getCourseDetail("rc_new")).willReturn(detail);
+        given(courseSaveWriter.save(7L, detail)).willReturn(response);
+
+        assertThat(courseService.saveCourse(7L, "rc_new")).isSameAs(response);
+        verify(courseSaveWriter).save(7L, detail);
+    }
+
+    @Test
+    void returnsConcurrentWinnersSnapshotAfterWriteTransactionRolledBack() {
+        var detail = CourseSaveFixtures.detail("rc_race", "external-test");
+        Course winner = mock(Course.class);
+        given(winner.getCourseId()).willReturn(42L);
+        given(winner.getCourseName()).willReturn("먼저 저장된 코스");
+        given(winner.getCreatedAt()).willReturn(LocalDateTime.of(2026, 11, 18, 13, 0));
+        given(courseRepository.findByMemberIdAndSourceRecommendationId(7L, "rc_race"))
+                .willReturn(Optional.empty(), Optional.of(winner));
+        given(recommendService.getCourseDetail("rc_race")).willReturn(detail);
+        given(courseSaveWriter.save(7L, detail))
+                .willThrow(new org.springframework.dao.DataIntegrityViolationException("test conflict"));
+
+        var result = courseService.saveCourse(7L, "rc_race");
+        assertThat(result.created()).isFalse();
+        assertThat(result.courseId()).isEqualTo("42");
+        assertThat(result.courseName()).isEqualTo("먼저 저장된 코스");
+    }
+
+    @Test
+    void doesNotHideNonDuplicateDatabaseErrors() {
+        var detail = CourseSaveFixtures.detail("rc_failure", "external-test");
+        var failure = new org.springframework.dao.DataIntegrityViolationException("test FK failure");
+        given(courseRepository.findByMemberIdAndSourceRecommendationId(7L, "rc_failure"))
+                .willReturn(Optional.empty());
+        given(recommendService.getCourseDetail("rc_failure")).willReturn(detail);
+        given(courseSaveWriter.save(7L, detail)).willThrow(failure);
+        assertThatThrownBy(() -> courseService.saveCourse(7L, "rc_failure")).isSameAs(failure);
+    }
+
+    @Test
+    void copiesRoutesInOrderWithOriginalCoordinatesAndSameCourse() {
+        Course course = mock(Course.class);
+        var start = new CoordinateResponse(37.5446, 127.0559);
+        var middle = new CoordinateResponse(37.545, 127.056);
+        var end = new CoordinateResponse(37.547, 127.061);
+        var routes = List.of(
+                new RouteLegResponse(0, 1, PathType.ACTUAL, List.of(start, middle, end)),
+                new RouteLegResponse(1, 2, PathType.STRAIGHT, List.of(end, start))
+        );
+
+        var savedRoutes = courseService.createRouteLegs(course, routes);
+
+        assertThat(savedRoutes).hasSize(2);
+        assertThat(savedRoutes).allSatisfy(leg -> {
+            assertThat(leg.getCourse()).isSameAs(course);
+            assertThat(leg.getCourseRouteLegId()).isNull();
+        });
+        assertThat(savedRoutes.get(0).getPathType()).isEqualTo(CourseRouteLeg.PathType.ACTUAL);
+        assertThat(savedRoutes.get(0).getFromVisitOrder()).isEqualTo((short) 0);
+        assertThat(savedRoutes.get(0).getToVisitOrder()).isEqualTo((short) 1);
+        assertThat(savedRoutes.get(0).getCoordinates()).containsExactly(
+                new CourseRouteLeg.Coordinate(new BigDecimal("37.5446"), new BigDecimal("127.0559")),
+                new CourseRouteLeg.Coordinate(new BigDecimal("37.545"), new BigDecimal("127.056")),
+                new CourseRouteLeg.Coordinate(new BigDecimal("37.547"), new BigDecimal("127.061"))
+        );
+        assertThat(savedRoutes.get(1).getPathType()).isEqualTo(CourseRouteLeg.PathType.STRAIGHT);
+        assertThat(savedRoutes.get(1).getFromVisitOrder()).isEqualTo((short) 1);
+        assertThat(savedRoutes.get(1).getToVisitOrder()).isEqualTo((short) 2);
+        assertThat(savedRoutes.get(1).getCoordinates()).containsExactly(
+                savedRoutes.get(0).getCoordinates().get(2),
+                savedRoutes.get(0).getCoordinates().get(0)
+        );
+        verifyNoInteractions(courseRepository, coursePlaceRepository, courseRouteLegRepository, recommendService);
+    }
+
+    @Test
+    void rejectsRoutesWithMissingCoordinatesOrInvalidCoordinateRange() {
+        Course course = mock(Course.class);
+        var valid = new CoordinateResponse(37.5446, 127.0559);
+        var invalidRoutes = List.of(
+                new RouteLegResponse(0, 1, PathType.STRAIGHT, List.of(valid)),
+                new RouteLegResponse(0, 2, PathType.STRAIGHT, List.of(valid, valid)),
+                new RouteLegResponse(0, 1, PathType.STRAIGHT,
+                        List.of(valid, new CoordinateResponse(Double.NaN, 127.0))),
+                new RouteLegResponse(0, 1, PathType.STRAIGHT,
+                        List.of(valid, new CoordinateResponse(37.0, 181.0)))
+        );
+
+        for (var route : invalidRoutes) {
+            assertThatThrownBy(() -> courseService.createRouteLegs(course, List.of(route)))
+                    .isInstanceOf(CustomException.class);
+        }
+        verifyNoInteractions(courseRepository, coursePlaceRepository, courseRouteLegRepository);
+    }
+
+    @Test
+    void returnsExistingSavedCourseWithoutWritingAgain() {
+        Course course = mock(Course.class);
+        LocalDateTime createdAt = LocalDateTime.of(2026, 11, 18, 10, 0);
+        given(course.getCourseId()).willReturn(42L);
+        given(course.getCourseName()).willReturn("카페 → 공원");
+        given(course.getCreatedAt()).willReturn(createdAt);
+        given(courseRepository.findByMemberIdAndSourceRecommendationId(7L, "rc_abc"))
+                .willReturn(Optional.of(course));
+
+        var response = courseService.saveCourse(7L, "rc_abc");
+
+        assertThat(response.courseId()).isEqualTo("42");
+        assertThat(response.courseName()).isEqualTo("카페 → 공원");
+        assertThat(response.createdAt()).isEqualTo(createdAt.atZone(ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+        assertThat(response.created()).isFalse();
+        verify(courseRepository, never()).save(any(Course.class));
+        verifyNoInteractions(coursePlaceRepository, courseRouteLegRepository, recommendService);
+    }
+
+    @Test
+    void propagatesRecommendationExpiryWithoutSavingAnything() {
+        given(courseRepository.findByMemberIdAndSourceRecommendationId(7L, "rc_expired"))
+                .willReturn(Optional.empty());
+        CustomException expired = new CustomException(RecommendErrorCode.RECOMMENDATION_EXPIRED);
+        given(recommendService.getCourseDetail("rc_expired")).willThrow(expired);
+
+        assertThatThrownBy(() -> courseService.saveCourse(7L, "rc_expired"))
+                .isSameAs(expired);
+
+        verify(courseRepository, never()).save(any(Course.class));
+        verifyNoInteractions(coursePlaceRepository, courseRouteLegRepository);
     }
 
     @Test

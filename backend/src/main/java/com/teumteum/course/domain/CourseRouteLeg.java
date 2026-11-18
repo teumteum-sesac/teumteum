@@ -88,4 +88,32 @@ public class CourseRouteLeg {
     // BigDecimal로 십진 좌표를 표현한다. JSON 내부 값이므로 @Column의 precision/scale은 적용되지 않는다.
     public record Coordinate(BigDecimal latitude, BigDecimal longitude) {
     }
+
+    // Service에서 CourseRouteLeg.create(...)로 호출해 저장할 경로 구간 객체를 만든다.
+    // 객체 생성만 담당하며 실제 DB 저장은 Service가 Repository를 호출해 진행한다.
+    public static CourseRouteLeg create(
+
+            Course course,
+            Short fromVisitOrder,
+            Short toVisitOrder,
+            PathType pathType,
+            List<Coordinate> coordinates
+    )
+    {
+        // 호출할 때마다 새로운 빈 엔티티 객체를 만든다.
+        CourseRouteLeg courseRouteLeg = new CourseRouteLeg();
+
+        // 소속 코스를 연결한다. DB 저장 시 이 코스의 ID가 course_id 컬럼에 들어간다.
+        courseRouteLeg.course = course;
+        // 전달받은 구간 순서와 실제 경로/직선 여부를 엔티티 필드에 채운다.
+        courseRouteLeg.fromVisitOrder = fromVisitOrder;
+        courseRouteLeg.toVisitOrder = toVisitOrder;
+        courseRouteLeg.pathType = pathType;
+        // 원본 리스트를 외부에서 변경해도 저장할 좌표 목록에 영향을 주지 않도록 복사한다.
+        courseRouteLeg.coordinates = List.copyOf(coordinates);
+
+        // courseRouteLegId는 DB가 자동 생성하므로 여기서는 채우지 않는다.
+        // 완성된 객체를 Service에 반환해야 Service가 받아서 Repository로 저장할 수 있다.
+        return courseRouteLeg;
+    }
 }

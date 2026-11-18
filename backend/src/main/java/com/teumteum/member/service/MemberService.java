@@ -119,6 +119,13 @@ public class MemberService {
         return memberRepository.findById(memberId);
     }
 
+    /** 호출자의 쓰기 트랜잭션이 끝날 때까지 회원 행을 잠근다. 코스 저장용 서비스 계약이다. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockActiveMember(Long memberId) {
+        memberRepository.findByIdForUpdate(memberId).filter(Member::isActive)
+                .orElseThrow(() -> new CustomException(CommonErrorCode.UNAUTHORIZED));
+    }
+
     /** JWT 서명이 맞아도 삭제·탈퇴한 회원이면 인증하지 않는다. */
     public boolean isActiveMember(Long memberId) {
         return memberId != null && memberId > 0
