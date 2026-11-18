@@ -1,5 +1,9 @@
 package com.teumteum.course.controller;
 
+import com.teumteum.global.config.OpenApiConfig;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.teumteum.course.dto.CourseDeleteResponse;
 import com.teumteum.course.dto.CourseListResponse;
 import com.teumteum.course.dto.CourseResponse;
@@ -17,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // HTTP 요청을 받아 Service에 전달하고, 결과를 공통 JSON 응답으로 반환한다.
+@Tag(name = OpenApiConfig.TAG_COURSE)
 @RestController // 메서드의 반환 객체를 JSON 응답 본문으로 변환한다.
 @RequestMapping("/api/courses") // 이 Controller의 공통 주소다.
 @RequiredArgsConstructor // final 필드를 받는 생성자를 만들어 CourseService를 주입받는다.
@@ -25,14 +30,15 @@ public class CourseController {
     private final CourseService courseService;
 
     // GET /api/courses?page=0&size=20: 본인의 저장 코스를 페이지 단위로 조회한다.
+    @Operation(summary = "🔒 내 저장 코스 목록", description = "로그인 필요. 최신 저장순, 페이지 단위. totalElements 가 전체 저장 수 (마이페이지 건수는 size=1 로 조회)")
     @GetMapping
     public ResponseEntity<ApiResponse<CourseListResponse>> getCourses(
             // 기존 Resolver가 회원 ID를 채운다. 사용자가 쿼리로 지정하는 회원 ID가 아니다.
             // 로그인 토큰(Authorization: Bearer)을 JwtAuthenticationFilter 가 검증하고 회원 ID 를 넣어 준다.
             @LoginMember Long memberId,
             // URL에 page가 없으면 첫 페이지(0), size가 없으면 20개를 요청한다.
-            @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "20") int size
+            @Parameter(description = "페이지 번호 (0부터)", example = "0") @RequestParam(name = "page", defaultValue = "0") int page,
+            @Parameter(description = "한 페이지 개수 (1~50)", example = "20") @RequestParam(name = "size", defaultValue = "20") int size
     ) {
         // 범위 검사(page >= 0, size 1~50), DB 조회, 장소 수 집계, DTO 변환은 Service가 담당한다.
         // 숫자가 아닌 page/size는 Spring이 변환 단계에서 거절한다.
@@ -45,6 +51,7 @@ public class CourseController {
     }
 
     // GET /api/courses/1처럼 코스 ID를 지정해서 상세 조회한다.
+    @Operation(summary = "🔒 내 저장 코스 상세·지도", description = "로그인 필요. 저장 당시의 장소·일정·지도 경로를 그대로 준다. 다른 회원의 코스면 404")
     @GetMapping("/{courseId}")
     public ResponseEntity<ApiResponse<CourseResponse>> getCourse(
             @LoginMember Long memberId,
@@ -58,6 +65,7 @@ public class CourseController {
     }
 
     // DELETE /api/courses/1처럼 코스 ID를 지정해 삭제한다.
+    @Operation(summary = "🔒 저장 해제", description = "로그인 필요. 내 저장 코스를 삭제한다")
     @DeleteMapping("/{courseId}")
     public ResponseEntity<ApiResponse<CourseDeleteResponse>> deleteCourse(
             // 기존 인증 계층에서 요청한 회원 ID를 받는다.

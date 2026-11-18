@@ -1,5 +1,9 @@
 package com.teumteum.member.controller;
 
+import com.teumteum.global.config.OpenApiConfig;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.teumteum.global.common.ApiResponse;
 import com.teumteum.member.dto.EmailExistsResponse;
 import com.teumteum.member.dto.SignupRequest;
@@ -32,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * 서버 실행 후 Swagger UI(http://localhost:8080/swagger-ui/index.html)에서 직접 요청해 볼 수 있다.
  */
+@Tag(name = OpenApiConfig.TAG_AUTH)
 @RestController                   // 이 클래스의 메서드 반환값을 JSON 으로 바꿔 응답한다
 @RequestMapping("/api/members")   // 아래 메서드들 주소 앞에 공통으로 붙는다
 @RequiredArgsConstructor
@@ -46,6 +51,7 @@ public class MemberController {
      *   응답 201 Created: "새로 만들어졌다"는 뜻의 상태 코드 (종일님 ApiResponse 사용 예시와 같은 방식)
      *   응답 data 는 로그인과 같은 LoginResponse (토큰 포함) → 프론트는 가입 직후 바로 로그인 상태가 된다
      */
+    @Operation(summary = "회원가입", description = "가입하면 바로 로그인 상태가 되도록 응답에 accessToken 이 들어 있다 (201).\n\n비밀번호 8~64자, 닉네임 최대 50자. 실패: 409 DUPLICATE_EMAIL(이미 가입된 이메일), 400 INVALID_REQUEST(형식 오류)", security = {})
     @PostMapping
     public ResponseEntity<ApiResponse<LoginResponse>> signup(@Valid @RequestBody SignupRequest request) {
         LoginResponse response = memberService.signup(request);
@@ -57,9 +63,10 @@ public class MemberController {
      *   @RequestParam : 주소 뒤 ?email=... 값을 받는다
      *   @NotBlank @Email : 쿼리 값도 검증. 틀리면 400 (GlobalExceptionHandler 의 HandlerMethodValidationException 처리)
      */
+    @Operation(summary = "이메일 중복 확인", description = "exists=true 면 이미 가입된 이메일. 회원가입 화면 [중복 확인] 버튼", security = {})
     @GetMapping("/email-exists")
     public ResponseEntity<ApiResponse<EmailExistsResponse>> checkEmailExists(
-            @RequestParam @NotBlank @Email String email
+            @Parameter(description = "확인할 이메일", example = "user@email.com") @RequestParam @NotBlank @Email String email
     ) {
         boolean exists = memberService.existsByEmail(email);
         return ResponseEntity.ok(ApiResponse.ok(new EmailExistsResponse(exists)));
