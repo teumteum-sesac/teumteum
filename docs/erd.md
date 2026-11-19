@@ -63,7 +63,7 @@ mysql -u root -p < erd.sql
 - 저장 시 추천 결과의 장소 정보와 일정을 복사해 보관한다. 기본 목록·상세·지도는 이 저장본으로 응답한다.
 - 공용 `place`가 갱신돼도 저장한 코스명, 장소 정보, 방문 순서, 좌표·경로, 체류·이동시간과 총 소요시간은 유지한다.
 - `place_id`는 원래 장소를 식별하고 최신 정보를 조회하는 연결로 유지한다. 공용 `place`를 JOIN한 값만으로 저장 당시 장소 정보를 구성하지 않는다.
-- '정보 새로고침'을 누를 때만 최신 장소 정보를 조회한다. 저장본을 덮어쓰거나 일정을 재계산하지 않고, 최신 조회 정보와 조회 시각을 별도로 반환·표시한다.
+- 최신 장소 정보는 별도 API(`GET /api/courses/{courseId}/places/latest`)로만 조회한다. 저장본을 덮어쓰거나 일정을 재계산하지 않는다. (화면의 '정보 새로고침'은 #224 에서 제외되어 지금은 프론트가 부르지 않는다)
 - 최신 조회 결과는 해당 화면의 임시 정보로 사용한다. 화면 재진입·브라우저 새로고침 시 저장본으로 표시하며, 자동으로 외부 API를 다시 호출하지 않는다.
 - 장소별 최신 조회 성공·실패·정보 없음 상태를 구분한다. 일부 조회가 실패해도 저장본은 그대로 제공하고, 저장 당시 값을 최신 정보로 표시하지 않는다.
 - 기본 조회와 최신 정보 조회 모두 로그인한 회원 본인의 저장 코스에 대해서만 허용한다.
@@ -373,7 +373,7 @@ DROP TABLE IF EXISTS `member`;
 | 도착지 이동시간 | 없음 | `final_travel_minutes` | 총 소요시간에 마지막 장소→도착지 이동 포함. 프론트 `finalTravelMinutes` 와 대응 |
 | `recommendation_type` (단일/코스) | 있음 | 삭제 | 사용자가 단일/코스를 고르지 않음. 장소 수로 판단 가능 |
 | `recommendation_mode` | 있음 | `category_mode` (`DIRECT`/`RANDOM`) | 프론트 `CategoryMode` 와 통일 |
-| `start_at`, `end_at` | 있음 | `start_time` + `available_minutes` | 조건은 시작 시각 + 이용 시간(0분~6시간 슬라이더, 0분이면 추천 불가) |
+| `start_at`, `end_at` | 있음 | `start_time` + `available_minutes` | 조건은 시작 시각 + 이용 시간(화면 슬라이더 1~6시간, 서버 검증 30~360분) |
 | `recommendation_history.member_id` | NOT NULL | NULL 허용 | 비회원 이용 중심 서비스 |
 | `category_code` | 없음 | 추가 + 기본 데이터 | 대분류 영문 코드로 API·프론트와 연결 |
 | `place.created_at` | 없음 | 추가 | |
@@ -390,7 +390,7 @@ DROP TABLE IF EXISTS `member`;
 | 체류시간 | `place.default_stay_minutes` 만 | `category.stay_minutes`(세분류별) 추가 | 세분류별 예상 체류시간 표 (RES-01, 결정 1) |
 | 시작 시각 | 없음 | `recommendation_history.start_time`, `course.start_time` | 시작 시각 + 이용 시간, 저장 코스의 방문 시각 표시 |
 | 대중교통 정보 | 없음 | `course_place.transit_info` | 상세에 노선·환승 표시 (DET-01) |
-| `available_minutes` | 0~360 | 30~360 (0분은 추천 불가라 저장 안 됨) | 결정 4 |
+| `available_minutes` | 0~360 | 30~360 (서버 검증 범위. 화면은 60~360, 1시간 단위) | 결정 4, #216 |
 | 카테고리 이름 | `카페·디저트` 등 | `카페/디저트` 등 | 화면설계서·프론트와 통일 |
 
 ## 8. 남은 결정 사항
@@ -403,7 +403,7 @@ DROP TABLE IF EXISTS `member`;
 - 추천 결과 2시간 보관·장소 교체 후보(저장된 카카오 로컬 후보) 저장 위치: DB 또는 서버 캐시 — 나혜빈
 - 전시(문화포털)·공연(KOPIS) 매일 1회 저장 테이블 — 정종일
 
-- 전체 알림(`notification`) 테이블: 관리자 기능에 있으나 요구사항(발송 방식, 읽음 처리)이 정해지지 않아 넣지 않음 — 정종화
+- 전체 알림(`notification`) 테이블: 관리자 기능에 있으나 요구사항(발송 방식, 읽음 처리)이 정해지지 않아 넣지 않음. 전체 알림은 최신 공지를 홈 배너로 보여 주는 것으로 대신함 — 김용현
 - `account_status`, `inquiry_status` 값 목록 확정
 - 세분류 목록과 카카오 장소 분류 매핑
 

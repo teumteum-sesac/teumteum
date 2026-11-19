@@ -20,7 +20,8 @@
 | 장소 | 장소·주소 검색 | GET | `/api/places/search?query=&lat=&lng=` | 🔓 | ✅ | 정종일 | HOM-01, CON-02 | [3.1](#31-장소주소-검색) |
 | 장소 | 좌표 → 주소 | GET | `/api/places/address?lat=&lng=` | 🔓 | ✅ | 정종일 | CON-02, 지도 핀 | [3.2](#32-좌표--주소) |
 | 장소 | 주변 장소 | GET | `/api/places/nearby?lat=&lng=&categories=&radius=` | 🔓 | ✅ | 정종일 | HOM-02 | [3.3](#33-주변-장소) |
-| 장소 | 장소 상세 (TourAPI 사진·소개·운영시간) | GET | `/api/places/detail?kakaoPlaceId=&name=&lat=&lng=` | 🔓 | ✅ | 정종일 | 장소 미리보기 `/places/:placeId` | Swagger 참고 |
+| 장소 | 장소 상세 (TourAPI 사진·소개·운영시간) | GET | `/api/places/detail?kakaoPlaceId=&name=&lat=&lng=` | 🔓 | ✅ | 정종일 | (프론트 미사용: #224 부터 장소 화면은 카카오맵 장소 정보 시트) | Swagger 참고 |
+| 경로 | 도보 경로 (내 위치 → 장소) | GET | `/api/routes/walk?fromLat=&fromLng=&toLat=&toLng=` | 🔓 | ✅ | 김용현 | 장소 화면 `/places/:placeId` (주변 탐색에서 열었을 때) | [3.4](#34-도보-경로) |
 | 추천 | 추천 생성 | POST | `/api/recommendations` | 🔓 | ✅ | 나혜빈 | CON-01 → RES-01 | [recommend-api.md 1](recommend-api.md#1-추천-생성) |
 | 추천 | 다시 추천 | POST | `/api/recommendations/{recommendationSetId}/regenerate` | 🔓 | ✅ | 나혜빈 | RES-01 | [recommend-api.md 2](recommend-api.md#2-다시-추천-req-026) |
 | 추천 | 추천 코스 상세 | GET | `/api/recommendations/courses/{recommendationId}` | 🔓 | ✅ | 나혜빈 | DET-01·DET-02 | [recommend-api.md 3](recommend-api.md#3-추천-코스-상세-det-01--det-02) |
@@ -30,7 +31,7 @@
 | 코스 | 내 저장 코스 목록 | GET | `/api/courses?page=0&size=20` | 🔒 | ✅ | 김하윤 | MY-02, MY-01 건수 | [course-api.md 2](course-api.md#2-내-저장-코스-목록-조회) |
 | 코스 | 내 저장 코스 상세·지도 | GET | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-03, DET-02 | [course-api.md 3](course-api.md#3-내-저장-코스-상세지도-조회) |
 | 코스 | 내 저장 코스 삭제 | DELETE | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-02·MY-03 | [course-api.md 4](course-api.md#4-내-저장-코스-삭제) |
-| 코스 | 최신 장소 정보 조회 | GET | `/api/courses/{courseId}/places/latest` | 🔒 | ✅ | 김하윤 | MY-03 [정보 새로고침] | [course-api.md 5](course-api.md#5-최신-장소-정보-별도-조회) |
+| 코스 | 최신 장소 정보 조회 | GET | `/api/courses/{courseId}/places/latest` | 🔒 | ✅ | 김하윤 | (프론트 미사용: #224 에서 MY-03 '정보 새로고침' 화면 제외) | [course-api.md 5](course-api.md#5-최신-장소-정보-별도-조회) |
 | 관리자 | 회원 목록 (검색) | GET | `/api/admin/members?keyword=&page=&size=` | 🔒 관리자 | ✅ | 김용현 | `/admin` | Swagger 참고 |
 | 관리자 | 회원 강제 탈퇴 | PATCH | `/api/admin/members/{memberId}/withdraw` | 🔒 관리자 | ✅ | 김용현 | `/admin` | Swagger 참고 |
 | 관리자 | 공지 등록 (최신 공지 = 전체 알림 배너) | POST | `/api/admin/notices` | 🔒 관리자 | ✅ | 김용현 | `/admin` | Swagger 참고 |
@@ -273,6 +274,23 @@
 | 502 | `KAKAO_API_ERROR` | 카카오 로컬 API 실패 |
 | 503 | `KAKAO_API_RATE_LIMIT` | 카카오 호출 한도 초과 |
 
+### 3.4 도보 경로
+`GET /api/routes/walk?fromLat=37.5803&fromLng=127.0469&toLat=37.5812&toLng=127.0480` · 🔓 · 장소 화면 `/places/:placeId` (주변 탐색 [상세 보기]에서 열었을 때만)
+
+추천이 쓰는 도보 이동시간 계산(`TravelTimeService.findRoute(WALK)`, OpenRouteService)을 그대로 부른다. 경로 API가 실패하면 직선거리로 추정한다.
+
+| 파라미터 | 규칙 |
+|---|---|
+| fromLat, toLat | -90 ~ 90 |
+| fromLng, toLng | -180 ~ 180 |
+
+성공 200 (`WalkRouteResponse`)
+```json
+{ "travelMinutes": 6, "estimated": false, "path": [ { "latitude": 37.5803, "longitude": 127.0469 }, { "latitude": 37.5812, "longitude": 127.0480 } ] }
+```
+- `estimated: true` 면 직선 추정값이고 `path` 는 출발·도착 두 점(직선)이다
+- 프론트는 5km 넘게 멀거나 위치 권한이 없으면 부르지 않고 장소 마커만 보여 준다
+
 ## 4. 추천 (나혜빈) · 코스 저장 (김하윤)
 
 요청·응답·오류가 길어서 도메인 문서에 있습니다.
@@ -285,6 +303,7 @@
 ## 변경 이력
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-19 | 도보 경로 API(`/api/routes/walk`, 3.4) 추가, 프론트가 부르지 않는 장소 상세·최신 장소 정보 API 표시 |
 | 2026-11-19 | 회원 탈퇴: 동의 체크 + 비밀번호 모두 필수, 관리자 본인 탈퇴 차단, 탈퇴 시 이메일 비식별화(재가입 허용), 관리자 강제 탈퇴도 코스 삭제 |
 | 2026-11-19 | 관리자(회원 관리·공지) API 5개, 공지 조회 API 2개, 장소 상세 API 주소·구현 상태 반영. 관리자 담당 김용현으로 변경 |
 | 2026-11-18 | 내 회원 정보 수정(PATCH /api/members/me) 요청·응답·비밀번호 유지 정책 추가 (#153) |

@@ -1,6 +1,6 @@
 # 로컬 실행 가이드
 
-> 담당: 김용현 · NFR-038 · 기준: 2026-11-18 `dev`
+> 담당: 김용현 · NFR-038 · 기준: 2026-11-19 `dev`
 > 저장소를 처음 받은 팀원이 **DB → 백엔드 → 프론트**를 띄워서 화면이 실제 API와 연결되는 것까지 확인하는 순서입니다.
 > 순서대로 하면 30분 안에 끝납니다. 막히면 맨 아래 [자주 나는 오류](#6-자주-나는-오류)를 먼저 보세요.
 
@@ -38,6 +38,7 @@
 | `kakao.rest-api-key` | ✅ | 서버가 안 켜짐 (차량 이동시간 클라이언트가 필수로 읽음), 장소 검색 실패 | 카카오 개발자 콘솔 → 앱 → **REST API 키** (팀 공용 키는 김용현에게 개별 요청) |
 | `ors.api-key` | | 켜짐. 도보 이동시간을 직선거리로 계산("예상 시간") | <https://openrouteservice.org> 가입 → 대시보드 토큰 |
 | `odsay.api-key` | | 켜짐. 대중교통 이동시간을 직선거리로 계산 | <https://lab.odsay.com> 가입 → 애플리케이션 등록 (사용할 서버 IP·URL 등록 필요) |
+| `tour.service-key` | | 켜짐. 장소 상세 API(`/api/places/detail`)의 사진·소개·운영시간이 비어 옴 (화면은 이 API 를 쓰지 않아 영향 없음) | 공공데이터포털 TourAPI → 디코딩 키 |
 
 ### 2.2 프론트 `frontend/.env.local`
 `frontend/.env.example` 을 복사해서 이름을 바꾸고 값을 채운다.
@@ -77,8 +78,15 @@ npm run dev
 | 3 | 마이 → 로그아웃 → `/login` | 다시 로그인. 틀린 비밀번호면 "이메일 또는 비밀번호가 맞지 않아요." | `POST /api/auth/login` |
 | 4 | `/` 홈 검색창 | "성수역" 검색 → 결과 목록 | `GET /api/places/search` |
 | 5 | `/nearby` | 주변 장소 카드·지도 마커 | `GET /api/places/nearby` |
-| 6 | `/condition` → [추천받기] | 추천 결과 (RES-01 API 연결 후) | `POST /api/recommendations` |
-| 7 | `/mypage/courses` | 저장한 코스 목록 (코스 저장 API 연결 후 데이터가 생김) | `GET /api/courses` |
+| 6 | `/condition` → [추천받기] | 출발지·도착지가 현재 위치로 채워짐 → 토끼 로딩 → 추천 코스 3개 | `POST /api/recommendations` |
+| 7 | 코스 상세 → [이 코스 저장하기] → `/mypage/courses` | 저장한 코스 목록에 방금 코스 | `POST /api/courses`, `GET /api/courses` |
+
+### 관리자 계정 만들기 (관리자 화면 `/admin` 시연용)
+회원가입한 계정의 `member_id` 를 `admin` 테이블에 넣고 **다시 로그인**한다 (토큰에 관리자 표시가 들어가야 함).
+```sql
+INSERT INTO admin (member_id) SELECT member_id FROM member WHERE email = '관리자로 쓸 이메일';
+```
+관리자 계정은 본인 탈퇴가 막혀 있다. 관리자를 그만두려면 `admin` 행을 먼저 지운다.
 
 Swagger 에서 회원 전용 API(🔒)를 시험할 때는 로그인 응답의 `accessToken` 을 **[Authorize]** 에 넣는다. 전체 API 목록은 [api-spec.md](api-spec.md).
 
@@ -117,4 +125,5 @@ Swagger 에서 회원 전용 API(🔒)를 시험할 때는 로그인 응답의 `
 ## 변경 이력
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-19 | `tour.service-key` 설정, 연결 확인 6·7 최신화, 관리자 계정 만들기 추가 |
 | 2026-11-18 | 첫 작성 (DB·설정·실행·연결 확인·오류 모음) |

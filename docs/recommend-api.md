@@ -124,7 +124,7 @@
 | `origin` | LocationRequest | O | 출발지. 프론트 기본값은 현재 위치 |
 | `destination` | LocationRequest 또는 null | X | 도착지. 없으면 출발지 주변에서 끝나는 코스 |
 | `startTime` | string | O | `HH:mm`, 30분 단위 (`mm` 은 `00` 또는 `30`) |
-| `availableMinutes` | integer | O | `30 ~ 360` (분). 화면 슬라이더 단계(30, 60, 120 … 360)는 프론트 규칙이고 서버는 범위만 검사한다. 0분은 추천 불가(프론트에서 추천받기 비활성), 들어오면 400 `INVALID_REQUEST` |
+| `availableMinutes` | integer | O | `30 ~ 360` (분). 화면 슬라이더 단계(60, 120 … 360, 1시간 단위 #216)는 프론트 규칙이고 서버는 범위만 검사한다. 0분은 추천 불가(프론트에서 추천받기 비활성), 들어오면 400 `INVALID_REQUEST` |
 | `transportType` | string | O | `TRANSIT` · `WALK` · `CAR` |
 | `categoryMode` | string | O | `DIRECT` · `RANDOM` |
 | `categories` | string[] | X | 대분류 코드 0 ~ 3개. 중복이 오면 오류 대신 서버가 하나로 정리한다. `RANDOM` 이면 무시. `DIRECT` 인데 비어 있으면 `RANDOM` 으로 처리 |
