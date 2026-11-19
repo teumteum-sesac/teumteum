@@ -30,11 +30,14 @@ interface ConditionState {
   reset: () => void
 }
 
+/** 여유 시간 기본값(분): 1시간. 조건 화면에 새로 들어올 때마다 이 값으로 시작한다 (ConditionForm) */
+export const DEFAULT_AVAILABLE_MINUTES = 60
+
 const initialState = () => ({
   origin: null,
   destination: null,
   startTime: nowRoundedTime(),
-  availableMinutes: 60,
+  availableMinutes: DEFAULT_AVAILABLE_MINUTES,
   transportType: 'WALK' as TransportType, // 기본 도보
   categoryMode: 'RANDOM' as CategoryMode,
   categories: [] as CategoryCode[],
@@ -47,7 +50,7 @@ export const useConditionStore = create<ConditionState>((set) => ({
   setStartTime: (startTime) => set({ startTime }),
   setAvailableMinutes: (availableMinutes) => set({ availableMinutes }),
   setTransportType: (transportType) => set({ transportType }),
-  // 랜덤 추천을 누르면 고른 카테고리를 모두 푼다. 직접 선택은 카테고리를 1개 이상 골라야 켜진다 (CategorySelector)
+  // 랜덤 추천을 누르면 고른 카테고리를 모두 푼다. 직접 선택은 아무것도 안 골랐으면 문화생활 1개로 시작한다 (CategorySelector)
   setCategoryMode: (categoryMode) => set(categoryMode === 'RANDOM' ? { categoryMode, categories: [] } : { categoryMode }),
   // 카테고리를 고르면 직접 선택, 전부 풀면 랜덤 추천으로 바뀐다
   toggleCategory: (category) =>
