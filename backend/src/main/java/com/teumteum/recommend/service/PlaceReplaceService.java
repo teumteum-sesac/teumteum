@@ -128,7 +128,9 @@ public class PlaceReplaceService {
         // 앞 지점 → 새 장소
         Coordinate previous = (targetIndex == 0) ? condition.origin() : coordinateOf(stops.get(targetIndex - 1).place());
         TravelRoute travelIn = findRoute(condition, previous, newPoint);
-        stops.set(targetIndex, new CourseStop(newPlace, stayTimeCalculator.calculate(newPlace.subCategory()), travelIn));
+        // 원래 장소에 쓰던 체류시간을 새 장소의 최소~최대 안에서 이어받는다 (#204, 교체 후보 계산과 같은 규칙)
+        int stayMinutes = stayTimeCalculator.fitWithin(newPlace.subCategory(), stops.get(targetIndex).stayMinutes());
+        stops.set(targetIndex, new CourseStop(newPlace, stayMinutes, travelIn));
 
         // 새 장소 → 뒤 지점
         TravelRoute finalTravel = plan.finalTravel();

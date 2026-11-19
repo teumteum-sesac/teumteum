@@ -24,7 +24,8 @@ import java.util.Optional;
  * - API 키를 헤더가 아니라 쿼리 파라미터(apiKey)로 보낸다
  * - 실패해도 HTTP 200 이고 result 대신 error 가 온다 → result 가 없으면 실패로 본다
  * - 소요시간이 이미 분 단위다 (변환 없음)
- * - 경로 좌표는 쓰지 않는다 (대중교통 지도는 1차 버전에서 직선) → coordinates 는 빈 목록
+ * - 경로 좌표는 따로 부르지 않고 같은 응답의 정류장 좌표로 만든다 (출발지 → 지나는 정류장 → 도착지).
+ *   정류장 좌표가 하나도 없으면 빈 목록 → 지도에서는 직선(STRAIGHT)으로 그린다
  * - 서버 플랫폼 키라 ODsay 에 호출하는 곳의 공인 IP 를 등록해야 한다
  * - 무료 호출 한도가 있어 최종 후보 코스에만 부른다 (NFR-014, 이동시간 서비스에서 지킴)
  * - 하루 한도와 별개로 짧은 시간에 연달아 부르면 429 "Too Many Requests" 로 막는다
@@ -85,7 +86,7 @@ public class OdsayClient {
      * 두 지점 사이 대중교통 이동시간과 노선·환승 정보를 조회한다.
      * 매개변수는 우리 규칙(위도 먼저)으로 받고, ODsay 에 보낼 때만 X=경도, Y=위도 로 넣는다.
      *
-     * @return 성공하면 TravelRoute(분, 빈 좌표, transitInfo), 실패하면 Optional.empty()
+     * @return 성공하면 TravelRoute(분, 경로 좌표, transitInfo), 실패하면 Optional.empty()
      */
     public Optional<TravelRoute> findTransitRoute(double fromLatitude, double fromLongitude,
                                                   double toLatitude, double toLongitude) {
@@ -102,7 +103,9 @@ public class OdsayClient {
                             .build(apiKey))
                     .retrieve()                              // 4xx·5xx 면 RestClientException 발생
                     .body(OdsayDirectionsResponse.class);    // JSON → 응답 그릇
-            return toTravelRoute(response);
+            return toTravelRoute(response,
+                    new TravelRoute.Coordinate(fromLatitude, fromLongitude),
+                    new TravelRoute.Coordinate(toLatitude, toLongitude));
         } catch (RestClientException e) {
             // 타임아웃, 서버 오류(5xx) 등이 여기로 온다. 키 오류는 200 + error 라서 toTravelRoute 에서 걸러진다
             log.warn("ODsay 대중교통 길찾기 호출 실패: {}", e.getMessage());
@@ -110,11 +113,20 @@ public class OdsayClient {
         }
     }
 
+    /** 출발·도착 좌표 없이 변환 (경로 좌표는 정류장만으로 만든다). 기존 테스트용 */
+    Optional<TravelRoute> toTravelRoute(OdsayDirectionsResponse response) {
+        return toTravelRoute(response, null, null);
+    }
+
     /**
      * ODsay 응답 → 우리 결과(TravelRoute) 변환.
      * 네트워크 없이 테스트할 수 있게 따로 뺐다 (package-private).
+     *
+     * @param from 출발 지점 (경로선 맨 앞에 붙인다. 없으면 null)
+     * @param to   도착 지점 (경로선 맨 뒤에 붙인다. 없으면 null)
      */
-    Optional<TravelRoute> toTravelRoute(OdsayDirectionsResponse response) {
+    Optional<TravelRoute> toTravelRoute(OdsayDirectionsResponse response,
+                                        TravelRoute.Coordinate from, TravelRoute.Coordinate to) {
         // 1. result 가 없으면 실패 (키 오류, IP 미등록, 출발·도착이 너무 가까움 등은 200 + error 로 온다)
         if (response == null || response.result() == null) {
             // 오류 내용(예: 700m 이내 -98, 429 Too Many Requests, Daily quota exceeded)을 남겨야 원인을 바로 안다
@@ -138,8 +150,75 @@ public class OdsayClient {
         int travelMinutes = path.info().totalTime(); // 이미 분 단위
         String transitInfo = buildTransitInfo(path);
 
-        // 4. 대중교통은 지도에서 직선으로 그리므로 좌표는 빈 목록
-        return Optional.of(new TravelRoute(travelMinutes, List.of(), transitInfo));
+        // 4. 지도 경로선: 출발지 → 지하철·버스가 지나는 정류장 → 도착지 (정류장 좌표가 없으면 빈 목록 = 직선)
+        return Optional.of(new TravelRoute(travelMinutes, buildPathCoordinates(path.subPath(), from, to), transitInfo));
+    }
+
+    /**
+     * 지도에 그릴 경로 좌표. 구간 순서대로 지하철·버스가 지나는 정류장 좌표를 잇고, 앞뒤에 출발·도착 지점을 붙인다.
+     * - 정류장 목록이 있으면 정류장 좌표, 없으면 탄 곳·내린 곳 좌표
+     * - 도보 구간은 ODsay 가 좌표를 주지 않으므로 앞뒤 점을 직선으로 잇는다
+     * - 지하철·버스 좌표를 하나도 못 얻으면 빈 목록 (지도에서 출발→도착 직선, STRAIGHT)
+     */
+    List<TravelRoute.Coordinate> buildPathCoordinates(List<OdsayDirectionsResponse.SubPath> subPaths,
+                                                      TravelRoute.Coordinate from, TravelRoute.Coordinate to) {
+        List<TravelRoute.Coordinate> rideCoordinates = new ArrayList<>();
+        if (subPaths != null) {
+            for (OdsayDirectionsResponse.SubPath subPath : subPaths) {
+                if (subPath == null || (subPath.trafficType() != TRAFFIC_TYPE_SUBWAY && subPath.trafficType() != TRAFFIC_TYPE_BUS)) {
+                    continue; // 도보 구간
+                }
+                rideCoordinates.addAll(rideCoordinates(subPath));
+            }
+        }
+        if (rideCoordinates.isEmpty()) {
+            return List.of();
+        }
+
+        List<TravelRoute.Coordinate> path = new ArrayList<>();
+        if (from != null) {
+            path.add(from);
+        }
+        path.addAll(rideCoordinates);
+        if (to != null) {
+            path.add(to);
+        }
+        return path;
+    }
+
+    /** 지하철·버스 구간 1개의 좌표: 지나는 정류장 → 없으면 탄 곳·내린 곳 */
+    private List<TravelRoute.Coordinate> rideCoordinates(OdsayDirectionsResponse.SubPath subPath) {
+        List<TravelRoute.Coordinate> coordinates = new ArrayList<>();
+        if (subPath.passStopList() != null && subPath.passStopList().stations() != null) {
+            for (OdsayDirectionsResponse.Station station : subPath.passStopList().stations()) {
+                TravelRoute.Coordinate c = station == null ? null : parseCoordinate(station.y(), station.x());
+                if (c != null) {
+                    coordinates.add(c);
+                }
+            }
+        }
+        if (!coordinates.isEmpty()) {
+            return coordinates;
+        }
+        if (subPath.startX() != null && subPath.startY() != null) {
+            coordinates.add(new TravelRoute.Coordinate(subPath.startY(), subPath.startX()));
+        }
+        if (subPath.endX() != null && subPath.endY() != null) {
+            coordinates.add(new TravelRoute.Coordinate(subPath.endY(), subPath.endX()));
+        }
+        return coordinates;
+    }
+
+    /** 문자열 위도·경도 → 좌표. 비었거나 숫자가 아니면 null (그 정류장만 건너뛴다) */
+    private TravelRoute.Coordinate parseCoordinate(String latitude, String longitude) {
+        if (latitude == null || longitude == null) {
+            return null;
+        }
+        try {
+            return new TravelRoute.Coordinate(Double.parseDouble(latitude.trim()), Double.parseDouble(longitude.trim()));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

@@ -86,7 +86,8 @@ public class AlternativeFinder {
         int currentMinutes = current.travel().travelMinutes() + current.stayMinutes()
                 + travelOutMinutes(plan, targetIndex);
 
-        int stayMinutes = stayTimeCalculator.calculate(candidate.subCategory());
+        // 바꾸려는 장소의 체류시간을 후보의 최소~최대 안에서 이어받는다 (#204). 교체 확정(PlaceReplaceService)과 같은 규칙
+        int stayMinutes = stayTimeCalculator.fitWithin(candidate.subCategory(), current.stayMinutes());
         int travelInMinutes = estimateMinutes(condition, previous, toCoordinate(candidate));
         int travelOutMinutes = (next == null) ? 0 : estimateMinutes(condition, toCoordinate(candidate), next);
         int newMinutes = travelInMinutes + stayMinutes + travelOutMinutes;

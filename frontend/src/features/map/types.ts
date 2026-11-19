@@ -82,6 +82,36 @@ export interface KakaoOverlay {
 /** 사용자 정의 오버레이 (DOM 을 지도 위에 올림). 겹칠 때 위·아래 순서를 바꿀 수 있다 */
 export interface KakaoCustomOverlay extends KakaoOverlay {
   setZIndex(zIndex: number): void
+  /** 오버레이에 넣은 내용 (클러스터 숫자 원은 div) */
+  getContent(): HTMLElement | string
+}
+
+/** 카카오 기본 마커 (이미지 마커). 클러스터러에 넣거나 투명도·겹침 순서를 바꿀 수 있다 */
+export interface KakaoMarker extends KakaoOverlay {
+  /** 0(투명) ~ 1 */
+  setOpacity(opacity: number): void
+  setZIndex(zIndex: number): void
+}
+
+/** 원 (탐색 반경 표시) */
+export interface KakaoCircle extends KakaoOverlay {
+  setPosition(latlng: KakaoLatLng): void
+  /** 반지름(m) */
+  setRadius(radius: number): void
+}
+
+/** 클러스터 하나 (숫자 원). 숫자 원은 CustomOverlay 라 겹침 순서를 바꿀 수 있다 */
+export interface KakaoCluster {
+  getClusterMarker(): KakaoCustomOverlay
+}
+
+/** 마커 클러스터러 (SDK libraries=clusterer). 가까운 마커를 숫자 원으로 묶고 확대하면 풀어 준다 */
+export interface KakaoMarkerClusterer {
+  addMarkers(markers: KakaoMarker[], nodraw?: boolean): void
+  removeMarkers(markers: KakaoMarker[], nodraw?: boolean): void
+  clear(): void
+  redraw(): void
+  setMap(map: KakaoMapInstance | null): void
 }
 
 /** 마커 이미지 크기(px) */
@@ -96,7 +126,33 @@ export interface KakaoMapsApi {
   LatLng: new (lat: number, lng: number) => KakaoLatLng
   LatLngBounds: new () => KakaoLatLngBounds
   Map: new (container: HTMLElement, options: { center: KakaoLatLng; level: number }) => KakaoMapInstance
-  Marker: new (options: { position: KakaoLatLng; map?: KakaoMapInstance; image?: KakaoMarkerImage }) => KakaoOverlay
+  Marker: new (options: { position: KakaoLatLng; map?: KakaoMapInstance; image?: KakaoMarkerImage; zIndex?: number }) => KakaoMarker
+  /** 원. fillOpacity 는 0~1 */
+  Circle: new (options: {
+    center: KakaoLatLng
+    radius: number
+    strokeWeight?: number
+    strokeColor?: string
+    strokeOpacity?: number
+    fillColor?: string
+    fillOpacity?: number
+    zIndex?: number
+    map?: KakaoMapInstance
+  }) => KakaoCircle
+  /**
+   * 마커 클러스터러. styles 는 클러스터 원에 그대로 들어가는 CSS (calculator 구간 순서대로),
+   * minLevel 이상 레벨에서만 묶는다. disableClickZoom 이 false 면 클러스터를 눌렀을 때 한 단계 확대한다
+   */
+  MarkerClusterer?: new (options: {
+    map: KakaoMapInstance
+    averageCenter?: boolean
+    minLevel?: number
+    gridSize?: number
+    minClusterSize?: number
+    disableClickZoom?: boolean
+    calculator?: number[]
+    styles?: Partial<CSSStyleDeclaration>[]
+  }) => KakaoMarkerClusterer
   Size: new (width: number, height: number) => KakaoSize
   Point: new (x: number, y: number) => KakaoPoint
   /** offset: 이미지 안에서 마커 좌표에 맞출 픽셀 위치 (예: 핀 끝) */
@@ -124,6 +180,9 @@ export interface KakaoMapsApi {
   /** 마커 클릭, 지도 이동·확대가 끝남(idle) 등 지도 객체 이벤트 */
   event: {
     addListener(target: KakaoOverlay, type: 'click', handler: () => void): void
+    removeListener(target: KakaoOverlay, type: 'click', handler: () => void): void
+    /** 클러스터를 다시 계산해 그린 뒤 (clusters: 지금 지도에 그려진 클러스터들) */
+    addListener(target: KakaoMarkerClusterer, type: 'clustered', handler: (clusters: KakaoCluster[]) => void): void
     addListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed', handler: () => void): void
     removeListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed', handler: () => void): void
   }

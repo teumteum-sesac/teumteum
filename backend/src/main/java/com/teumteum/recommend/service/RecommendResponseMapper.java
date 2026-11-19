@@ -205,8 +205,8 @@ public class RecommendResponseMapper {
 
     /**
      * 한 구간.
-     * - 경로 좌표가 있으면 (차량·도보 API 성공) → ACTUAL, 그 좌표 그대로
-     * - 없으면 (대중교통 1차 버전, 직선거리 추정) → STRAIGHT, 앞 지점과 뒤 지점 두 점
+     * - 경로 좌표가 있으면 (차량·도보 API 성공, 대중교통은 ODsay 정류장 좌표) → ACTUAL, 그 좌표 그대로
+     * - 없으면 (직선거리 추정, 정류장 좌표 없음) → STRAIGHT, 앞 지점과 뒤 지점 두 점
      */
     private RouteLegResponse toRouteLeg(int fromVisitOrder, int toVisitOrder, TravelRoute travel,
                                         Coordinate start, Coordinate end) {
