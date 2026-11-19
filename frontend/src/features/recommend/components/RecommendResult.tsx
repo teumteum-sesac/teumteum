@@ -104,14 +104,21 @@ export default function RecommendResult() {
             ))}
           </ChipGroup>
         )}
+        {/* 세분류: 고른 대분류 아래에 딸린 단계로 보이게, 연한 핑크 받침 위에 작은 칩(level="sub")으로 */}
         {selectedFilter && (
-          <ChipGroup>
-            {selectedFilter.subCategories.map((name) => (
-              <Chip key={name} selected={subCategory === name} onClick={() => toggleSubCategory(name)}>
-                {name}
-              </Chip>
-            ))}
-          </ChipGroup>
+          <div className="-mt-1 rounded-2xl bg-primary-light/40 px-3 pt-2 pb-2.5">
+            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-primary-dark">
+              <span aria-hidden>↳</span>
+              {selectedFilter.categoryName} 세부
+            </p>
+            <ChipGroup>
+              {selectedFilter.subCategories.map((name) => (
+                <Chip key={name} level="sub" selected={subCategory === name} onClick={() => toggleSubCategory(name)}>
+                  {name}
+                </Chip>
+              ))}
+            </ChipGroup>
+          </div>
         )}
       </div>
 
