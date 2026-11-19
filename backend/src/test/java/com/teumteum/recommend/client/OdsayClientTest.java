@@ -2,8 +2,10 @@ package com.teumteum.recommend.client;
 
 import com.teumteum.recommend.client.OdsayDirectionsResponse.Info;
 import com.teumteum.recommend.client.OdsayDirectionsResponse.Lane;
+import com.teumteum.recommend.client.OdsayDirectionsResponse.PassStopList;
 import com.teumteum.recommend.client.OdsayDirectionsResponse.Path;
 import com.teumteum.recommend.client.OdsayDirectionsResponse.Result;
+import com.teumteum.recommend.client.OdsayDirectionsResponse.Station;
 import com.teumteum.recommend.client.OdsayDirectionsResponse.SubPath;
 import com.teumteum.recommend.domain.TravelRoute;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +33,10 @@ class OdsayClientTest {
     private static final SubPath SUBWAY_LINE_2 = new SubPath(1, 22, List.of(new Lane("수도권 2호선", null)));
     private static final SubPath BUS_3411 = new SubPath(2, 19, List.of(new Lane(null, "3411")));
     private static final SubPath BUS_461 = new SubPath(2, 32, List.of(new Lane(null, "461")));
+
+    // 경로선 앞뒤에 붙는 출발·도착 지점 (잠실역 → 낙성대역 근처)
+    private static final TravelRoute.Coordinate FROM = new TravelRoute.Coordinate(37.5133, 127.1001);
+    private static final TravelRoute.Coordinate TO = new TravelRoute.Coordinate(37.4766, 126.9636);
 
     @Test
     @DisplayName("지하철 한 번만 타면 소요시간은 totalTime 그대로, 환승 0회다")
@@ -86,11 +92,48 @@ class OdsayClientTest {
     }
 
     @Test
-    @DisplayName("대중교통은 지도에서 직선으로 그리므로 좌표는 빈 목록이다")
-    void toTravelRoute_hasNoCoordinates() {
-        Path path = new Path(1, new Info(25, 0, 1), List.of(SUBWAY_LINE_2));
+    @DisplayName("지하철·버스 구간에 좌표가 하나도 없으면 경로 좌표는 빈 목록이다 (지도에서 직선)")
+    void toTravelRoute_hasNoCoordinates_whenNoStopCoordinates() {
+        Path path = new Path(1, new Info(25, 0, 1), List.of(WALK, SUBWAY_LINE_2, WALK));
 
-        assertTrue(client.toTravelRoute(responseOf(path)).get().coordinates().isEmpty());
+        assertTrue(client.toTravelRoute(responseOf(path), FROM, TO).get().coordinates().isEmpty());
+    }
+
+    @Test
+    @DisplayName("지나는 정류장 좌표가 있으면 출발지 → 정류장 순서 → 도착지로 경로를 만든다")
+    void toTravelRoute_buildsPathFromStations() {
+        SubPath subway = new SubPath(1, 22, List.of(new Lane("수도권 2호선", null)), 127.1000, 37.5130, 126.9630, 37.4770,
+                new PassStopList(List.of(new Station("127.1000", "37.5130"), new Station("127.0500", "37.5000"), new Station("126.9630", "37.4770"))));
+        Path path = new Path(1, new Info(25, 0, 1), List.of(WALK, subway, WALK));
+
+        List<TravelRoute.Coordinate> coordinates = client.toTravelRoute(responseOf(path), FROM, TO).get().coordinates();
+
+        assertEquals(List.of(FROM, new TravelRoute.Coordinate(37.5130, 127.1000), new TravelRoute.Coordinate(37.5000, 127.0500),
+                new TravelRoute.Coordinate(37.4770, 126.9630), TO), coordinates);
+    }
+
+    @Test
+    @DisplayName("정류장 목록이 없으면 탄 곳·내린 곳 좌표를 쓰고, 환승하면 구간을 순서대로 잇는다")
+    void toTravelRoute_usesStartEnd_whenNoStations() {
+        SubPath bus = new SubPath(2, 19, List.of(new Lane(null, "3411")), 127.10, 37.51, 127.05, 37.50, null);
+        SubPath subway = new SubPath(1, 10, List.of(new Lane("수도권 2호선", null)), 127.04, 37.50, 126.96, 37.48, new PassStopList(null));
+        Path path = new Path(3, new Info(40, 1, 1), List.of(WALK, bus, WALK, subway, WALK));
+
+        List<TravelRoute.Coordinate> coordinates = client.toTravelRoute(responseOf(path), FROM, TO).get().coordinates();
+
+        assertEquals(List.of(FROM, new TravelRoute.Coordinate(37.51, 127.10), new TravelRoute.Coordinate(37.50, 127.05),
+                new TravelRoute.Coordinate(37.50, 127.04), new TravelRoute.Coordinate(37.48, 126.96), TO), coordinates);
+    }
+
+    @Test
+    @DisplayName("좌표 문자열이 비었거나 숫자가 아닌 정류장은 건너뛴다")
+    void toTravelRoute_skipsInvalidStations() {
+        SubPath subway = new SubPath(1, 22, List.of(new Lane("수도권 2호선", null)), null, null, null, null,
+                new PassStopList(List.of(new Station("127.1000", "37.5130"), new Station("", "37.5"), new Station("abc", "37.5"), new Station("126.9630", "37.4770"))));
+        Path path = new Path(1, new Info(25, 0, 1), List.of(subway));
+
+        assertEquals(List.of(new TravelRoute.Coordinate(37.5130, 127.1000), new TravelRoute.Coordinate(37.4770, 126.9630)),
+                client.toTravelRoute(responseOf(path)).get().coordinates());
     }
 
     @Test
