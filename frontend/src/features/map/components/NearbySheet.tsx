@@ -275,11 +275,10 @@ export default function NearbySheet({
         ) : (
           listNotice(status, errorMessage, onRetry, places.length, radiusEmpty) ?? (
           <>
-            {/* 반경을 바꿔 다시 불러오는 동안에는 이전 목록을 그대로 두고, 진행 중임을 위쪽에 분명히 알린다 */}
+            {/* 반경을 바꿔 다시 불러오는 동안에는 이전 목록을 그대로 둔다. 안내 띠는 화면에 그리지 않고 화면 읽기 프로그램에만 알린다 */}
             {status === 'loading' && (
-              <p role="status" className="mb-2 flex items-center gap-2 rounded-lg bg-primary-light px-3 py-2 text-xs font-bold text-primary-dark">
-                <Spinner />
-                반경 {formatDistance(radius)} 안의 장소를 새로 불러오는 중…
+              <p role="status" className="sr-only">
+                반경 {formatDistance(radius)} 안의 장소를 새로 불러오는 중
               </p>
             )}
             <ul className="flex flex-col gap-2">
@@ -317,16 +316,6 @@ export default function NearbySheet({
         )}
       </div>
     </div>
-  )
-}
-
-/** 작은 회전 표시 (움직임 줄이기 설정이면 멈춤) */
-function Spinner() {
-  return (
-    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0 motion-safe:animate-spin">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
   )
 }
 
