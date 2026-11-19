@@ -16,9 +16,11 @@ import java.util.List;
  *     │   ├─ busTransitCount          버스 "탑승" 횟수 (환승 횟수 아님!)
  *     │   └─ subwayTransitCount       지하철 "탑승" 횟수
  *     └─ subPath[]                    구간 순서대로. trafficType 1 지하철 · 2 버스 · 3 도보
- *         └─ lane[]                   이 구간에서 탈 수 있는 노선. 여러 개면 "아무거나 타도 됨" 이라 lane[0] 만 쓴다
- *             ├─ name                 지하철 노선 이름 (예: "수도권 2호선")
- *             └─ busNo                버스 번호 (예: "3411")
+ *         ├─ lane[]                   이 구간에서 탈 수 있는 노선. 여러 개면 "아무거나 타도 됨" 이라 lane[0] 만 쓴다
+ *         │   ├─ name                 지하철 노선 이름 (예: "수도권 2호선")
+ *         │   └─ busNo                버스 번호 (예: "3411")
+ *         ├─ startX·startY·endX·endY  탄 곳·내린 곳 좌표 (지하철·버스만)
+ *         └─ passStopList.stations[]  지나는 정류장 x(경도)·y(위도) 문자열 (지하철·버스만) → 지도 경로선
  * </pre>
  * 카카오·ORS 와 달리 실패해도 HTTP 200 으로 오고, result 대신 error 칸이 온다.
  * 예) 키 인증 실패: {"error":[{"code":"500","message":"[ApiKeyAuthFailed] ..."}]}
@@ -63,12 +65,41 @@ public record OdsayDirectionsResponse(
     ) {
     }
 
-    /** 구간 1개 (도보 → 지하철 → 도보 처럼 순서대로) */
+    /**
+     * 구간 1개 (도보 → 지하철 → 도보 처럼 순서대로).
+     * 지하철·버스 구간은 탄 곳·내린 곳 좌표(startX·startY·endX·endY)와 지나는 정류장(passStopList)이 온다.
+     * 도보 구간은 좌표가 오지 않는다(null). 좌표는 X = 경도, Y = 위도
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record SubPath(
-            int trafficType,  // 1 지하철 · 2 버스 · 3 도보
-            int sectionTime,  // 이 구간 소요시간(분)
-            List<Lane> lane   // 도보 구간은 없음(null)
+            int trafficType,           // 1 지하철 · 2 버스 · 3 도보
+            int sectionTime,           // 이 구간 소요시간(분)
+            List<Lane> lane,           // 도보 구간은 없음(null)
+            Double startX,             // 탄 곳 경도
+            Double startY,             // 탄 곳 위도
+            Double endX,               // 내린 곳 경도
+            Double endY,               // 내린 곳 위도
+            PassStopList passStopList  // 지나는 정류장 (탄 곳·내린 곳 포함, 순서대로)
+    ) {
+
+        /** 좌표 없이 만드는 생성자 (기존 테스트의 new SubPath(종류, 분, 노선) 유지) */
+        public SubPath(int trafficType, int sectionTime, List<Lane> lane) {
+            this(trafficType, sectionTime, lane, null, null, null, null, null);
+        }
+    }
+
+    /** 지나는 정류장 목록 */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record PassStopList(
+            List<Station> stations
+    ) {
+    }
+
+    /** 정류장(역) 1곳. ODsay 는 좌표를 문자열로 보낸다 (예: "127.0473") */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Station(
+            String x,  // 경도
+            String y   // 위도
     ) {
     }
 
