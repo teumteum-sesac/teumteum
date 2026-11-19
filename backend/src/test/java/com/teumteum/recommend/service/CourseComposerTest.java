@@ -57,7 +57,8 @@ class CourseComposerTest {
     @BeforeEach
     void setUp() {
         composer = new CourseComposer(new PlaceCountCalculator(), new StayTimeCalculator(),
-                new StraightLineTravelCalculator(), new CourseTimeCalculator(), travelTimeService, new Random(42));
+                new StraightLineTravelCalculator(), new CourseTimeCalculator(), travelTimeService,
+                new StayTimeFiller(new StayTimeCalculator(), new CourseTimeCalculator()), new Random(42));
 
         // lenient: 이 답을 안 쓰는 테스트가 있어도 Mockito 가 "쓸데없는 설정" 이라고 실패시키지 않게 한다
         lenient().when(travelTimeService.findRoute(any(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
@@ -176,6 +177,35 @@ class CourseComposerTest {
         List<PlaceCandidate> ordered = composer.orderByNearest(ORIGIN, List.of(far, near, middle));
 
         assertEquals(List.of(near, middle, far), ordered);
+    }
+
+    // ===================== 남는 시간 채우기 (#204) =====================
+
+    @Test
+    @DisplayName("코스마다 채우는 목표가 80% / 90% / 100% 다 (120분 → 96 / 108 / 120분)")
+    void fillTargetMinutes_byCourseIndex() {
+        CourseCondition condition = randomCondition(120);
+
+        assertEquals(96, composer.fillTargetMinutes(condition, 0));
+        assertEquals(108, composer.fillTargetMinutes(condition, 1));
+        assertEquals(120, composer.fillTargetMinutes(condition, 2));
+    }
+
+    @Test
+    @DisplayName("3시간이면 남는 시간을 체류시간으로 채워 세 코스가 144 / 162 / 180분 목표에 맞춰 서로 다르게 나온다")
+    void compose_fillsStayTime_differentlyPerCourse() {
+        List<CoursePlan> courses = composer.compose(randomCondition(180), manyCandidates());
+
+        assertEquals(3, courses.size());
+        for (int i = 0; i < courses.size(); i++) {
+            int target = composer.fillTargetMinutes(randomCondition(180), i);
+            int total = courses.get(i).totalMinutes();
+            // 5분 단위로 채우므로 목표보다 5분 이상 모자라지 않는다 (최대 체류시간에 걸리지 않는 한)
+            assertTrue(total <= target && total > target - StayTimeFiller.STEP_MINUTES,
+                    i + "번째 코스 목표 " + target + "분, 실제 " + total + "분");
+        }
+        Set<Integer> totals = courses.stream().map(CoursePlan::totalMinutes).collect(Collectors.toSet());
+        assertEquals(3, totals.size()); // 1:20대로 다 비슷하게 나오던 문제
     }
 
     // ===================== 확정하기 (이동시간 API) =====================

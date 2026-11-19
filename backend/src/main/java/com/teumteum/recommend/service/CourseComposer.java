@@ -47,6 +47,8 @@ import java.util.Set;
  *    - 방문 순서는 ④ 대신 "도착지 쪽으로 점점 가까워지는 순"
  * ⑨ 음식/맛집·카페/디저트는 한 코스에 1곳만 (한식 → 일식, 카페 → 디저트 X / 한식 → 카페 O) (#170)
  * ⑩ 같은 브랜드(체인)는 두 번 넣지 않는다 (메가커피 A점 → 메가커피 B점 X) (#170)
+ * ⑪ 고를 때는 최소 체류시간으로 어림하고, 확정 뒤 남는 시간을 체류시간으로 채운다 (#204, StayTimeFiller)
+ *    코스마다 채우는 목표를 이용 시간의 80% / 90% / 100% 로 달리해서 세 코스의 시간이 서로 다르게 나온다
  * <p>
  * 장소 검색·반경 넓히기는 하지 않는다. 받은 후보 안에서만 고른다.
  */
@@ -88,11 +90,19 @@ public class CourseComposer {
      */
     static final Set<Category> ONCE_PER_COURSE = EnumSet.of(Category.FOOD, Category.CAFE);
 
+    /**
+     * 코스마다 이용 시간을 몇 %까지 채울지 (규칙 ⑪, 팀 결정 2026-11-19).
+     * 1번째 코스 80%, 2번째 90%, 3번째 100%. 예) 2시간 → 약 1:36 / 1:48 / 2:00
+     * 모두 100%로 채우면 세 코스의 총 시간이 다 같아져서, 일부러 차이를 둔다.
+     */
+    static final List<Double> TIME_FILL_RATIOS = List.of(0.8, 0.9, 1.0);
+
     private final PlaceCountCalculator placeCountCalculator;
     private final StayTimeCalculator stayTimeCalculator;
     private final StraightLineTravelCalculator straightLineTravelCalculator;
     private final CourseTimeCalculator courseTimeCalculator;
     private final TravelTimeService travelTimeService;
+    private final StayTimeFiller stayTimeFiller;
 
     /** 후보 줄 세우기에 섞는 무작위 값(규칙 ⑥). 테스트에서는 씨앗(seed)을 고정한 Random 을 넣어 결과를 매번 같게 만든다 */
     private final Random random;
@@ -105,9 +115,10 @@ public class CourseComposer {
                           StayTimeCalculator stayTimeCalculator,
                           StraightLineTravelCalculator straightLineTravelCalculator,
                           CourseTimeCalculator courseTimeCalculator,
-                          TravelTimeService travelTimeService) {
+                          TravelTimeService travelTimeService,
+                          StayTimeFiller stayTimeFiller) {
         this(placeCountCalculator, stayTimeCalculator, straightLineTravelCalculator,
-                courseTimeCalculator, travelTimeService, new Random());
+                courseTimeCalculator, travelTimeService, stayTimeFiller, new Random());
     }
 
     /** 테스트용 생성자 (package-private). 섞는 순서를 고정하려고 Random 을 밖에서 받는다 */
@@ -116,12 +127,14 @@ public class CourseComposer {
                    StraightLineTravelCalculator straightLineTravelCalculator,
                    CourseTimeCalculator courseTimeCalculator,
                    TravelTimeService travelTimeService,
+                   StayTimeFiller stayTimeFiller,
                    Random random) {
         this.placeCountCalculator = placeCountCalculator;
         this.stayTimeCalculator = stayTimeCalculator;
         this.straightLineTravelCalculator = straightLineTravelCalculator;
         this.courseTimeCalculator = courseTimeCalculator;
         this.travelTimeService = travelTimeService;
+        this.stayTimeFiller = stayTimeFiller;
         this.random = random;
     }
 
@@ -168,9 +181,12 @@ public class CourseComposer {
             }
 
             // 2단계: 고른 코스만 실제 이동시간으로 확정
+            int courseIndex = alreadyFound.size() + courses.size(); // 이 코스가 전체에서 몇 번째인지 (0부터)
             confirmCourse(condition, picked)
                     // 마지막 장소를 빼다가 기존 코스와 같아질 수 있음
                     .filter(course -> isNewCourse(courses, course) && isNewCourse(alreadyFound, course))
+                    // 3단계: 남는 시간을 체류시간으로 채우기 (API 호출 없음, 규칙 ⑪)
+                    .map(course -> stayTimeFiller.fill(course, fillTargetMinutes(condition, courseIndex)))
                     .ifPresent(courses::add);
         }
         return courses;
@@ -460,6 +476,16 @@ public class CourseComposer {
             }
         }
         return Optional.empty(); // 한 곳만 남겨도 넘음 → 이 코스는 버린다
+    }
+
+    /**
+     * 몇 번째 코스인지에 따라 채울 목표 총 소요시간(분) (규칙 ⑪).
+     * 예) 이용 시간 120분: 0번째 → 96분, 1번째 → 108분, 2번째 → 120분
+     * 소수점은 버린다 (올리면 이용 시간을 1분 넘을 수 있다).
+     */
+    int fillTargetMinutes(CourseCondition condition, int courseIndex) {
+        int index = Math.min(courseIndex, TIME_FILL_RATIOS.size() - 1); // 혹시 3개를 넘어도 마지막 비율
+        return (int) Math.floor(condition.availableMinutes() * TIME_FILL_RATIOS.get(index));
     }
 
     // ===================== 작은 도우미들 =====================
