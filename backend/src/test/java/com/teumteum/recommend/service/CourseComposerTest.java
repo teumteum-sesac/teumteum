@@ -343,28 +343,48 @@ class CourseComposerTest {
     }
 
     @Test
-    @DisplayName("가까운 후보 먼저: 많이 먼 장소는 항상 뒤에 온다")
-    void orderNearFirst_putsMuchFartherPlaceLast() {
+    @DisplayName("거리 비율: 1번째 코스(도보 목표 0.3km)는 가까운 장소가, 3번째 코스(목표 1.4km)는 먼 장소가 항상 앞에 온다")
+    void orderForSlot_targetsDifferentDistancePerCourse() {
         PlaceCandidate near = place("near", Category.CAFE, "카페", 0.001);    // 약 0.1km
-        PlaceCandidate far = place("far", Category.CAFE, "디저트", 0.009);    // 약 1.0km (섞는 거리 0.5km 보다 훨씬 멂)
+        PlaceCandidate far = place("far", Category.CAFE, "디저트", 0.012);    // 약 1.3km
 
         for (int i = 0; i < 30; i++) { // 무작위가 들어가니 여러 번 돌려서 확인
-            List<PlaceCandidate> ordered = composer.orderNearFirst(randomCondition(180), List.of(far, near));
-            assertEquals("near", ordered.get(0).placeId());
+            assertEquals("near", composer.orderForSlot(randomCondition(180), List.of(far, near), 0, 0, 2).get(0).placeId());
+            assertEquals("far", composer.orderForSlot(randomCondition(180), List.of(near, far), 2, 0, 2).get(0).placeId());
         }
     }
 
     @Test
-    @DisplayName("가까운 후보 먼저: 거리가 비슷하면 순서가 바뀌기도 한다 (코스가 매번 같지 않게)")
-    void orderNearFirst_mixesSimilarDistances() {
+    @DisplayName("거리 비율: 목표 거리는 최대 반경의 15% / 40% / 70% (도보 2km → 0.3 / 0.8 / 1.4km)")
+    void targetDistanceKm_byCourseIndex() {
+        assertEquals(0.3, composer.targetDistanceKm(randomCondition(180), 0), 0.001);
+        assertEquals(0.8, composer.targetDistanceKm(randomCondition(180), 1), 0.001);
+        assertEquals(1.4, composer.targetDistanceKm(randomCondition(180), 2), 0.001);
+    }
+
+    @Test
+    @DisplayName("목표에 비슷하게 맞는 장소끼리는 순서가 바뀌기도 한다 (코스가 매번 같지 않게)")
+    void orderForSlot_mixesSimilarDistances() {
         PlaceCandidate a = place("a", Category.CAFE, "카페", 0.001);    // 약 0.1km
         PlaceCandidate b = place("b", Category.CAFE, "디저트", 0.002);  // 약 0.2km
 
         Set<String> firsts = new java.util.HashSet<>();
         for (int i = 0; i < 30; i++) {
-            firsts.add(composer.orderNearFirst(randomCondition(180), List.of(a, b)).get(0).placeId());
+            firsts.add(composer.orderForSlot(randomCondition(180), List.of(a, b), 0, 0, 2).get(0).placeId());
         }
         assertEquals(Set.of("a", "b"), firsts); // 둘 다 1등을 해 본 적이 있다
+    }
+
+    @Test
+    @DisplayName("목표는 걸러 내는 조건이 아니다: 가까운 장소만 있어도 3번째 코스(먼 목표)가 만들어진다")
+    void compose_stillBuildsCourse_whenNoPlaceNearTarget() {
+        List<PlaceCandidate> onlyNear = List.of(
+                place("1", Category.CAFE, "카페", 0.001),
+                place("2", Category.NATURE, "공원", 0.001),
+                place("3", Category.SHOPPING, "소품샵", 0.002),
+                place("4", Category.FOOD, "한식", 0.002));
+
+        assertEquals(3, composer.compose(randomCondition(180), onlyNear).size());
     }
 
     // ===================== 한 코스에 넣지 않을 조합 (#170) =====================
@@ -481,16 +501,53 @@ class CourseComposerTest {
     }
 
     @Test
-    @DisplayName("경로 모드: 가까움은 우회 거리로 본다. 출발지에서 멀어도 길 위면 옆길 장소보다 앞에 온다")
-    void orderNearFirst_routeMode_prefersPlaceOnTheWay() {
-        PlaceCandidate onTheWay = place("on", Category.CAFE, "카페", 0.015);       // 출발지에서 약 1.7km, 우회 0
-        PlaceCandidate behind = place("behind", Category.CAFE, "디저트", -0.004);  // 출발지에서 약 0.4km, 우회 약 0.9km
+    @DisplayName("경로 모드: 우회 거리도 본다. 출발지에서 가까워도 반대쪽 장소보다 길 위 장소가 앞에 온다")
+    void orderForSlot_routeMode_prefersPlaceOnTheWay() {
+        PlaceCandidate onTheWay = place("on", Category.CAFE, "카페", 0.015);       // 위치 0.5, 우회 0
+        PlaceCandidate behind = place("behind", Category.CAFE, "디저트", -0.004);  // 위치 약 0.1, 우회 약 0.9km
 
         for (int i = 0; i < 30; i++) {
+            // 240분 → 3곳, 2번째 코스의 첫 자리 목표 위치 0.25
             List<PlaceCandidate> ordered =
-                    composer.orderNearFirst(routeCondition(TransportType.WALK, 240), List.of(behind, onTheWay));
+                    composer.orderForSlot(routeCondition(TransportType.WALK, 240), List.of(behind, onTheWay), 1, 0, 3);
             assertEquals("on", ordered.get(0).placeId());
         }
+    }
+
+    @Test
+    @DisplayName("경로 모드: 자리마다 목표 위치가 달라 장소가 길을 따라 퍼진다 (첫 자리는 출발지 쪽, 둘째 자리는 도착지 쪽)")
+    void orderForSlot_routeMode_spreadsAlongTheWay() {
+        PlaceCandidate early = place("early", Category.CAFE, "카페", 0.008);    // 위치 약 0.27
+        PlaceCandidate middle = place("middle", Category.NATURE, "공원", 0.015); // 위치 0.5
+        PlaceCandidate late = place("late", Category.SHOPPING, "소품샵", 0.022); // 위치 약 0.73
+        List<PlaceCandidate> all = List.of(early, middle, late);
+        CourseCondition condition = routeCondition(TransportType.WALK, 180); // 2곳 → 목표 0.33 · 0.67
+
+        for (int i = 0; i < 30; i++) {
+            assertNotEquals("late", composer.orderForSlot(condition, all, 1, 0, 2).get(0).placeId());
+            assertNotEquals("early", composer.orderForSlot(condition, all, 1, 1, 2).get(0).placeId());
+        }
+    }
+
+    @Test
+    @DisplayName("경로 모드 목표 위치: 2곳이면 0.33·0.67, 코스마다 −0.1 / 0 / +0.1, 0 ~ 1 을 넘지 않는다")
+    void targetPosition() {
+        assertEquals(1.0 / 3, composer.targetPosition(1, 0, 2), 0.001);
+        assertEquals(2.0 / 3, composer.targetPosition(1, 1, 2), 0.001);
+        assertEquals(1.0 / 3 - 0.1, composer.targetPosition(0, 0, 2), 0.001);
+        assertEquals(0.5 + 0.1, composer.targetPosition(2, 0, 1), 0.001);
+        assertEquals(0.25, composer.targetPosition(1, 0, 3), 0.001);
+        assertTrue(composer.targetPosition(2, 3, 4) <= 1.0);
+    }
+
+    @Test
+    @DisplayName("경로 위 위치: 출발지 0, 도착지 1, 가운데 0.5")
+    void routePosition() {
+        CourseCondition condition = routeCondition(TransportType.WALK, 180);
+
+        assertEquals(0.0, composer.routePosition(condition, place("o", Category.CAFE, "카페", 0)), 0.001);
+        assertEquals(0.5, composer.routePosition(condition, place("m", Category.CAFE, "카페", 0.015)), 0.001);
+        assertEquals(1.0, composer.routePosition(condition, place("d", Category.CAFE, "카페", 0.03)), 0.001);
     }
 
     @Test

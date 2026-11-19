@@ -38,8 +38,8 @@ import java.util.Set;
  * ③ 한 곳씩 넣으면서 어림한 총 소요시간이 이용 시간 안이면 계속, 들어갈 장소가 없으면 멈춘다
  * ④ 방문 순서는 출발지에서 가장 가까운 곳 → 그다음 가까운 곳
  * ⑤ 실제 이동시간으로 이용 시간을 넘으면 마지막 장소를 빼고 다시 확인, 다 빠지면 그 코스는 버린다
- * ⑥ 가까운 후보를 먼저 본다. 완전 무작위로 섞으면 시간 안에만 들어가는 먼 곳도 자주 뽑혀서,
- *    "거리 + 무작위 거리" 순으로 줄 세운다. 가까울수록 앞에 오지만 순서가 매번 조금씩 달라진다 (#170)
+ * ⑥ 목표에 가까운 후보를 먼저 본다 (⑫). 완전 무작위로 섞으면 엉뚱한 곳이 자주 뽑혀서,
+ *    "목표와 어긋난 거리 + 무작위 거리" 순으로 줄 세운다. 목표에 맞을수록 앞에 오지만 순서가 매번 조금씩 달라진다 (#170, #204)
  * ⑦ 한 구간 이동시간(직선 어림)이 이동수단 기준(TransportType.maxLegMinutes)을 넘는 장소는 넣지 않는다 (#170)
  * ⑧ 경로 모드 (도착지가 1km 이상 멀 때, #170): "가는 길에 들르는" 코스
  *    - 가까움 기준을 출발지 거리 대신 우회 거리(출발→장소 + 장소→도착 − 출발→도착)로 본다
@@ -49,6 +49,11 @@ import java.util.Set;
  * ⑩ 같은 브랜드(체인)는 두 번 넣지 않는다 (메가커피 A점 → 메가커피 B점 X) (#170)
  * ⑪ 고를 때는 최소 체류시간으로 어림하고, 확정 뒤 남는 시간을 체류시간으로 채운다 (#204, StayTimeFiller)
  *    코스마다 채우는 목표를 이용 시간의 80% / 90% / 100% 로 달리해서 세 코스의 시간이 서로 다르게 나온다
+ * ⑫ 거리 비율 (#204): 코스마다 "어디쯤 있는 장소" 를 고를지 목표를 다르게 준다
+ *    - 보통      : 출발지에서 목표 거리 = 최대 반경 × 15% / 40% / 70% (가까운 코스 · 중간 코스 · 조금 먼 코스)
+ *    - 경로 모드 : 출발지(0) ~ 도착지(1) 사이 목표 위치를 장소 자리마다 나눈다 (2곳이면 0.33 · 0.67)
+ *                  → 장소가 가는 길을 따라 고르게 퍼진다. 코스마다 −0.1 / 0 / +0.1 씩 밀어 세 코스가 다르게 나온다
+ *    목표는 "먼저 볼 순서" 일 뿐 걸러 내는 조건이 아니다. 목표 근처에 맞는 장소가 없으면 다른 장소를 고른다
  * <p>
  * 장소 검색·반경 넓히기는 하지 않는다. 받은 후보 안에서만 고른다.
  */
@@ -65,12 +70,24 @@ public class CourseComposer {
     static final int MAX_ATTEMPTS = 10;
 
     /**
-     * 가까운 후보 먼저 줄 세울 때 섞는 정도 (규칙 ⑥). 이동수단 최대 검색 반경에 이 비율을 곱한 거리만큼 섞는다.
+     * 후보를 줄 세울 때 섞는 정도 (규칙 ⑥). 이동수단 최대 검색 반경에 이 비율을 곱한 거리만큼 섞는다.
      * 도보(2km) → 0.5km, 대중교통·차량(5km) → 1.25km.
-     * 이 거리 안쪽 차이는 무작위로 섞이고, 그보다 많이 먼 장소는 뒤로 밀린다.
-     * 0 이면 항상 가까운 순(매번 같은 코스), 클수록 무작위에 가까워진다.
+     * 이 거리 안쪽 차이는 무작위로 섞이고, 목표에서 그보다 많이 어긋난 장소는 뒤로 밀린다.
+     * 0 이면 항상 같은 순서(매번 같은 코스), 클수록 무작위에 가까워진다.
      */
-    static final double NEAR_FIRST_SPREAD_RATIO = 0.25;
+    static final double RANDOM_SPREAD_RATIO = 0.25;
+
+    /**
+     * 도착지가 없을 때 코스마다 노리는 출발지 거리 = 최대 검색 반경 × 이 비율 (규칙 ⑫, 팀 결정 2026-11-19).
+     * 도보(2km) → 0.3km / 0.8km / 1.4km, 대중교통·차량(5km) → 0.75km / 2km / 3.5km
+     */
+    static final List<Double> DISTANCE_RATIOS = List.of(0.15, 0.4, 0.7);
+
+    /**
+     * 경로 모드에서 코스마다 목표 위치를 미는 정도 (규칙 ⑫, 팀 결정 2026-11-19).
+     * 1번째 코스는 출발지 쪽으로, 3번째 코스는 도착지 쪽으로 조금 치우친다.
+     */
+    static final List<Double> ROUTE_POSITION_SHIFTS = List.of(-0.1, 0.0, 0.1);
 
     /**
      * 도착지가 출발지에서 이만큼(km) 이상 떨어져 있으면 "경로 모드" 로 코스를 만든다 (규칙 ⑧).
@@ -172,16 +189,16 @@ public class CourseComposer {
         }
 
         for (int attempt = 0; attempt < MAX_ATTEMPTS && courses.size() < needed; attempt++) {
-            // 1단계: 가까운 후보 먼저 줄 세우고 고르기 (API 호출 없음)
-            List<PlaceCandidate> ordered = orderNearFirst(condition, candidates);
-            List<PlaceCandidate> picked = pickPlaces(condition, ordered, maxPlaceCount, attempt);
+            int courseIndex = alreadyFound.size() + courses.size(); // 이 코스가 전체에서 몇 번째인지 (0부터)
+
+            // 1단계: 자리마다 목표 거리·위치에 가까운 후보부터 보며 고르기 (API 호출 없음, 규칙 ⑥·⑫)
+            List<PlaceCandidate> picked = pickPlaces(condition, candidates, maxPlaceCount, attempt, courseIndex);
 
             if (picked.isEmpty() || !triedPlaceSets.add(placeIdsOf(picked))) {
                 continue; // 고를 게 없거나, 이미 해 본 묶음이면 건너뜀 (Set.add 는 이미 있으면 false)
             }
 
             // 2단계: 고른 코스만 실제 이동시간으로 확정
-            int courseIndex = alreadyFound.size() + courses.size(); // 이 코스가 전체에서 몇 번째인지 (0부터)
             confirmCourse(condition, picked)
                     // 마지막 장소를 빼다가 기존 코스와 같아질 수 있음
                     .filter(course -> isNewCourse(courses, course) && isNewCourse(alreadyFound, course))
@@ -195,28 +212,92 @@ public class CourseComposer {
     // ===================== 1단계: 고르기 (직선거리 어림) =====================
 
     /**
-     * 후보를 "가까운 곳이 앞에 오도록, 하지만 매번 조금 다르게" 줄 세운다 (규칙 ⑥).
+     * 이번 자리에 넣을 후보를 "목표에 맞는 곳이 앞에 오도록, 하지만 매번 조금 다르게" 줄 세운다 (규칙 ⑥·⑫).
      * <pre>
-     * 점수 = 출발지에서 거리(km) + 무작위(0 ~ 섞는 거리)      도보면 섞는 거리 0.5km
-     * 예) 0.1km 카페 → 0.1 ~ 0.6 / 0.4km 공원 → 0.4 ~ 0.9  → 둘이 자주 자리를 바꾼다 (코스가 다양해짐)
-     *     0.1km 카페 → 0.1 ~ 0.6 / 1.5km 공원 → 1.5 ~ 2.0  → 공원은 항상 뒤 (먼 곳은 잘 안 뽑힘)
+     * 점수 = 목표와 어긋난 거리(km, missKm) + 무작위(0 ~ 섞는 거리)     도보면 섞는 거리 0.5km
+     * 예) 도착지 없음, 도보, 2번째 코스(목표 0.8km)
+     *     0.7km 카페 → 어긋남 0.1 → 0.1 ~ 0.6
+     *     1.0km 공원 → 어긋남 0.2 → 0.2 ~ 0.7   → 둘이 자주 자리를 바꾼다 (코스가 다양해짐)
+     *     0.1km 책방 → 어긋남 0.7 → 0.7 ~ 1.2   → 거의 항상 뒤
      * </pre>
-     * 거리에 곱하지 않고 더하는 이유: 곱하면(거리 × 1 ~ 2) 가장 가까운 한두 곳이 늘 1등이라
-     * 코스 3개가 모두 같은 장소로 시작한다.
+     * 어긋난 거리에 곱하지 않고 더하는 이유: 곱하면(× 1 ~ 2) 목표에 가장 맞는 한두 곳이 늘 1등이라
+     * 같은 장소만 계속 나온다.
      * <p>
      * 점수를 후보마다 한 번만 뽑아 Map 에 넣어 둔다. 정렬 중에 비교할 때마다 새로 뽑으면 순서가 뒤엉킨다.
+     *
+     * @param courseIndex 몇 번째 코스인지 (0부터). 코스마다 목표 거리·위치가 다르다
+     * @param slot        코스 안에서 몇 번째 자리인지 (0부터). 경로 모드에서 자리마다 목표 위치가 다르다
+     * @param slotCount   이 코스의 장소 수 상한
      */
-    List<PlaceCandidate> orderNearFirst(CourseCondition condition, List<PlaceCandidate> candidates) {
-        double spreadKm = maxSearchRadiusKm(condition) * NEAR_FIRST_SPREAD_RATIO;
+    List<PlaceCandidate> orderForSlot(CourseCondition condition, List<PlaceCandidate> candidates,
+                                      int courseIndex, int slot, int slotCount) {
+        double spreadKm = maxSearchRadiusKm(condition) * RANDOM_SPREAD_RATIO;
         Map<String, Double> scores = new HashMap<>();
         for (PlaceCandidate candidate : candidates) {
-            double distance = closenessKm(condition, candidate);
-            scores.put(candidate.placeId(), distance + random.nextDouble() * spreadKm);
+            double miss = missKm(condition, candidate, courseIndex, slot, slotCount);
+            scores.put(candidate.placeId(), miss + random.nextDouble() * spreadKm);
         }
 
         List<PlaceCandidate> ordered = new ArrayList<>(candidates);
         ordered.sort(Comparator.comparingDouble(candidate -> scores.get(candidate.placeId())));
         return ordered;
+    }
+
+    /**
+     * 후보가 이번 목표에서 얼마나 어긋났는지(km). 작을수록 목표에 맞는다 (규칙 ⑫).
+     * <pre>
+     * 보통      : | 출발지 → 장소 거리 − 목표 거리 |
+     * 경로 모드 : | 경로 위 위치 − 목표 위치 | × 출발지 → 도착지 거리  +  우회 거리
+     *             위치 차이(0 ~ 1)에 경로 길이를 곱해 km 로 바꾼다. 그래야 우회 거리(km)와 더할 수 있다
+     *             우회 거리를 더해서, 위치가 맞아도 길에서 많이 벗어난 곳은 뒤로 밀린다
+     * </pre>
+     */
+    double missKm(CourseCondition condition, PlaceCandidate candidate, int courseIndex, int slot, int slotCount) {
+        if (!isRouteMode(condition)) {
+            double distance = distanceKm(condition.origin(), coordinateOf(candidate));
+            return Math.abs(distance - targetDistanceKm(condition, courseIndex));
+        }
+        double routeKm = distanceKm(condition.origin(), condition.destination());
+        double positionGap = Math.abs(routePosition(condition, candidate) - targetPosition(courseIndex, slot, slotCount));
+        return positionGap * routeKm + closenessKm(condition, candidate);
+    }
+
+    /** 도착지가 없을 때 이 코스가 노리는 출발지 거리(km) = 최대 검색 반경 × 15% / 40% / 70% */
+    double targetDistanceKm(CourseCondition condition, int courseIndex) {
+        return maxSearchRadiusKm(condition) * DISTANCE_RATIOS.get(ratioIndex(courseIndex, DISTANCE_RATIOS));
+    }
+
+    /**
+     * 경로 모드에서 이 자리가 노리는 위치 (0 = 출발지, 1 = 도착지).
+     * <pre>
+     * 장소를 slotCount 곳 넣는다면 경로를 (slotCount + 1) 칸으로 나눈 경계에 하나씩 둔다
+     * 1곳: 0.5 / 2곳: 0.33 · 0.67 / 3곳: 0.25 · 0.5 · 0.75 / 4곳: 0.2 · 0.4 · 0.6 · 0.8
+     * 여기에 코스마다 −0.1 / 0 / +0.1 을 더한다. 0 ~ 1 을 벗어나면 끝에 맞춘다
+     * </pre>
+     */
+    double targetPosition(int courseIndex, int slot, int slotCount) {
+        double base = (slot + 1.0) / (slotCount + 1.0);
+        double shift = ROUTE_POSITION_SHIFTS.get(ratioIndex(courseIndex, ROUTE_POSITION_SHIFTS));
+        return Math.max(0.0, Math.min(1.0, base + shift));
+    }
+
+    /**
+     * 장소가 경로 위 어디쯤인지 (0 = 출발지, 1 = 도착지).
+     * 위치 = 출발지 → 장소 ÷ (출발지 → 장소 + 장소 → 도착지)
+     * 예) 출발지에서 1km, 도착지까지 3km → 0.25 (출발지 쪽 1/4 지점)
+     * 길에서 옆으로 벗어난 장소도 "출발지와 도착지 중 어느 쪽에 더 가까운지" 로 위치가 나온다.
+     */
+    double routePosition(CourseCondition condition, PlaceCandidate candidate) {
+        Coordinate place = coordinateOf(candidate);
+        double fromOrigin = distanceKm(condition.origin(), place);
+        double toDestination = distanceKm(place, condition.destination());
+        double sum = fromOrigin + toDestination;
+        return sum == 0 ? 0 : fromOrigin / sum;
+    }
+
+    /** 비율 목록에서 몇 번째 값을 쓸지. 코스가 3개를 넘어도 마지막 값을 쓴다 */
+    private int ratioIndex(int courseIndex, List<Double> ratios) {
+        return Math.min(courseIndex, ratios.size() - 1);
     }
 
     /**
@@ -254,16 +335,19 @@ public class CourseComposer {
 
     /**
      * 장소 수 상한 안에서 한 곳씩 고른다. 반환 목록은 이미 방문 순서대로 정렬되어 있다.
+     * 자리마다 후보를 새로 줄 세운다 (경로 모드에서는 자리마다 목표 위치가 달라서, 규칙 ⑫).
      *
-     * @param shuffled 줄 세운 후보 (orderNearFirst). 앞에서부터 보면서 조건에 맞는 첫 장소를 고른다
-     * @param attempt  몇 번째 시도인지. 직접 선택일 때 시작 대분류를 바꾸는 데 쓴다 (규칙 ①)
+     * @param candidates  후보 전체. 자리마다 orderForSlot 으로 줄 세운 뒤 앞에서부터 조건에 맞는 첫 장소를 고른다
+     * @param attempt     몇 번째 시도인지. 직접 선택일 때 시작 대분류를 바꾸는 데 쓴다 (규칙 ①)
+     * @param courseIndex 몇 번째 코스인지 (0부터). 목표 거리·위치를 정하는 데 쓴다 (규칙 ⑫)
      */
-    List<PlaceCandidate> pickPlaces(CourseCondition condition, List<PlaceCandidate> shuffled,
-                                    int maxPlaceCount, int attempt) {
+    List<PlaceCandidate> pickPlaces(CourseCondition condition, List<PlaceCandidate> candidates,
+                                    int maxPlaceCount, int attempt, int courseIndex) {
         List<PlaceCandidate> picked = new ArrayList<>();
 
         for (int slot = 0; slot < maxPlaceCount; slot++) {
-            Optional<PlaceCandidate> next = findPlaceThatFits(condition, shuffled, picked, slot + attempt);
+            List<PlaceCandidate> ordered = orderForSlot(condition, candidates, courseIndex, slot, maxPlaceCount);
+            Optional<PlaceCandidate> next = findPlaceThatFits(condition, ordered, picked, slot + attempt);
             if (next.isEmpty()) {
                 break; // 더 넣을 수 있는 장소가 없음 → 지금까지 고른 만큼만 (규칙 ③)
             }
