@@ -26,6 +26,30 @@ export interface NearbyPlaceResult {
   placeUrl: string
 }
 
+// ── 장소 상세 API 응답 (REQ-017) ──
+
+/**
+ * 장소 상세 (사진·소개·영업시간). 백엔드 place/dto/PlaceDetailResponse 와 이름·필드를 똑같이 맞춘다.
+ *   GET /api/places/detail?kakaoPlaceId=&name=&lat=&lng=  (카카오 장소 ID: 홈 검색·주변 탐색·추천 코스)
+ *   GET /api/places/{placeId}/detail                      (우리 장소 ID: 저장한 코스)
+ * TourAPI 에 없는 장소는 tourInfoAvailable = false 이고 kakaoMapUrl 만 온다.
+ */
+export interface PlaceDetailResponse {
+  kakaoPlaceId: string
+  /** TourAPI 정보를 찾았는지 */
+  tourInfoAvailable: boolean
+  imageUrl: string | null
+  /** 사진 저작권 유형 (공공누리 Type1·Type3 등). 사진이 있으면 출처(한국관광공사)를 함께 표시한다 */
+  imageCopyrightType: string | null
+  /** 소개 */
+  overview: string | null
+  /** 이용·영업 시간 (여러 줄일 수 있음) */
+  openingHours: string | null
+  /** 쉬는 날 */
+  restDate: string | null
+  kakaoMapUrl: string
+}
+
 // ── 카카오 지도 JS SDK ──
 // 우리가 쓰는 부분만 최소한으로 타입 정의한다. 필요한 API가 생기면 여기에 추가.
 

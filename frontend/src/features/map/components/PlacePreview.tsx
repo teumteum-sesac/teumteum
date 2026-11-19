@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { ApiError } from '../../../shared/api/apiError'
 import { CATEGORY_STICKER } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
 import EmptyState from '../../../shared/components/EmptyState'
@@ -6,14 +8,18 @@ import Icon from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
 import { getCategoryLabel, type CategoryCode } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
+import { getPlaceDetail } from '../api/placeDetailApi'
 import { formatDistance, getKakaoPlaceUrl } from '../format'
+import type { PlaceDetailResponse } from '../types'
 import KakaoMap from './KakaoMap'
+import PlaceDetailInfo from './PlaceDetailInfo'
 
 /*
  * [이 파일이 하는 일]
  * 장소 미리보기 (/places/:placeId). 홈 검색·주변 탐색에서 장소를 누르면 여기로 온다.
- * 장소 상세 API(REQ-017, 정종일)가 나오기 전이라, 목록에서 이미 받은 정보(이름·카테고리·주소·좌표·거리)를
- * 화면 이동 때 같이 넘겨받아(location.state) 그대로 보여 준다. 사진·소개는 API 가 나오면 이 화면에 채운다.
+ * 목록에서 이미 받은 정보(이름·카테고리·주소·좌표·거리)는 화면 이동 때 같이 넘겨받아(location.state) 바로 보여 주고,
+ * 사진·영업시간·쉬는 날·소개는 장소 상세 API(GET /api/places/detail, REQ-017)로 따로 불러온다.
+ * 상세 API 가 실패해도 이름·지도·버튼은 그대로 쓸 수 있다.
  *
  * 버튼: [여기서 출발해 코스 추천받기] = 이 장소를 출발지로 외출 조건(CON-01)
  *       [카카오맵에서 보기]           = 카카오 장소 페이지 (영업시간·리뷰 등 더 자세한 정보)
@@ -35,6 +41,7 @@ export interface PlacePreviewState {
 export default function PlacePreview({ placeId, place }: { placeId: string; place: PlacePreviewState | null }) {
   const navigate = useNavigate()
   const setOrigin = useConditionStore((s) => s.setOrigin)
+  const { detail, loading, error } = usePlaceDetail(place && place.kakaoPlaceId === placeId ? place : null)
 
   // 새로고침·주소 직접 입력으로 들어오면 넘겨받은 정보가 없다 → 카카오맵 링크로 안내
   if (!place || place.kakaoPlaceId !== placeId) {
@@ -93,6 +100,8 @@ export default function PlacePreview({ placeId, place }: { placeId: string; plac
         </p>
       )}
 
+      <PlaceDetailInfo detail={detail} loading={loading} error={error} placeName={place.name} />
+
       <div className="mt-2 flex flex-col gap-2">
         <Button
           variant="pink"
@@ -115,7 +124,38 @@ export default function PlacePreview({ placeId, place }: { placeId: string; plac
           카카오맵에서 보기
         </a>
       </div>
-      <p className="px-1 text-xs text-neutral-400">사진·소개는 장소 상세 정보가 준비되면 여기에 함께 보여 드려요.</p>
     </div>
   )
+}
+
+/** 장소 상세(사진·영업시간 등)를 불러온다. place 가 없으면 부르지 않는다. 장소가 바뀌면 이전 응답은 버린다 */
+function usePlaceDetail(place: PlacePreviewState | null) {
+  const [state, setState] = useState<{ key: string | null; detail: PlaceDetailResponse | null; error: string | null }>({
+    key: null,
+    detail: null,
+    error: null,
+  })
+  const key = place?.kakaoPlaceId ?? null
+  const name = place?.name
+  const lat = place?.latitude
+  const lng = place?.longitude
+
+  useEffect(() => {
+    if (key === null || name === undefined || lat === undefined || lng === undefined) return
+    let ignore = false
+    getPlaceDetail({ kakaoPlaceId: key, name, lat, lng })
+      .then((detail) => {
+        if (!ignore) setState({ key, detail, error: null })
+      })
+      .catch((e: unknown) => {
+        if (!ignore) setState({ key, detail: null, error: e instanceof ApiError ? e.message : '장소 정보를 불러오지 못했어요.' })
+      })
+    return () => {
+      ignore = true
+    }
+  }, [key, name, lat, lng])
+
+  // 아직 이 장소의 응답이 오지 않았으면 로딩
+  const current = state.key === key
+  return { detail: current ? state.detail : null, error: current ? state.error : null, loading: key !== null && !current }
 }
