@@ -9,6 +9,7 @@ import LoginPage from '../pages/LoginPage'
 import MyPage from '../pages/MyPage'
 import NearbyPage from '../pages/NearbyPage'
 import NoticeDetailPage from '../pages/NoticeDetailPage'
+import PlacePreviewPage from '../pages/PlacePreviewPage'
 import PlaceReplacePage from '../pages/PlaceReplacePage'
 import ProfileEditPage from '../pages/ProfileEditPage'
 import ResultPage from '../pages/ResultPage'
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
       { path: 'condition/location', element: <LocationSearchPage /> }, //                CON-02 위치 설정 (?type=origin|destination)
 
       // 추천 결과 · 결과 상세
+      { path: 'places/:placeId', element: <PlacePreviewPage /> }, //                    장소 미리보기 (홈 검색·주변 탐색)
       { path: 'results', element: <ResultPage /> }, //                                   RES-01 추천 결과 목록
       { path: 'results/:courseId', element: <CourseDetailPage /> }, //                   DET-01 추천 결과 상세
       { path: 'results/:courseId/map', element: <CourseMapPage source="recommend" /> }, // DET-02 코스 지도 상세

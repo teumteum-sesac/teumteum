@@ -225,7 +225,20 @@ export default function NearbySheet({
               {places.map((place) => (
                 <li key={place.kakaoPlaceId} data-place-id={place.kakaoPlaceId}>
                   <Link
-                    to={`/results/place-${place.kakaoPlaceId}`}
+                    to={`/places/${place.kakaoPlaceId}`}
+                    // 장소 상세 API 전이라 목록에서 받은 정보를 미리보기 화면에 그대로 넘긴다
+                    state={{
+                      place: {
+                        kakaoPlaceId: place.kakaoPlaceId,
+                        name: place.name,
+                        category: place.category,
+                        subCategory: place.subCategory,
+                        address: place.roadAddress ?? place.address,
+                        latitude: place.latitude,
+                        longitude: place.longitude,
+                        distance: place.distance,
+                      },
+                    }}
                     aria-current={place.kakaoPlaceId === selectedPlaceId ? 'true' : undefined}
                     className={`flex gap-3 rounded-xl border p-3 ${
                       place.kakaoPlaceId === selectedPlaceId ? 'border-primary bg-primary-light' : 'border-line'
