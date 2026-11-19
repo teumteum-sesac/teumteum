@@ -6,6 +6,9 @@ import Toast from '../../../shared/components/Toast'
 import { CATEGORIES, MAX_CATEGORIES, type CategoryCode, type CategoryMode } from '../../../shared/types/domain'
 import { useConditionStore } from '../store'
 
+/** '직접 선택'을 처음 누를 때 골라 두는 대분류 */
+const DEFAULT_DIRECT_CATEGORY: CategoryCode = 'CULTURE'
+
 const MODE_OPTIONS: { value: CategoryMode; label: string }[] = [
   { value: 'RANDOM', label: '랜덤 추천' },
   { value: 'DIRECT', label: '직접 선택' },
@@ -15,7 +18,7 @@ const MODE_OPTIONS: { value: CategoryMode; label: string }[] = [
  * 카테고리 (CON-01 ④): 랜덤 추천(기본) 또는 직접 선택(대분류 최대 3개). 세분류는 여기서 고르지 않는다.
  * - 아래 타일을 하나라도 고르면 '직접 선택'에 불이 들어오고 '랜덤 추천'은 꺼진다
  * - 타일을 전부 풀거나 '랜덤 추천'을 누르면 고른 카테고리가 모두 풀리고 랜덤 추천으로 돌아간다
- * - 아무것도 안 고른 채 '직접 선택'을 누르면 타일을 골라 달라고 안내만 한다 (안 고르면 랜덤이므로)
+ * - 아무것도 안 고른 채 '직접 선택'을 누르면 문화생활 1개가 골라진 채로 직접 선택이 켜진다
  * - 4개째를 누르면 "최대 3개까지 고를 수 있어요" 토스트
  * 고른 개수는 제목 줄 '최대 3개' 오른쪽에 보인다 (ConditionForm)
  * 디자인 (목업 CON-01): 4열 스티커 타일. 고른 타일은 핑크 + 살짝 기울여 "붙인" 느낌
@@ -27,8 +30,9 @@ export default function CategorySelector() {
   const mode: CategoryMode = categories.length > 0 ? 'DIRECT' : 'RANDOM'
 
   const handleMode = (next: CategoryMode) => {
+    // 아무것도 안 고른 채 '직접 선택'을 누르면 문화생활 1개를 골라 준 상태로 시작한다 (이어서 더 고르거나 바꿀 수 있다)
     if (next === 'DIRECT' && categories.length === 0) {
-      setToast('아래에서 카테고리를 골라 주세요')
+      toggleCategory(DEFAULT_DIRECT_CATEGORY)
       return
     }
     setCategoryMode(next)

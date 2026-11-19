@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation, useNavigate, useNavigationType } from 'react-router'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import { TRANSPORT_STICKER } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
@@ -12,7 +12,7 @@ import { requestCurrentPosition } from '../../map/hooks/useCurrentPosition'
 import { toCurrentLocation } from '../api/conditionApi'
 import { useRecommendStore } from '../../recommend/store'
 import { canRequestRecommend, toRecommendRequest } from '../recommendRequest'
-import { useConditionStore } from '../store'
+import { DEFAULT_AVAILABLE_MINUTES, useConditionStore } from '../store'
 import CategorySelector from './CategorySelector'
 import LocationFields from './LocationFields'
 import TimeSelector from './TimeSelector'
@@ -26,6 +26,15 @@ export default function ConditionForm() {
   const { origin, destination, availableMinutes, startTime, transportType, setTransportType } = useConditionStore()
   const categoryCount = useConditionStore((s) => s.categories.length)
   const requestRecommend = useRecommendStore((s) => s.request)
+
+  // 여유 시간은 화면에 새로 들어올 때마다 1시간으로 시작한다 (홈 등에서 진입 = PUSH).
+  // 위치 설정에서 뒤로 돌아온 경우(POP)와 추천 결과의 [조건 바꾸기](fromResults)는 고른 값을 그대로 둔다
+  const navigationType = useNavigationType()
+  useEffect(() => {
+    if (navigationType === 'PUSH' && !fromResults) useConditionStore.getState().setAvailableMinutes(DEFAULT_AVAILABLE_MINUTES)
+    // 들어올 때 한 번만 판단한다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 출발지·도착지 기본값은 현재 위치. 화면에 들어왔을 때 비어 있는 쪽만 현재 위치로 채운다
   // (이미 고른 위치는 건드리지 않는다. 위치 권한이 없으면 비운 채로 두고 직접 설정 안내)
