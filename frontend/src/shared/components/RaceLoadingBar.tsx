@@ -17,8 +17,17 @@ import StickerImage from './StickerImage'
 /** 달리기 한 판 길이(ms). 로딩 최소 시간도 이 값을 쓴다 (한 판은 보이도록) */
 export const RACE_MS = 2100
 
-export default function RaceLoadingBar({ loop = false, className = '' }: { loop?: boolean; className?: string }) {
-  const run = { animationDuration: `${RACE_MS}ms`, animationIterationCount: loop ? 'infinite' : 1 }
+export default function RaceLoadingBar({
+  loop = false,
+  durationMs = RACE_MS,
+  className = '',
+}: {
+  loop?: boolean
+  /** 한 판 길이(ms). 스플래시처럼 더 천천히 달리게 할 때만 바꾼다 */
+  durationMs?: number
+  className?: string
+}) {
+  const run = { animationDuration: `${durationMs}ms`, animationIterationCount: loop ? 'infinite' : 1 }
 
   return (
     <div aria-hidden className={`relative h-2.5 w-[62%] max-w-[280px] rounded-full border-2 border-ink bg-cream ${className}`}>
