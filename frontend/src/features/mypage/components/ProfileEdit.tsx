@@ -15,7 +15,8 @@ import type { MemberResponse } from '../types'
 /**
  * 회원 정보 수정·탈퇴 (MY-04)
  * - 이메일(수정 불가), 닉네임, 비밀번호 변경(새 비밀번호 + 확인). 저장하면 마이페이지로
- * - 회원 탈퇴: 안내(저장한 코스 즉시 삭제) → 의사 확인(비밀번호 입력 또는 체크) → 홈으로
+ * - 회원 탈퇴: 안내(저장한 코스 즉시 삭제) → 의사 확인(동의 체크 + 현재 비밀번호 둘 다) → 홈으로
+ *   (체크만으로 탈퇴되면 토큰이 남은 기기에서 다른 사람이 계정을 지울 수 있어 비밀번호도 받는다)
  * - MY-01 '회원 탈퇴' 메뉴로 들어오면(?withdraw=1) 탈퇴 영역을 펼친 채로 시작
  * - 서버 조회로 입력값을 채우고 수정·탈퇴 성공 응답 뒤에만 로그인 상태를 변경한다
  */
@@ -75,14 +76,17 @@ function ProfileEditForm({ member }: { member: MemberResponse }) {
     }
   }
 
+  // 동의 체크와 비밀번호(백엔드와 같은 1~64자, 공백만은 불가)가 모두 있어야 탈퇴 버튼이 켜진다
+  const canWithdraw = withdrawAgreed && withdrawPassword.trim().length > 0 && withdrawPassword.length <= 64
+
   const handleWithdraw = async () => {
-    if (inFlight.current || (!withdrawAgreed && (withdrawPassword.length === 0 || withdrawPassword.length > 64))) return
+    if (inFlight.current || !canWithdraw) return
     inFlight.current = true
     setBusy('withdraw')
     setWithdrawError(null)
     const token = useAuthStore.getState().accessToken
     try {
-      const result = await withdrawMyAccount({ password: withdrawAgreed ? null : withdrawPassword, agreed: withdrawAgreed })
+      const result = await withdrawMyAccount({ password: withdrawPassword, agreed: withdrawAgreed })
       if (!active.current || useAuthStore.getState().accessToken !== token) return
       if (!result.withdrawn) throw new Error('Unexpected withdrawal response')
       logout()
@@ -144,14 +148,14 @@ function ProfileEditForm({ member }: { member: MemberResponse }) {
               autoComplete="current-password"
               value={withdrawPassword}
               onChange={(e) => setWithdrawPassword(e.target.value)}
-              hint="비밀번호를 입력하거나 아래에 체크해 주세요"
+              hint="현재 비밀번호를 입력하고 아래에 체크해 주세요"
             />
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={withdrawAgreed} onChange={(e) => setWithdrawAgreed(e.target.checked)} className="size-4 accent-primary" />
               안내를 확인했고 탈퇴에 동의합니다
             </label>
             {withdrawError && <p role="alert" className="text-sm text-red-600">{withdrawError}</p>}
-            <Button variant="secondary" disabled={busy !== null || (!withdrawAgreed && (withdrawPassword.length === 0 || withdrawPassword.length > 64))} onClick={() => { void handleWithdraw() }}>
+            <Button variant="secondary" disabled={busy !== null || !canWithdraw} onClick={() => { void handleWithdraw() }}>
               {busy === 'withdraw' ? '탈퇴 중…' : '탈퇴하기'}
             </Button>
           </div>

@@ -43,7 +43,7 @@ mysql -u root -p < erd.sql
 |---|---|
 | `transport_type` | `TRANSIT`(대중교통) / `WALK`(도보) / `CAR`(차량) |
 | `category_mode` | `DIRECT`(직접 선택) / `RANDOM`(랜덤 추천) |
-| `account_status` | `ACTIVE` / `WITHDRAWN` (초안) |
+| `account_status` | `ACTIVE` / `WITHDRAWN` (초안). 탈퇴 시 `email` 은 `withdrawn+{member_id}@teumteum.invalid` 로 바뀐다 (재가입 허용·개인정보 미보관) |
 | `inquiry_status` | `WAITING` / `ANSWERED` (초안) |
 | `place_provider` | `KAKAO` |
 | `category_code` | 대분류만: `CULTURE` `CAFE` `FOOD` `NATURE` `ENTERTAINMENT` `SHOPPING` `SPORTS` `TOURISM` (프론트 `shared/types/domain.ts` 와 동일) |

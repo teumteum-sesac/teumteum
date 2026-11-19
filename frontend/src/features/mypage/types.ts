@@ -14,37 +14,9 @@ export interface MemberUpdateRequest {
   newPassword?: string
   newPasswordConfirm?: string
 }
-export interface MemberWithdrawRequest { password: string | null; agreed: boolean }
+// 동의 체크(agreed=true)와 현재 비밀번호를 둘 다 보내야 탈퇴된다
+export interface MemberWithdrawRequest { password: string; agreed: boolean }
 export interface MemberWithdrawResponse { withdrawn: boolean }
-
-export interface LatestPlaceResponse {
-  placeName: string
-  category: string | null
-  subCategory: string | null
-  address: string | null
-  latitude: number | null
-  longitude: number | null
-  imageUrl: string | null
-  imageSource: string | null
-  imageCopyrightType: string | null
-  description: string | null
-  openingHours: string | null
-}
-export interface CourseLatestPlaceResponse {
-  coursePlaceId: string
-  placeId: string
-  visitOrder: number
-  status: 'SUCCESS' | 'NOT_FOUND' | 'FAILED'
-  fetchedAt: string | null
-  place: LatestPlaceResponse | null
-  errorCode: string | null
-  message: string | null
-}
-export interface CourseLatestPlacesResponse {
-  courseId: string
-  requestedAt: string
-  places: CourseLatestPlaceResponse[]
-}
 
 // 백엔드 CourseSummaryResponse에 대응하는 코스 요약 타입이다.
 export interface CourseSummaryResponse {

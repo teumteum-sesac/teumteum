@@ -104,7 +104,7 @@ export function useSavedCourses() {
       return true
     } catch (e) {
       if (mounted.current && id === requestId.current) {
-        setDeleteError(e instanceof ApiError ? e.message : '저장을 해제하지 못했어요.')
+        setDeleteError(e instanceof ApiError ? e.message : '코스를 삭제하지 못했어요.')
       }
       return false
     } finally {

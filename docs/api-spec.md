@@ -125,8 +125,10 @@
 실패
 | HTTP | code | 언제 |
 |---|---|---|
-| 400 | `INVALID_REQUEST` | 형식·길이 위반 (`fieldErrors`) |
+| 400 | `INVALID_REQUEST` | 형식·길이 위반 (`fieldErrors`), 탈퇴 회원용 도메인(`@teumteum.invalid`) 이메일 |
 | 409 | `DUPLICATE_EMAIL` | 이미 가입된 이메일 "이미 가입된 이메일이에요." |
+
+탈퇴한 회원의 이메일은 탈퇴 시 비식별화되므로 같은 이메일로 다시 가입할 수 있다 ([2.6](#26-회원-탈퇴)).
 
 ### 2.3 이메일 중복 확인
 `GET /api/members/email-exists?email=user@email.com` · 🔓 · 화면 AUT-02 [중복 확인]
@@ -194,19 +196,17 @@
 ### 2.6 회원 탈퇴
 `DELETE /api/members/me` · 🔒 · 화면 MY-04 · REQ-006
 
-요청 (`MemberWithdrawRequest`). JWT로 인증한 본인만 탈퇴한다. 아래 두 방식 중 하나를 사용한다.
+요청 (`MemberWithdrawRequest`). JWT로 인증한 본인만 탈퇴한다. **동의 체크와 현재 비밀번호를 둘 다** 보내야 한다.
 ```json
-{ "agreed": true }
-```
-또는 현재 비밀번호로 확인:
-```json
-{ "password": "abc12345", "agreed": false }
+{ "password": "abc12345", "agreed": true }
 ```
 
 | 필드 | 타입 | 규칙 |
 |---|---|---|
-| agreed | boolean | 기본 false. true면 동의 확인으로 탈퇴 가능 |
-| password | string 또는 null | agreed=false면 현재 비밀번호 필수. 최대 64자 |
+| agreed | boolean | 필수 true (안내 확인·탈퇴 동의) |
+| password | string | 필수. 현재 비밀번호, 최대 64자 |
+
+둘 중 하나만 받으면 토큰이 남아 있는 기기에서 비밀번호 없이 계정이 삭제될 수 있어 둘 다 요구한다 (2026-11-19 변경, 이전에는 둘 중 하나).
 
 성공 200 (`MemberWithdrawResponse`, 공통 응답의 `data`):
 ```json
@@ -214,14 +214,18 @@
 ```
 
 - 저장 코스와 하위 장소 스냅샷·경로를 삭제하고 회원 상태를 WITHDRAWN으로 변경한다. 회원 행·공용 장소·다른 회원 데이터는 유지한다.
+- 이메일은 `withdrawn+{memberId}@teumteum.invalid` 로 바꾼다. 같은 이메일로 다시 가입할 수 있고, 탈퇴한 사람의 이메일을 보관하지 않는다.
+- 관리자 강제 탈퇴(`PATCH /api/admin/members/{memberId}/withdraw`)도 같은 처리(코스 삭제·이메일 비식별화)를 거친다.
+- 관리자 계정은 본인 탈퇴할 수 없다. 관리자 해제(DB `admin` 행 삭제) 후 탈퇴한다.
 - 모든 변경은 한 트랜잭션으로 처리하며 실패 시 전체 롤백한다. 하위 삭제는 기존 DB의 ON DELETE CASCADE를 사용한다.
 - 탈퇴 후 로그인은 실패하며, JWT 인증 시 회원 상태를 확인하므로 기존 토큰도 회원 전용·관리자 API에 사용할 수 없다. 공개 API는 비회원으로 이용할 수 있다.
 - 프론트는 성공 응답 확인 후 토큰·로그인 상태를 비우고 홈으로 이동한다.
 
 | HTTP | code | 언제 |
 |---|---|---|
-| 400 | `INVALID_REQUEST` | 탈퇴 의사 미확인, 입력 길이 위반, 본문 누락 |
-| 400 | `WITHDRAWAL_PASSWORD_MISMATCH` | agreed=false이고 현재 비밀번호가 틀린 경우 |
+| 400 | `INVALID_REQUEST` | 동의 체크 또는 비밀번호 누락, 입력 길이 위반, 본문 누락 |
+| 400 | `WITHDRAWAL_PASSWORD_MISMATCH` | 현재 비밀번호가 틀린 경우 |
+| 400 | `ADMIN_WITHDRAWAL_NOT_ALLOWED` | 관리자 계정이 본인 탈퇴를 시도한 경우 |
 | 401 | `UNAUTHORIZED` | 인증 실패, 없는 회원·이미 탈퇴한 회원 |
 
 ## 3. 장소 (정종일)
@@ -281,6 +285,7 @@
 ## 변경 이력
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-19 | 회원 탈퇴: 동의 체크 + 비밀번호 모두 필수, 관리자 본인 탈퇴 차단, 탈퇴 시 이메일 비식별화(재가입 허용), 관리자 강제 탈퇴도 코스 삭제 |
 | 2026-11-19 | 관리자(회원 관리·공지) API 5개, 공지 조회 API 2개, 장소 상세 API 주소·구현 상태 반영. 관리자 담당 김용현으로 변경 |
 | 2026-11-18 | 내 회원 정보 수정(PATCH /api/members/me) 요청·응답·비밀번호 유지 정책 추가 (#153) |
 | 2026-11-18 | 회원 탈퇴 요청·응답·저장 코스 삭제·탈퇴 토큰 차단 정책 추가 (#155) |

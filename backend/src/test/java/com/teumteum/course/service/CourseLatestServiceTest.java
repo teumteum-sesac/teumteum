@@ -89,7 +89,7 @@ class CourseLatestServiceTest {
     static CourseResponse saved(int count) {
         var list = java.util.stream.IntStream.rangeClosed(1, count)
                 .mapToObj(i -> new CoursePlaceResponse("10" + i, "" + i, i, "저장 이름", "CAFE", "카페", "저장 주소",
-                        BigDecimal.valueOf(37), BigDecimal.valueOf(127), "stored-image", "stored-description", "stored-hours", 50, 10, null)).toList();
+                        BigDecimal.valueOf(37), BigDecimal.valueOf(127), "stored-image", "stored-description", "stored-hours", 50, 10, null, null)).toList();
         return new CourseResponse("42", "rec", "저장 코스명", "2026-11-18T13:00:00+09:00", null, null,
                 "WALK", "13:00", 60, 10, 0, true, list, List.of());
     }

@@ -1,12 +1,8 @@
 import { apiDelete, apiGet, apiPost } from '../../../shared/api/request'
-import type { CourseDeleteResponse, CourseListResponse, CourseResponse, CourseSaveRequest, CourseSaveResponse, CourseLatestPlacesResponse } from '../types'
+import type { CourseDeleteResponse, CourseListResponse, CourseResponse, CourseSaveRequest, CourseSaveResponse } from '../types'
 
 export function saveCourse(body: CourseSaveRequest) {
   return apiPost<CourseSaveResponse>('/courses', body)
-}
-
-export function getLatestCoursePlaces(courseId: string) {
-  return apiGet<CourseLatestPlacesResponse>(`/courses/${encodeURIComponent(courseId)}/places/latest`)
 }
 
 // 기본값: 첫 페이지를 20개씩 조회한다.

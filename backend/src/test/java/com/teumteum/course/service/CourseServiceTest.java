@@ -1,5 +1,6 @@
 package com.teumteum.course.service;
 
+import com.teumteum.place.service.PlaceLatestService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -58,12 +59,14 @@ class CourseServiceTest {
     private RecommendService recommendService;
     @Mock
     private CourseSaveWriter courseSaveWriter;
+    @Mock
+    private PlaceLatestService placeLatestService;
     private CourseService courseService;
 
     @BeforeEach
     void setUp() {
         courseService = new CourseService(courseRepository, coursePlaceRepository,
-                courseRouteLegRepository, recommendService, courseSaveWriter);
+                courseRouteLegRepository, recommendService, courseSaveWriter, placeLatestService);
     }
 
     @Test

@@ -126,16 +126,16 @@ class MemberControllerTest {
 
     @Test
     void withdrawsAuthenticatedMemberWithConsent() throws Exception {
-        given(withdrawalService.withdrawMyAccount(7L, new MemberWithdrawRequest(null, true)))
+        given(withdrawalService.withdrawMyAccount(7L, new MemberWithdrawRequest("abc12345", true)))
                 .willReturn(new MemberWithdrawResponse(true));
         mockMvc.perform(delete("/api/members/me")
                         .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
                         .param("memberId", "99")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"agreed\":true}"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"abc12345\",\"agreed\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.withdrawn").value(true));
-        verify(withdrawalService).withdrawMyAccount(7L, new MemberWithdrawRequest(null, true));
+        verify(withdrawalService).withdrawMyAccount(7L, new MemberWithdrawRequest("abc12345", true));
     }
 
     @Test
@@ -143,6 +143,17 @@ class MemberControllerTest {
         mockMvc.perform(delete("/api/members/me")
                         .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+        verifyNoInteractions(withdrawalService);
+    }
+
+    @Test
+    void rejectsWithdrawalWithConsentOnly() throws Exception {
+        // 동의 체크만으로는 탈퇴할 수 없다. 비밀번호도 함께 보내야 한다.
+        mockMvc.perform(delete("/api/members/me")
+                        .principal(new UsernamePasswordAuthenticationToken(7L, null, List.of()))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"agreed\":true}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
         verifyNoInteractions(withdrawalService);

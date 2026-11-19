@@ -13,13 +13,15 @@ interface CourseSummaryProps {
   children?: ReactNode
   /** 코스명. 없으면 장소 이름을 이어 붙인다 (MY-03 은 저장 당시 courseName 을 그대로 넘긴다) */
   title?: string
+  /** false 면 시간·장소 수 알약 줄을 그리지 않는다 (DET-01 은 타임라인 위에 따로 둔다). 기본 true */
+  pills?: boolean
 }
 
 /**
  * 코스 요약: 코스명, 총 예상 소요시간, 장소 수, 이동수단 (DET-01 ①, MY-03 ①)
  * 디자인 (목업 코스 상세): 듀오 장면 배너 → 그 아래로 겹쳐 붙인 초록 코스명 라벨 → 시간 칩 줄
  */
-export default function CourseSummary({ course, meta, children, title }: CourseSummaryProps) {
+export default function CourseSummary({ course, meta, children, title, pills = true }: CourseSummaryProps) {
   const travel = getTotalTravelMinutes(course)
   const stay = course.places.reduce((sum, p) => sum + p.stayMinutes, 0)
 
@@ -32,23 +34,25 @@ export default function CourseSummary({ course, meta, children, title }: CourseS
         {title ?? getCourseName(course)}
       </h2>
 
-      <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-        <Pill icon="clock" strong>
-          총 {formatMinutes(course.totalMinutes)}
-        </Pill>
-        <Pill icon="location">{course.places.length}곳</Pill>
-        <Pill icon="map">이동 {formatMinutes(travel)}</Pill>
-        <Pill icon="bookmark">체류 {formatMinutes(stay)}</Pill>
-        <Pill>{meta ?? getTransportLabel(course.transportType)}</Pill>
-        {course.estimated && <span className="rounded-full bg-sunny px-2.5 py-1 text-xs font-bold">예상 시간</span>}
-      </div>
+      {pills && (
+        <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+          <Pill icon="clock" strong>
+            총 {formatMinutes(course.totalMinutes)}
+          </Pill>
+          <Pill icon="location">{course.places.length}곳</Pill>
+          <Pill icon="map">이동 {formatMinutes(travel)}</Pill>
+          <Pill icon="bookmark">체류 {formatMinutes(stay)}</Pill>
+          <Pill>{meta ?? getTransportLabel(course.transportType)}</Pill>
+          {course.estimated && <span className="rounded-full bg-sunny px-2.5 py-1 text-xs font-bold">예상 시간</span>}
+        </div>
+      )}
       {children}
     </section>
   )
 }
 
-/** 요약 칩: 크림 바탕 + 종이색 테두리. strong 이면 노란 바탕으로 강조 (총 소요시간) */
-function Pill({ icon, strong = false, children }: { icon?: IconName; strong?: boolean; children: ReactNode }) {
+/** 요약 칩: 크림 바탕 + 종이색 테두리. strong 이면 노란 바탕으로 강조 (총 소요시간). 코스 상세(DET-01) 타임라인 위에서도 쓴다 */
+export function Pill({ icon, strong = false, children }: { icon?: IconName; strong?: boolean; children: ReactNode }) {
   return (
     <span
       className={`flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-xs font-bold ${

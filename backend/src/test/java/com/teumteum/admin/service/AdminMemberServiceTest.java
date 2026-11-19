@@ -16,6 +16,7 @@ import com.teumteum.global.exception.CustomException;
 import com.teumteum.member.domain.AccountStatus;
 import com.teumteum.member.domain.Member;
 import com.teumteum.member.service.MemberService;
+import com.teumteum.member.service.MemberWithdrawalService;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -44,11 +45,14 @@ class AdminMemberServiceTest {
     @Mock
     private AdminService adminService;
 
+    @Mock
+    private MemberWithdrawalService memberWithdrawalService;
+
     private AdminMemberService adminMemberService;
 
     @BeforeEach
     void setUp() {
-        adminMemberService = new AdminMemberService(memberService, adminService);
+        adminMemberService = new AdminMemberService(memberService, adminService, memberWithdrawalService);
     }
 
     private Member member(Long id, String email) {
@@ -85,11 +89,11 @@ class AdminMemberServiceTest {
     }
 
     @Test
-    @DisplayName("강제 탈퇴: 정상 회원이면 WITHDRAWN 으로 바뀐다")
+    @DisplayName("강제 탈퇴: 본인 탈퇴와 같은 경로(잠금 → 코스 삭제 → 상태 변경)를 거친다")
     void withdraw() {
         Member target = member(2L, "user@test.com");
-        given(memberService.findMember(2L)).willReturn(Optional.of(target));
-        given(memberService.withdraw(target)).willAnswer(invocation -> {
+        given(memberWithdrawalService.lockMember(2L)).willReturn(Optional.of(target));
+        given(memberWithdrawalService.withdrawLockedMember(target)).willAnswer(invocation -> {
             target.withdraw();
             return target;
         });
@@ -97,6 +101,7 @@ class AdminMemberServiceTest {
         AdminMemberResponse result = adminMemberService.withdraw(1L, 2L);
 
         assertThat(result.accountStatus()).isEqualTo(AccountStatus.WITHDRAWN);
+        verify(memberWithdrawalService).withdrawLockedMember(target);
     }
 
     @Test
@@ -105,27 +110,26 @@ class AdminMemberServiceTest {
         assertThatThrownBy(() -> adminMemberService.withdraw(1L, 1L))
                 .isInstanceOf(CustomException.class)
                 .extracting("errorCode").isEqualTo(AdminErrorCode.CANNOT_WITHDRAW_SELF);
-        verify(memberService, never()).withdraw(any());
+        verify(memberWithdrawalService, never()).withdrawLockedMember(any());
     }
 
     @Test
     @DisplayName("강제 탈퇴: 다른 관리자는 불가, 없는 회원은 404, 이미 탈퇴면 409")
     void withdrawRules() {
-        given(memberService.findMember(9L)).willReturn(Optional.empty());
+        given(memberWithdrawalService.lockMember(9L)).willReturn(Optional.empty());
         assertThatThrownBy(() -> adminMemberService.withdraw(1L, 9L))
                 .extracting("errorCode").isEqualTo(AdminErrorCode.MEMBER_NOT_FOUND);
 
-        given(memberService.findMember(3L)).willReturn(Optional.of(member(3L, "admin2@test.com")));
         given(adminService.isAdmin(3L)).willReturn(true);
         assertThatThrownBy(() -> adminMemberService.withdraw(1L, 3L))
                 .extracting("errorCode").isEqualTo(AdminErrorCode.CANNOT_WITHDRAW_ADMIN);
 
         Member withdrawn = member(4L, "gone@test.com");
         withdrawn.withdraw();
-        given(memberService.findMember(4L)).willReturn(Optional.of(withdrawn));
+        given(memberWithdrawalService.lockMember(4L)).willReturn(Optional.of(withdrawn));
         assertThatThrownBy(() -> adminMemberService.withdraw(1L, 4L))
                 .extracting("errorCode").isEqualTo(AdminErrorCode.ALREADY_WITHDRAWN);
 
-        verify(memberService, never()).withdraw(any());
+        verify(memberWithdrawalService, never()).withdrawLockedMember(any());
     }
 }
