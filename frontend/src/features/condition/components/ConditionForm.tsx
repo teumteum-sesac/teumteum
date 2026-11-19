@@ -34,6 +34,13 @@ export default function ConditionForm() {
 
         <Section title="여유 시간" badge={formatMinutes(availableMinutes)}>
           <TimeSelector />
+          {/* 0분이면 [추천받기] 가 꺼지는 이유를 바로 아래에 알려 준다 (버튼만 비활성이면 왜 안 눌리는지 모름) */}
+          {availableMinutes === 0 && (
+            <p role="status" className="mt-2 flex items-center gap-1.5 px-1 text-sm font-bold text-primary-dark">
+              <Icon name="clock" className="size-4 shrink-0" />
+              여유시간을 30분 이상 설정해 주세요.
+            </p>
+          )}
         </Section>
 
         <Section title="이동수단">

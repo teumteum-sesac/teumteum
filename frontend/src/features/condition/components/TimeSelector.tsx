@@ -9,7 +9,7 @@ const START_TIMES = Array.from({ length: 48 }, (_, i) => addMinutesToTime('00:00
 /**
  * 시간 (CON-01 ②): 시작 시각(기본 지금, 30분 단위) + 이용 시간 슬라이더.
  * 종료 시각은 시작 + 이용 시간으로 자동 계산되어 표시만 된다.
- * 0분은 슬라이더 시작 위치이며, 0분이면 추천받기 버튼이 비활성된다 (REQ-008)
+ * 0분은 슬라이더 시작 위치이며, 0분이면 추천받기 버튼이 비활성되고 안내 문구가 뜬다 (REQ-008, 문구는 ConditionForm)
  * 디자인: 시작(고르는 칸) → 종료(자동, 노란 라벨) 를 한 장의 종이 카드에 담는다
  */
 export default function TimeSelector() {
