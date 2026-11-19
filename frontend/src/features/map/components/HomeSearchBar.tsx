@@ -1,15 +1,16 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { ApiError, DEFAULT_ERROR_MESSAGE } from '../../../shared/api/apiError'
 import { CATEGORY_STICKER } from '../../../shared/assets/stickerAssets'
 import Icon from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
-import type { CategoryCode, LatLng } from '../../../shared/types/domain'
+import type { LatLng } from '../../../shared/types/domain'
 // 장소·주소 검색 API 는 위치 설정(CON-02)과 같은 것을 쓴다 (정종일 #63·#99). 같은 함수를 두 벌 만들지 않으려고 그대로 가져온다
 import { MAX_QUERY_LENGTH, searchPlaces, toLocationValue } from '../../condition/api/conditionApi'
 import { useConditionStore } from '../../condition/store'
 import type { PlaceSearchResult } from '../../condition/types'
 import { formatDistance } from '../format'
+import { KAKAO_GROUP_CATEGORY } from '../kakaoCategory'
 
 /*
  * [이 파일이 하는 일]
@@ -19,13 +20,6 @@ import { formatDistance } from '../format'
  * center(현재 위치)를 주면 결과마다 거리가 함께 온다.
  */
 
-/** 카카오 카테고리 그룹 코드 → 우리 대분류 (스티커 표시용). 매칭이 없으면 핀 아이콘 */
-const KAKAO_GROUP_CATEGORY: Record<string, CategoryCode> = {
-  CE7: 'CAFE', // 카페
-  FD6: 'FOOD', // 음식점
-  CT1: 'CULTURE', // 문화시설
-  AT4: 'TOURISM', // 관광명소
-}
 
 type SearchState =
   | { status: 'idle' }
@@ -33,11 +27,32 @@ type SearchState =
   | { status: 'done'; query: string; results: PlaceSearchResult[] }
   | { status: 'error'; query: string; message: string }
 
-export default function HomeSearchBar({ center }: { center?: LatLng | null }) {
+interface HomeSearchBarProps {
+  /** 거리 계산 기준 (홈: 현재 위치) */
+  center?: LatLng | null
+  /**
+   * 주변 탐색(HOM-02) 검색 모드: 검색어 제출을 바깥에 맡긴다. 주면 이 컴포넌트는 결과 목록을 그리지 않고
+   * (결과는 주변 탐색 바텀시트에 표시) 다른 화면으로 이동하지도 않는다
+   */
+  onSubmitQuery?: (query: string) => void
+  /** 주변 탐색 검색 모드: 검색어를 지웠을 때 (검색 전 주변 탐색으로 돌아감) */
+  onClearQuery?: () => void
+}
+
+export default function HomeSearchBar({ center, onSubmitQuery, onClearQuery }: HomeSearchBarProps) {
   const navigate = useNavigate()
   const setOrigin = useConditionStore((s) => s.setOrigin)
   const [keyword, setKeyword] = useState('')
   const [state, setState] = useState<SearchState>({ status: 'idle' })
+  const inputRef = useRef<HTMLInputElement>(null)
+  const nearbyMode = onSubmitQuery !== undefined
+
+  const clearKeyword = () => {
+    setKeyword('')
+    setState({ status: 'idle' })
+    onClearQuery?.()
+    inputRef.current?.focus()
+  }
 
   const search = async (query: string) => {
     setState({ status: 'loading', query })
@@ -63,26 +78,51 @@ export default function HomeSearchBar({ center }: { center?: LatLng | null }) {
         onSubmit={(e) => {
           e.preventDefault()
           const query = keyword.trim()
-          if (query) void search(query)
+          if (!query) return
+          if (onSubmitQuery) {
+            onSubmitQuery(query)
+            // 휴대폰 키보드를 닫아 바텀시트의 검색 결과가 가려지지 않게 한다
+            inputRef.current?.blur()
+          } else {
+            void search(query)
+          }
         }}
         className="flex h-12 items-center gap-2 rounded-2xl border-2 border-ink bg-cream px-3.5 shadow-[0_3px_0_var(--color-ink)]"
       >
         <Icon name="search" className="size-5 text-ink" />
         <input
+          ref={inputRef}
           type="search"
+          enterKeyHint="search"
           value={keyword}
           maxLength={MAX_QUERY_LENGTH}
           onChange={(e) => {
             setKeyword(e.target.value)
-            if (!e.target.value) setState({ status: 'idle' })
+            if (!e.target.value) {
+              setState({ status: 'idle' })
+              onClearQuery?.()
+            }
           }}
           placeholder="장소, 주소 검색"
           aria-label="장소, 주소 검색"
-          className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-neutral-400"
+          className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-neutral-400 [&::-webkit-search-cancel-button]:appearance-none"
         />
+        {/* 주변 탐색 검색 모드: 검색어 지우기 → 검색 전 주변 탐색으로 */}
+        {nearbyMode && keyword && (
+          <button
+            type="button"
+            onClick={clearKeyword}
+            aria-label="검색어 지우기"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-neutral-500 active:bg-neutral-100"
+          >
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        )}
       </form>
 
-      {state.status !== 'idle' && (
+      {!nearbyMode && state.status !== 'idle' && (
         <div className="paper-card max-h-72 overflow-y-auto" aria-busy={state.status === 'loading'}>
           {state.status === 'loading' && (
             <p role="status" className="p-4 text-sm text-neutral-500">

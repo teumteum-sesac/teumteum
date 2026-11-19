@@ -24,9 +24,27 @@ interface Options {
    * 꺼짐 상태에서 권한이 허용돼 있으면 위치를 다시 받는다
    */
   watchPermission?: boolean
+  /**
+   * 이 시간(ms) 안에 다른 화면(예: 홈)에서 받은 위치가 있으면 위치를 다시 묻지 않고 바로 쓴다 (주변 탐색 첫 로딩 단축).
+   * 없거나 오래됐으면 평소처럼 새로 받는다
+   */
+  reuseRecentMs?: number
 }
 
 const GEO_OPTIONS: PositionOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+
+/** 이 앱에서 마지막으로 받은 현재 위치와 받은 시각. 화면을 옮겨도(홈 → 주변 탐색) 남아 있다. 새로고침하면 사라진다 */
+let lastFix: { position: LatLng; at: number } | null = null
+
+function rememberFix(position: LatLng) {
+  lastFix = { position, at: Date.now() }
+}
+
+/** maxAgeMs 안에 받은 위치. 없으면 null */
+function recentFix(maxAgeMs: number | undefined): LatLng | null {
+  if (!maxAgeMs || !lastFix || Date.now() - lastFix.at > maxAgeMs) return null
+  return lastFix.position
+}
 
 const hasGeolocation = () => typeof navigator !== 'undefined' && 'geolocation' in navigator
 
@@ -47,7 +65,11 @@ export function requestCurrentPosition(): Promise<LatLng | null> {
   if (!hasGeolocation()) return Promise.resolve(null)
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => {
+        const position = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        rememberFix(position)
+        resolve(position)
+      },
       () => resolve(null),
       GEO_OPTIONS,
     )
@@ -55,12 +77,15 @@ export function requestCurrentPosition(): Promise<LatLng | null> {
 }
 
 /** 현재 위치. 권한 거부·실패 시 서울시청을 기본 위치로 돌려준다. (화면설계서 HOM-01) */
-export function useCurrentPosition({ watchPermission = false }: Options = {}): CurrentPosition {
-  const [state, setState] = useState<PositionState>(() =>
-    hasGeolocation()
+export function useCurrentPosition({ watchPermission = false, reuseRecentMs }: Options = {}): CurrentPosition {
+  // 처음 그릴 때 한 번만 정한다: 최근 위치를 다시 쓰면 위치 요청을 건너뛴다
+  const [reused] = useState(() => recentFix(reuseRecentMs))
+  const [state, setState] = useState<PositionState>(() => {
+    if (reused) return { position: reused, denied: false, loading: false, fixId: 1 }
+    return hasGeolocation()
       ? { position: DEFAULT_POSITION, denied: false, loading: true, fixId: 0 }
-      : { position: DEFAULT_POSITION, denied: true, loading: false, fixId: 0 },
-  )
+      : { position: DEFAULT_POSITION, denied: true, loading: false, fixId: 0 }
+  })
   // 진행 중인 위치 요청. 있으면 새로 요청하지 않는다 (중복 탭 무시)
   const pendingRef = useRef<Promise<boolean> | null>(null)
   // 이벤트 콜백에서 지금 꺼짐 상태인지 읽기 위한 값
@@ -75,8 +100,10 @@ export function useCurrentPosition({ watchPermission = false }: Options = {}): C
     const request = new Promise<boolean>((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          const position = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          rememberFix(position)
           setState((s) => ({
-            position: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+            position,
             denied: false,
             loading: false,
             fixId: s.fixId + 1,
@@ -96,10 +123,10 @@ export function useCurrentPosition({ watchPermission = false }: Options = {}): C
     return request
   }, [])
 
-  // 처음 들어왔을 때 한 번 위치를 받는다 (권한을 아직 안 정했으면 브라우저 권한 팝업)
+  // 처음 들어왔을 때 한 번 위치를 받는다 (권한을 아직 안 정했으면 브라우저 권한 팝업). 최근 위치를 다시 쓰면 건너뛴다
   useEffect(() => {
-    void locate()
-  }, [locate])
+    if (!reused) void locate()
+  }, [locate, reused])
 
   // 권한 변경·화면 복귀 시 다시 판단
   useEffect(() => {
