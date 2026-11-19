@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../../shared/api/apiError'
 import { useNavigate, useSearchParams } from 'react-router'
+import { useGoBack } from '../../../shared/hooks/useGoBack'
 import { useAuthStore } from '../../../shared/auth/authStore'
 import Button from '../../../shared/components/Button'
 import StickerImage from '../../../shared/components/StickerImage'
@@ -27,6 +28,8 @@ export default function ProfileEdit() {
 
 function ProfileEditForm({ member }: { member: MemberResponse }) {
   const navigate = useNavigate()
+  // 수정 완료 → 들어온 마이페이지로 돌아간다 (마이페이지를 새로 열면 같은 화면이 기록에 두 번 남는다)
+  const backToMyPage = useGoBack('/mypage')
   const [searchParams] = useSearchParams()
   const { updateUser, logout } = useAuthStore()
   const [nickname, setNickname] = useState(member.nickname)
@@ -63,7 +66,7 @@ function ProfileEditForm({ member }: { member: MemberResponse }) {
       const result = await updateMyInfo({ nickname, ...(newPassword ? { newPassword, newPasswordConfirm } : {}) })
       if (!active.current || useAuthStore.getState().accessToken !== token) return
       updateUser(result)
-      navigate('/mypage', { replace: true })
+      backToMyPage()
     } catch (e) {
       if (active.current) setSaveError(e instanceof ApiError ? e : new ApiError('UNKNOWN', '회원 정보를 수정하지 못했어요.', 0))
     } finally {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { useGoBack } from '../../../shared/hooks/useGoBack'
 import { ApiError } from '../../../shared/api/apiError'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
@@ -29,6 +30,8 @@ export default function SavedCourseDetail({ courseId }: { courseId: string }) {
 
 function SavedCourseDetailContent({ courseId }: { courseId: string }) {
   const navigate = useNavigate()
+  // 삭제 후 → 들어온 목록으로 돌아간다 (목록을 새로 열면 같은 화면이 기록에 두 번 남는다)
+  const backToList = useGoBack('/mypage/courses')
   const { data, loading, error, retry } = useSavedCourse(courseId)
   const latest = useLatestCoursePlaces(courseId)
   const [confirmRemove, setConfirmRemove] = useState(false)
@@ -54,7 +57,7 @@ function SavedCourseDetailContent({ courseId }: { courseId: string }) {
       const response = await deleteCourse(courseId)
       if (!active.current) return
       if (!response.deleted || response.courseId !== courseId) throw new Error('Unexpected delete response')
-      navigate('/mypage/courses', { replace: true })
+      backToList()
     } catch (e) {
       if (active.current) setDeleteError(e instanceof ApiError ? e.message : '저장을 해제하지 못했어요.')
     } finally {

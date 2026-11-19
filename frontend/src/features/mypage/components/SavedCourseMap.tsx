@@ -7,5 +7,5 @@ import SavedCourseRequestState from './SavedCourseRequestState'
 export default function SavedCourseMap({ courseId }: { courseId: string }) {
   const { data, loading, error, retry } = useSavedCourse(courseId)
   if (!data) return <SavedCourseRequestState loading={loading} error={error} onRetry={retry} />
-  return <CourseMap key={courseId} course={toSavedCourse(data)} routeLegs={data.routeLegs} backLabel="저장한 코스로 돌아가기" backTo={`/mypage/courses/${encodeURIComponent(courseId)}`} />
+  return <CourseMap key={courseId} course={toSavedCourse(data)} routeLegs={data.routeLegs} backLabel="저장한 코스로 돌아가기" backTo={`/mypage/courses/${encodeURIComponent(courseId)}`} backBy="return" />
 }

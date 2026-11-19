@@ -9,6 +9,7 @@ import type { SVGProps } from 'react'
  *   <Icon name="search" className="size-5" />
  */
 const PATHS = {
+  home: <><path d="M4 11.5L12 5l8 6.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-4.5h4V19" /></>,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></>,
   chevronRight: <path d="M9 5l7 7-7 7" />,
   chevronLeft: <path d="M15 5l-7 7 7 7" />,
