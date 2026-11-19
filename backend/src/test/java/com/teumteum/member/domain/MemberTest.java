@@ -58,10 +58,11 @@ class MemberTest {
     }
 
     @Test
-    @DisplayName("탈퇴하면 상태가 WITHDRAWN 이 되고 정상 회원이 아니다")
+    @DisplayName("탈퇴하면 상태가 WITHDRAWN 이 되고, 같은 이메일로 다시 가입할 수 있게 이메일이 비식별화된다")
     void withdraw() {
         // given
         Member member = Member.create("user@email.com", "hashed-password", "틈틈이");
+        org.springframework.test.util.ReflectionTestUtils.setField(member, "id", 5L);
 
         // when
         member.withdraw();
@@ -69,5 +70,6 @@ class MemberTest {
         // then
         assertThat(member.getAccountStatus()).isEqualTo(AccountStatus.WITHDRAWN);
         assertThat(member.isActive()).isFalse();
+        assertThat(member.getEmail()).isEqualTo("withdrawn+5@teumteum.invalid");
     }
 }

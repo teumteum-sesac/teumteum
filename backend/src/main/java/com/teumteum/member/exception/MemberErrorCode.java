@@ -34,7 +34,10 @@ public enum MemberErrorCode implements ErrorCode {
      */
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 맞지 않아요."),
 
-    WITHDRAWAL_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 맞지 않아요.");
+    WITHDRAWAL_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 맞지 않아요."),
+
+    /** 관리자가 스스로 탈퇴하면 관리자 화면을 쓸 사람이 사라질 수 있다. 관리자 해제는 DB 에서 먼저 한다 */
+    ADMIN_WITHDRAWAL_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "관리자 계정은 탈퇴할 수 없어요.");
 
     private final HttpStatus status;
     private final String message;

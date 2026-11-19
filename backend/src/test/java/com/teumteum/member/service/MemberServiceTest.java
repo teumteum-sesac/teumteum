@@ -231,6 +231,19 @@ class MemberServiceTest {
         verify(memberRepository, never()).save(any());   // save 가 한 번도 불리지 않았는지
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"withdrawn+5@teumteum.invalid", "WITHDRAWN+5@TEUMTEUM.INVALID"})
+    @DisplayName("탈퇴 회원용 이메일 도메인으로는 가입할 수 없다 (미리 선점해 남의 탈퇴를 막는 것 방지)")
+    void signupRejectsWithdrawnEmailDomain(String email) {
+        SignupRequest request = new SignupRequest(email, "abc12345", "틈틈이");
+
+        assertThatThrownBy(() -> memberService.signup(request))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(CommonErrorCode.INVALID_REQUEST);
+        verify(memberRepository, never()).save(any());
+    }
+
     @Test
     @DisplayName("이메일 중복 확인은 Repository 결과를 그대로 돌려준다")
     void existsByEmail() {

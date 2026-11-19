@@ -6,6 +6,7 @@ import com.teumteum.admin.exception.AdminErrorCode;
 import com.teumteum.global.exception.CustomException;
 import com.teumteum.member.domain.Member;
 import com.teumteum.member.service.MemberService;
+import com.teumteum.member.service.MemberWithdrawalService;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,6 +34,7 @@ public class AdminMemberService {
 
     private final MemberService memberService;
     private final AdminService adminService;
+    private final MemberWithdrawalService memberWithdrawalService;
 
     public PageResponse<AdminMemberResponse> getMembers(String keyword, int page, int size) {
         int safePage = Math.max(page, 0);
@@ -47,22 +49,23 @@ public class AdminMemberService {
     }
 
     /**
-     * 강제 탈퇴. 탈퇴하면 그 회원은 로그인할 수 없다 (MemberService.login 이 탈퇴 회원을 막음).
-     * 이미 발급된 토큰은 만료(최대 1시간)까지 유효하다 — JWT 는 서버가 토큰을 기억하지 않기 때문.
+     * 강제 탈퇴. 탈퇴하면 그 회원은 로그인할 수 없고, 남은 토큰도 JwtAuthenticationFilter 가 막는다.
+     * 본인 탈퇴와 같은 경로(MemberWithdrawalService)를 거쳐 회원 행 잠금 → 저장 코스 삭제 → 상태 변경을 한 번에 한다.
      */
     @Transactional
     public AdminMemberResponse withdraw(Long adminMemberId, Long memberId) {
         if (memberId.equals(adminMemberId)) {
             throw new CustomException(AdminErrorCode.CANNOT_WITHDRAW_SELF);
         }
-        Member member = memberService.findMember(memberId)
-                .orElseThrow(() -> new CustomException(AdminErrorCode.MEMBER_NOT_FOUND));
         if (adminService.isAdmin(memberId)) {
             throw new CustomException(AdminErrorCode.CANNOT_WITHDRAW_ADMIN);
         }
+        // 잠근 뒤에 상태를 확인해야 본인 탈퇴·코스 저장과 동시에 일어나도 꼬이지 않는다.
+        Member member = memberWithdrawalService.lockMember(memberId)
+                .orElseThrow(() -> new CustomException(AdminErrorCode.MEMBER_NOT_FOUND));
         if (!member.isActive()) {
             throw new CustomException(AdminErrorCode.ALREADY_WITHDRAWN);
         }
-        return AdminMemberResponse.of(memberService.withdraw(member), false);
+        return AdminMemberResponse.of(memberWithdrawalService.withdrawLockedMember(member), false);
     }
 }
