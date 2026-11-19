@@ -415,9 +415,10 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   // 남은 지도 영역이 부족하면 컨트롤을 숨긴다. 재기 전에도 숨겨 둔다
   const controlsHidden = !layout || layout.sheetTop - layout.searchBottom < MAP_CONTROLS_HEIGHT + CONTROLS_GAP + CONTROLS_SPACE_MARGIN
 
-  // 지금 외출 추천: 출발지 기본값은 현재 위치. 권한이 없으면 비운 채 진입해 직접 설정 안내
+  // 지금 외출 추천: 출발지를 비워 두면 조건 화면(ConditionForm)이 현재 위치 + 그 자리 주소로 채운다.
+  // 권한이 없으면 빈 채로 남아 직접 설정 안내
   const startRecommend = () => {
-    setOrigin(denied ? null : { name: '현재 위치', ...position })
+    setOrigin(null)
     navigate('/condition')
   }
 

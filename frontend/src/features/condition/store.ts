@@ -35,7 +35,7 @@ const initialState = () => ({
   destination: null,
   startTime: nowRoundedTime(),
   availableMinutes: 60,
-  transportType: 'TRANSIT' as TransportType,
+  transportType: 'WALK' as TransportType, // 기본 도보
   categoryMode: 'RANDOM' as CategoryMode,
   categories: [] as CategoryCode[],
 })

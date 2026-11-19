@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import { TRANSPORT_STICKER } from '../../../shared/assets/stickerAssets'
@@ -8,6 +8,8 @@ import SegmentedControl from '../../../shared/components/SegmentedControl'
 import StickerImage from '../../../shared/components/StickerImage'
 import { MAX_CATEGORIES, TRANSPORT_OPTIONS } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
+import { requestCurrentPosition } from '../../map/hooks/useCurrentPosition'
+import { toCurrentLocation } from '../api/conditionApi'
 import { useRecommendStore } from '../../recommend/store'
 import { canRequestRecommend, toRecommendRequest } from '../recommendRequest'
 import { useConditionStore } from '../store'
@@ -21,13 +23,34 @@ export default function ConditionForm() {
   // 추천 결과의 [조건 바꾸기] 로 들어왔는지. 그렇다면 [추천받기] 는 결과 화면을 새로 열지 않고 뒤로 돌아간다
   // (새로 열면 조건 → 결과 → 조건 → 결과… 가 기록에 쌓여 뒤로가기를 여러 번 눌러야 홈에 간다)
   const fromResults = (useLocation().state as { fromResults?: boolean } | null)?.fromResults === true
-  const { origin, availableMinutes, startTime, transportType, setTransportType } = useConditionStore()
+  const { origin, destination, availableMinutes, startTime, transportType, setTransportType } = useConditionStore()
   const categoryCount = useConditionStore((s) => s.categories.length)
   const requestRecommend = useRecommendStore((s) => s.request)
 
-  // 출발지가 없으면 비활성 (이용 시간은 슬라이더가 1시간 아래로 내려가지 않는다). 카테고리는 비어 있으면 랜덤으로 진행
+  // 출발지·도착지 기본값은 현재 위치. 화면에 들어왔을 때 비어 있는 쪽만 현재 위치로 채운다
+  // (이미 고른 위치는 건드리지 않는다. 위치 권한이 없으면 비운 채로 두고 직접 설정 안내)
+  useEffect(() => {
+    const { origin: o, destination: d } = useConditionStore.getState()
+    if (o && d) return
+    let ignore = false
+    void (async () => {
+      const position = await requestCurrentPosition()
+      if (ignore || !position) return
+      // [현재 위치 사용]을 눌렀을 때와 같은 값 (입력란에 '현재 위치 : 건물·주소')
+      const current = await toCurrentLocation(position.lat, position.lng)
+      if (ignore) return
+      const state = useConditionStore.getState()
+      if (!state.origin) state.setOrigin(current)
+      if (!state.destination) state.setDestination(current)
+    })()
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  // 출발지·도착지가 없으면 비활성 (이용 시간은 슬라이더가 1시간 아래로 내려가지 않는다). 카테고리는 비어 있으면 랜덤으로 진행
   // 기준은 추천 API 검증 규칙과 같은 canRequestRecommend (recommendRequest.ts)
-  const canSubmit = canRequestRecommend({ origin, availableMinutes, startTime })
+  const canSubmit = canRequestRecommend({ origin, destination, availableMinutes, startTime })
 
   return (
     <>
