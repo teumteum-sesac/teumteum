@@ -75,7 +75,9 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
 
               {!hasDetail && (
                 <a
-                  href={getKakaoMapLink(place.name, place.lat, place.lng)}
+                  href={place.kakaoPlaceId
+                    ? getKakaoMapLink(place.kakaoPlaceId)
+                    : `https://map.kakao.com/link/map/${encodeURIComponent(place.name)},${place.lat},${place.lng}`}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-1.5 inline-flex items-center gap-0.5 text-xs font-bold text-primary-dark"
