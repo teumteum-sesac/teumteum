@@ -273,14 +273,14 @@ Authorization: Bearer <accessToken>
       "placeName": "틈카페", "category": "CAFE", "subCategory": "카페",
       "address": "예시 주소 1", "latitude": 37.5475, "longitude": 127.061,
       "imageUrl": null, "description": null, "openingHours": null,
-      "stayMinutes": 60, "travelMinutes": 15, "transitInfo": null
+      "stayMinutes": 60, "travelMinutes": 15, "transitInfo": null, "kakaoPlaceId": "26338954"
     },
     {
       "coursePlaceId": "502", "placeId": "102", "visitOrder": 2,
       "placeName": "산책공원", "category": "NATURE", "subCategory": "공원",
       "address": "예시 주소 2", "latitude": 37.549, "longitude": 127.063,
       "imageUrl": null, "description": null, "openingHours": null,
-      "stayMinutes": 45, "travelMinutes": 10, "transitInfo": null
+      "stayMinutes": 45, "travelMinutes": 10, "transitInfo": null, "kakaoPlaceId": "8234561"
     }
   ],
   "routeLegs": [
@@ -319,6 +319,7 @@ Authorization: Bearer <accessToken>
 | `stayMinutes` | integer | 장소 체류시간(분), 0 이상 |
 | `travelMinutes` | integer | 직전 지점→이 장소 이동시간(분), 0 이상. 첫 장소는 출발지에서 이동 |
 | `transitInfo` | string 또는 null | 저장 당시 대중교통 노선·환승 표시 정보 |
+| `kakaoPlaceId` | string 또는 null | 공용 장소의 카카오 장소 ID. 장소 상세 화면에서 카카오 장소 정보를 보여 줄 때 쓴다. 카카오 장소가 아니면 null |
 
 대분류 코드 초안은 `CULTURE`, `CAFE`, `FOOD`, `NATURE`, `ENTERTAINMENT`, `SHOPPING`, `SPORTS`, `TOURISM`이다. ERD·추천·프론트와 함께 확정한다.
 

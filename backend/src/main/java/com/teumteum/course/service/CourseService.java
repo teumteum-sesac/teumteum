@@ -24,6 +24,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.teumteum.place.service.PlaceLatestService;
 import com.teumteum.recommend.service.RecommendService;
 import com.teumteum.recommend.dto.RouteLegResponse;
 
@@ -38,6 +39,8 @@ public class CourseService {
     private final CourseRouteLegRepository courseRouteLegRepository;
     private final RecommendService recommendService;
     private final CourseSaveWriter courseSaveWriter;
+    // 저장 장소의 카카오 장소 ID 조회 (장소 도메인은 service 로만 접근한다)
+    private final PlaceLatestService placeLatestService;
 
     // memberId는 요청 파라미터가 아니라 Controller가 인증 정보에서 확인한 회원 ID여야 한다.
     public CourseListResponse getCourses(Long memberId, int page, int size) {
@@ -139,7 +142,7 @@ public class CourseService {
 
     // 저장 당시의 장소 정보와 일정을 응답 DTO로 변환한다.
     // 최신 장소 API를 호출하지 않고 CoursePlace에 저장된 값을 사용한다.
-    private CoursePlaceResponse toPlaceResponse(CoursePlace place) {
+    private CoursePlaceResponse toPlaceResponse(CoursePlace place, Map<Long, String> kakaoPlaceIds) {
         return new CoursePlaceResponse(
                 place.getCoursePlaceId().toString(),
                 place.getPlaceId().toString(),
@@ -155,7 +158,8 @@ public class CourseService {
                 place.getOpeningHours(),
                 place.getStayMinutes().intValue(),
                 place.getTravelMinutes().intValue(),
-                place.getTransitInfo()
+                place.getTransitInfo(),
+                kakaoPlaceIds.get(place.getPlaceId())
         );
     }
 
@@ -188,10 +192,12 @@ public class CourseService {
         Course course = findOwnedCourse(memberId, courseId);
 
         // 2. 저장 장소들을 방문 순서대로 조회하고 DTO로 변환한다.
-        List<CoursePlaceResponse> places = coursePlaceRepository
-                .findByCourse_CourseIdOrderByVisitOrderAsc(courseId)
-                .stream()
-                .map(this::toPlaceResponse)
+        List<CoursePlace> savedPlaces = coursePlaceRepository.findByCourse_CourseIdOrderByVisitOrderAsc(courseId);
+        // 장소 상세 화면 연결용 카카오 장소 ID (공용 장소 기준, 한 번에 조회)
+        Map<Long, String> kakaoPlaceIds = placeLatestService.kakaoPlaceIds(
+                savedPlaces.stream().map(CoursePlace::getPlaceId).distinct().toList());
+        List<CoursePlaceResponse> places = savedPlaces.stream()
+                .map(place -> toPlaceResponse(place, kakaoPlaceIds))
                 .toList();
 
         // 3. 저장된 경로를 출발 순서대로 조회하고 DTO로 변환한다.
