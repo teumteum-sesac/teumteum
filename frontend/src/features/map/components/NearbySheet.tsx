@@ -214,9 +214,8 @@ export default function NearbySheet({
 
         <div className="flex h-10 items-center justify-between px-4 pb-2">
           <h2 className="min-w-0 truncate font-bold">{search ? `‘${search.query}’ 검색 결과` : '내 주변 장소'}</h2>
-          {level === 'collapsed' ? (
-            <span className="text-xs text-neutral-500">펼치기 ▲</span>
-          ) : (
+          {/* 접혀 있으면 오른쪽은 비워 둔다 (손잡이·제목 줄을 누르거나 끌면 펼쳐진다) */}
+          {level === 'collapsed' ? null : (
             // 반경: 펼쳐 고르는 상자 대신 세 개를 늘어놓고 바로 누른다. 고른 것은 핑크 (이동수단 버튼과 같은 톤)
             <div data-no-drag role="radiogroup" aria-label="탐색 반경" className="flex shrink-0 gap-1">
               {RADIUS_OPTIONS.map((r) => {
