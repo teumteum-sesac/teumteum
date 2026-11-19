@@ -101,10 +101,10 @@
 }
 
 /*
- * 스플래시 로딩 바 (shared/components/Splash.tsx): 토끼와 거북이 달리기
+ * 토끼·거북이 달리기 로딩 바 (스플래시·공통 로딩 화면)
  *   토끼: 깡충깡충 앞서 달림(0~22%) → 쉬면서 졸기(22~62%) → 거북이가 다가오면 다시 달려 결승(62~88%)
  *   거북이: 처음부터 끝까지 같은 속도로 뒤뚱뒤뚱. 채워지는 바도 거북이를 따라간다
- * 길이(animation-duration)는 Splash.tsx 에서 넣는다 (표시 시간 한 곳에서 관리)
+ * 컴포넌트: shared/components/RaceLoadingBar.tsx (스플래시·공통 로딩 화면). 한 판 길이(RACE_MS)·반복 여부는 그 파일에서 넣는다
  */
 .splash-rabbit {
   animation-name: splash-rabbit-run;
