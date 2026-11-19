@@ -1,3 +1,4 @@
+import { PAPER_STYLE } from '../assets/stickerAssets'
 import { useId, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from 'react'
 
 interface BottomSheetProps {
@@ -79,8 +80,9 @@ export default function BottomSheet({ title, children, initialTopRef }: BottomSh
     <section
       ref={sheetRef}
       aria-labelledby={titleId}
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-120 overflow-hidden rounded-t-2xl bg-white text-ink shadow-[0_-4px_16px_rgba(0,0,0,0.08)]"
-      style={{ height: height === null ? 'var(--initial-sheet-height, 50dvh)' : height === 0 ? COLLAPSED_HEIGHT : `${height}dvh`, transition: dragging || height === null ? 'none' : 'height 200ms ease-out' }}
+      // 바깥 틀은 앱 톤(크림 종이 + 베이지 테두리). 안에 끼운 카카오맵 같은 외부 화면은 바꿀 수 없어 그대로 보인다
+      className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-120 overflow-hidden rounded-t-[28px] border-2 border-b-0 border-line bg-cream text-ink shadow-[0_-4px_16px_rgba(0,0,0,0.08)]"
+      style={{ ...PAPER_STYLE, height: height === null ? 'var(--initial-sheet-height, 50dvh)' : height === 0 ? COLLAPSED_HEIGHT : `${height}dvh`, transition: dragging || height === null ? 'none' : 'height 200ms ease-out' }}
     >
       <div className="flex h-full flex-col">
         <button
@@ -105,7 +107,7 @@ export default function BottomSheet({ title, children, initialTopRef }: BottomSh
         >
           <span className="h-1 w-10 rounded-full bg-neutral-300" />
         </button>
-        <header hidden={height === 0} className="shrink-0 border-b border-line px-4 pb-3">
+        <header hidden={height === 0} className="shrink-0 border-b-2 border-dashed border-line px-4 pb-3">
           <h2 id={titleId} className="min-w-0 truncate font-display text-lg">{title}</h2>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" inert={height === 0} style={{ pointerEvents: dragging ? 'none' : undefined }}>

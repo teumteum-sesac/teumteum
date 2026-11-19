@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
+import { PAPER_STYLE } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
 import Chip from '../../../shared/components/Chip'
 import ChipGroup from '../../../shared/components/ChipGroup'
@@ -50,6 +51,12 @@ interface NearbySheetProps {
   /** 대분류 필터 (null = 전체). 지도 마커와 같은 값을 쓰도록 HomeScreen 이 관리한다 */
   category: CategoryCode | null
   onCategoryChange: (category: CategoryCode | null) => void
+  /** 고른 대분류의 세분류 칩 목록 (반경 안에 있는 것만). 대분류가 전체면 빈 배열 */
+  subCategories: string[]
+  /** 고른 세분류 (null = 대분류 전체) */
+  subCategory: string | null
+  /** 세분류 칩을 눌렀을 때 (같은 칩을 다시 누르면 선택 해제) */
+  onSubCategoryToggle: (name: string) => void
   /** 대분류로 거른 장소 목록 (HomeScreen 에서 계산). 서버가 반경 안의 장소를 가까운 순으로 보낸다 */
   places: NearbyPlaceResult[]
   /** 주변 장소 불러오기 상태 (useNearbyPlaces) */
@@ -87,6 +94,9 @@ export default function NearbySheet({
   onRadiusChange,
   category,
   onCategoryChange,
+  subCategories,
+  subCategory,
+  onSubCategoryToggle,
   places,
   status,
   errorMessage,
@@ -131,8 +141,8 @@ export default function NearbySheet({
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return
-    // 반경 선택 상자는 끌기·누르기 영역에서 뺀다
-    if (e.target instanceof Element && e.target.closest('select')) return
+    // 반경 버튼은 끌기·누르기 영역에서 뺀다
+    if (e.target instanceof Element && e.target.closest('[data-no-drag]')) return
     const sheet = sheetRef.current
     if (!sheet) return
     drag.current = {
@@ -178,12 +188,13 @@ export default function NearbySheet({
   return (
     <div
       ref={sheetRef}
-      style={dragHeight === null ? undefined : { height: dragHeight }}
-      className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-2xl bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.08)] ${
+      // 배경: 코스 지도 패널과 같은 크림 종이 (흰 배경 대신 앱 톤에 맞춤)
+      style={{ ...PAPER_STYLE, ...(dragHeight === null ? {} : { height: dragHeight }) }}
+      className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-[28px] border-2 border-b-0 border-line bg-cream shadow-[0_-4px_16px_rgba(0,0,0,0.08)] ${
         dragHeight === null ? 'transition-[height] duration-200' : ''
       } ${SHEET_HEIGHT_CLASS[level]}`}
     >
-      {/* 끌기·누르기 영역: 손잡이 + '내 주변 장소' 제목 줄 (반경 선택 상자는 제외) */}
+      {/* 끌기·누르기 영역: 손잡이 + '내 주변 장소' 제목 줄 (반경 버튼은 제외) */}
       <div
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -206,18 +217,26 @@ export default function NearbySheet({
           {level === 'collapsed' ? (
             <span className="text-xs text-neutral-500">펼치기 ▲</span>
           ) : (
-            <select
-              value={radius}
-              onChange={(e) => onRadiusChange(Number(e.target.value))}
-              aria-label="반경"
-              className="h-8 cursor-pointer rounded-lg border border-line px-2 text-xs"
-            >
-              {RADIUS_OPTIONS.map((r) => (
-                <option key={r} value={r}>
-                  반경 {formatDistance(r)}
-                </option>
-              ))}
-            </select>
+            // 반경: 펼쳐 고르는 상자 대신 세 개를 늘어놓고 바로 누른다. 고른 것은 핑크 (이동수단 버튼과 같은 톤)
+            <div data-no-drag role="radiogroup" aria-label="탐색 반경" className="flex shrink-0 gap-1">
+              {RADIUS_OPTIONS.map((r) => {
+                const selected = r === radius
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => onRadiusChange(r)}
+                    className={`h-8 cursor-pointer rounded-full border-2 px-2.5 text-xs ${
+                      selected ? 'border-primary bg-primary-light font-bold text-ink' : 'border-line bg-white/70 text-neutral-600'
+                    }`}
+                  >
+                    {r < 1000 ? `${r}m` : `${r / 1000}km`}
+                  </button>
+                )
+              })}
+            </div>
           )}
         </div>
       </div>
@@ -225,7 +244,7 @@ export default function NearbySheet({
       {/* 카테고리 칩은 검색 중에는 숨긴다 (검색 결과는 우리 8개 대분류로 정확히 나뉘지 않음). 검색어를 지우면 고르던 칩 그대로 */}
       {!search && (
         <div className="px-4 pb-2">
-          <ChipGroup>
+          <ChipGroup arrows>
             <Chip selected={category === null} onClick={() => onCategoryChange(null)}>
               전체
             </Chip>
@@ -235,6 +254,18 @@ export default function NearbySheet({
               </Chip>
             ))}
           </ChipGroup>
+          {/* 세분류: 추천 결과(RES-01)와 같은 모양. 고른 대분류 아래 연한 핑크 받침 위에 작은 칩(level="sub") */}
+          {category !== null && subCategories.length > 0 && (
+            <div className="mt-2 rounded-2xl bg-primary-light/40 px-3 py-2">
+              <ChipGroup>
+                {subCategories.map((name) => (
+                  <Chip key={name} level="sub" selected={subCategory === name} onClick={() => onSubCategoryToggle(name)}>
+                    {name}
+                  </Chip>
+                ))}
+              </ChipGroup>
+            </div>
+          )}
         </div>
       )}
 

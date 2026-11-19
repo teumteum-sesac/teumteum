@@ -82,6 +82,8 @@ export interface CoursePlaceResponse extends CourseCoordinateResponse {
   stayMinutes: number
   travelMinutes: number
   transitInfo: string | null
+  /** 카카오 장소 ID (장소 상세 화면의 카카오 장소 정보용). 카카오 장소가 아니면 null */
+  kakaoPlaceId: string | null
 }
 
 export interface CourseRouteLegResponse {

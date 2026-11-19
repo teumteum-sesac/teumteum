@@ -83,6 +83,8 @@ export const STICKERS = {
 
   // 로고 (이미지 안에 글자가 들어가는 유일한 에셋)
   brandLogo: { file: 'brand/brand-logo', label: '로고' },
+  // 토끼·거북이 듀오 가로형 로고 (홈 하단 패널, 비율 약 20:9)
+  brandLogoDuo: { file: 'brand/brand-logo-duo', label: '듀오 로고' },
 } as const
 
 export type StickerKey = keyof typeof STICKERS
