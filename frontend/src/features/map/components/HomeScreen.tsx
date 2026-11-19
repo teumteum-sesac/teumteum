@@ -96,19 +96,20 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   // 주변 탐색 시트 높이. 지도 영역도 같은 만큼 줄인다 (HOM-02 ①)
   const [sheetLevel, setSheetLevel] = useState<SheetLevel>('half')
 
+  // ── 주변 탐색 화면 안 검색 (HOM-02) ──
+  // 검색 기준 좌표는 탐색 기준(position) 그대로. 검색해도 반경·카테고리·주변 장소 목록은 바뀌지 않고, 검색어를 지우면 그대로 돌아간다
+  const { state: searchState, search: runSearch, clear: resetSearch } = useNearbySearch(position)
+  const searching = nearby && searchState.status !== 'idle'
+
   // 주변 탐색(HOM-02) 장소: 실제 API(GET /api/places/nearby). 현재 위치를 받은 뒤(거부되면 서울시청 기준) 부르고,
-  // 반경이 바뀌면 다시 부른다. 홈(HOM-01)에서는 부르지 않는다
-  const nearbyPlaces = useNearbyPlaces(position, radius, nearby && !loading)
+  // 반경이 바뀌면 다시 부른다. 검색 중에는 목록이 보이지 않으므로 부르지 않고, 검색어를 지우면 캐시가 있으면 바로 쓰고 없으면 그때 부른다.
+  // 홈(HOM-01)에서는 부르지 않는다
+  const nearbyPlaces = useNearbyPlaces(position, radius, nearby && !loading && !searching)
   // 서버에서는 대분류 8개 전체를 받고, 카테고리 칩은 화면에서 거른다 (칩을 바꿀 때 다시 요청하지 않음)
   const places = useMemo(
     () => nearbyPlaces.places.filter((p) => category === null || p.category === category),
     [nearbyPlaces.places, category],
   )
-
-  // ── 주변 탐색 화면 안 검색 (HOM-02) ──
-  // 검색 기준 좌표는 탐색 기준(position) 그대로. 검색해도 반경·카테고리·주변 장소 목록은 바뀌지 않고, 검색어를 지우면 그대로 돌아간다
-  const { state: searchState, search: runSearch, clear: resetSearch } = useNearbySearch(position)
-  const searching = nearby && searchState.status !== 'idle'
   // 검색 결과에서 고른 장소 id (주변 장소 선택과 따로 둔다)
   const [searchSelectedId, setSearchSelectedId] = useState<string | null>(null)
   // 검색 결과 → 화면용: 탐색 기준에서의 직선거리, 지금 반경 안인지. 반경을 바꾸면 다시 검색하지 않고 판정만 다시 한다

@@ -70,6 +70,8 @@ export interface KakaoOverlay {
 /** 사용자 정의 오버레이 (DOM 을 지도 위에 올림). 겹칠 때 위·아래 순서를 바꿀 수 있다 */
 export interface KakaoCustomOverlay extends KakaoOverlay {
   setZIndex(zIndex: number): void
+  /** 오버레이에 넣은 내용 (클러스터 숫자 원은 div) */
+  getContent(): HTMLElement | string
 }
 
 /** 카카오 기본 마커 (이미지 마커). 클러스터러에 넣거나 투명도·겹침 순서를 바꿀 수 있다 */

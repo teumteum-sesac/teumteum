@@ -4,6 +4,7 @@ import type { LatLng } from '../../../shared/types/domain'
 import { loadKakaoMap } from '../api/loadKakaoMap'
 import type {
   KakaoCircle,
+  KakaoCluster,
   KakaoCustomOverlay,
   KakaoLatLngBounds,
   KakaoMapInstance,
@@ -137,6 +138,49 @@ function clusterStyle(size: number): Partial<CSSStyleDeclaration> {
   }
 }
 const CLUSTER_STYLES = [clusterStyle(38), clusterStyle(44), clusterStyle(50)]
+
+/** 현재 위치와 겹친 클러스터의 링 지름(px). 현재 위치 핑크 후광(76px)보다 커서 캐릭터를 가리지 않는다 */
+const NEAR_ME_RING = 92
+
+/**
+ * 현재 위치 스티커와 겹친 클러스터 표시 (HOM-02).
+ * 클러스터 좌표·크기·클릭은 그대로 두고 모양만 바꾼다: 가운데를 투명하게 해 캐릭터가 비쳐 보이게 하고,
+ * 스티커 바깥에 핑크 링(outline)을 두르고, 묶인 개수는 링 오른쪽 위 작은 배지로 보여 준다. 겹치지 않으면 원래 숫자 원으로 되돌린다
+ */
+function styleClusterNearMe(el: HTMLElement, near: boolean) {
+  const badge = el.querySelector<HTMLElement>('[data-near-me-count]')
+  if (!near) {
+    if (el.dataset.nearMe !== '1') return
+    delete el.dataset.nearMe
+    badge?.remove()
+    Object.assign(el.style, { background: '#F26FA8', color: '#fff', borderColor: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,.25)', outline: '', outlineOffset: '' })
+    return
+  }
+  // 카카오가 넣은 숫자(글자 노드)만 읽는다 (배지 글자는 제외)
+  const count = [...el.childNodes]
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent ?? '')
+    .join('')
+    .trim()
+  const size = el.offsetWidth
+  el.dataset.nearMe = '1'
+  Object.assign(el.style, {
+    background: 'transparent',
+    color: 'transparent',
+    borderColor: 'transparent',
+    boxShadow: 'none',
+    outline: '3px solid #F26FA8',
+    outlineOffset: `${(NEAR_ME_RING - size) / 2 - 3}px`,
+  })
+  if (getComputedStyle(el).position === 'static') el.style.position = 'relative'
+  const next = badge ?? document.createElement('span')
+  next.setAttribute('data-near-me-count', '')
+  next.textContent = count
+  // 링 위 오른쪽 위(45°) 지점. 현재 위치 라벨(위 가운데)과 겹치지 않는다
+  const offset = (NEAR_ME_RING / 2) * Math.SQRT1_2
+  next.style.cssText = `position:absolute;left:${size / 2 + offset}px;top:${size / 2 - offset}px;transform:translate(-50%,-50%);min-width:28px;height:28px;padding:0 7px;box-sizing:border-box;border-radius:9999px;border:2px solid #fff;background:#F26FA8;color:#fff;font-size:13px;font-weight:800;line-height:24px;text-align:center;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25)`
+  if (!badge) el.append(next)
+}
 /** 반경 원: 메인 핑크 얇은 선 + 아주 연한 안쪽 */
 const CIRCLE_STYLE = { strokeWeight: 1.5, strokeColor: '#F26FA8', strokeOpacity: 0.9, fillColor: '#F26FA8', fillOpacity: 0.07 }
 /** 위도 1도의 거리(m) */
@@ -723,6 +767,28 @@ export default function KakaoMap({
   // ── 클러스터 장소 마커 (주변 탐색 HOM-02) ──
   // 마커는 id 별로 한 번만 만들어 두고, 목록이 바뀌면 빠진 것만 빼고 새로 생긴 것만 더한다 (카테고리를 바꿔도 다시 만들지 않음)
   const clustererRef = useRef<KakaoMarkerClusterer | null>(null)
+  // 지금 그려진 클러스터들. 현재 위치와 겹치는지 다시 볼 때 쓴다
+  const clustersRef = useRef<KakaoCluster[]>([])
+  // 현재 위치 스티커와 겹치는 클러스터는 링 + 숫자 배지로, 아닌 것은 원래 숫자 원으로 (좌표·크기는 그대로)
+  const updateNearMeRef = useRef(() => {
+    const me = containerRef.current?.querySelector<HTMLElement>('[aria-label="현재 위치"]')
+    const meRect = me?.getBoundingClientRect()
+    clustersRef.current.forEach((cluster) => {
+      const content = cluster.getClusterMarker().getContent()
+      if (!(content instanceof HTMLElement)) return
+      const rect = content.getBoundingClientRect()
+      // 화면 밖(그려지지 않음)이면 지금 모양을 그대로 둔다. 지도가 멈추면(idle) 다시 본다
+      if (rect.width === 0) return
+      let near = false
+      if (meRect && meRect.width > 0) {
+        const dx = rect.left + rect.width / 2 - (meRect.left + meRect.width / 2)
+        const dy = rect.top + rect.height / 2 - (meRect.top + meRect.height / 2)
+        // 숫자 원이 캐릭터가 든 흰 원(60px)에 닿으면 겹친 것으로 본다
+        near = Math.hypot(dx, dy) < ME_RING_SIZE / 2 + rect.width / 2
+      }
+      styleClusterNearMe(content, near)
+    })
+  })
   const clusterMarkersRef = useRef(new Map<string, KakaoMarker>())
   const clusterClicksRef = useRef(new Map<string, () => void>())
   const placePinImageRef = useRef<KakaoMarkerImage | null | undefined>(undefined)
@@ -743,8 +809,11 @@ export default function KakaoMap({
         styles: CLUSTER_STYLES,
       })
       // 숫자 원은 현재 위치 스티커보다 위에 둔다 (가운데 큰 묶음이 스티커에 가려 개수가 안 보이는 것을 막음). 고른 장소 핀은 그보다 위
+      // 클러스터를 다시 묶을 때마다(확대·축소·목록 변경) 현재 위치와 겹치는 묶음을 링 모양으로 바꾼다
       maps.event.addListener(clustererRef.current, 'clustered', (clusters) => {
         clusters.forEach((cluster) => cluster.getClusterMarker().setZIndex(Z_CLUSTER))
+        clustersRef.current = clusters
+        requestAnimationFrame(() => updateNearMeRef.current())
       })
     }
     const clusterer = clustererRef.current
@@ -786,6 +855,22 @@ export default function KakaoMap({
       added.forEach((marker) => marker.setMap(map))
     }
   }, [ready, clusterMarkers])
+
+  // 지도를 끌어 클러스터가 새로 화면에 들어오거나 현재 위치가 다시 그려지면 겹침을 다시 본다
+  const usesCluster = clusterMarkers !== undefined
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!ready || !maps || !map || !usesCluster) return
+    const handleIdle = () => updateNearMeRef.current()
+    maps.event.addListener(map, 'idle', handleIdle)
+    return () => maps.event.removeListener(map, 'idle', handleIdle)
+  }, [ready, usesCluster])
+  useEffect(() => {
+    if (!ready || !usesCluster) return
+    const frame = requestAnimationFrame(() => updateNearMeRef.current())
+    return () => cancelAnimationFrame(frame)
+  }, [ready, usesCluster, markers])
 
   // 지도가 사라질 때 클러스터·마커 정리
   useEffect(() => {
