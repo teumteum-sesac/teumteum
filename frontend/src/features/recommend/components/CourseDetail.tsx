@@ -126,7 +126,8 @@ function CourseDetailContent({ courseId }: { courseId: string }) {
         <Button
           variant="secondary"
           className="flex w-auto shrink-0 items-center justify-center gap-1 px-4"
-          onClick={() => navigate(`/results/${course.courseId}/map`)}
+          // state: 지도 화면이 "상세에서 왔다" 는 걸 알고 [코스 상세로 돌아가기] 를 뒤로 가기로 처리하게 한다
+          onClick={() => navigate(`/results/${course.courseId}/map`, { state: { from: 'detail' } })}
         >
           <Icon name="map" className="size-5" />
           지도

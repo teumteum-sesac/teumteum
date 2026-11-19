@@ -119,7 +119,8 @@ export default function RecommendResult() {
         <ul className="flex flex-col gap-5 p-4 pt-5">
           {filtered.map((course, i) => (
             <li key={course.courseId}>
-              <CourseCard course={course} index={i + 1} to={`/results/${course.courseId}`} />
+              {/* 코스를 누르면 지도부터 보여 준다 (RES-01 → DET-02 → DET-01, 팀 회의 결정 #177) */}
+              <CourseCard course={course} index={i + 1} to={`/results/${course.courseId}/map`} />
             </li>
           ))}
           <li className="text-center text-xs text-neutral-400">이동·체류시간은 예상값이라 실제와 다를 수 있어요</li>
