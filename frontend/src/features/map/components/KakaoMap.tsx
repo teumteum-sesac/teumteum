@@ -701,6 +701,8 @@ export default function KakaoMap({
   const overlayRefs = useRef<KakaoOverlay[]>([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 지도 타일이 처음 다 그려졌는지. 그 전까지는 빛이 지나가는 자리표시(skeleton-shimmer)를 덮어 둔다
+  const [painted, setPainted] = useState(false)
   // 지도는 처음 위치·확대 수준으로 한 번만 만든다. 이후 변경은 아래 effect들이 반영
   const initialRef = useRef({ center, level })
   // 이번 렌더에서 fitBounds로 화면을 맞췄는지. 같은 렌더의 panTo·setLevel이 맞춘 화면을 덮어쓰지 않게 한다
@@ -730,7 +732,16 @@ export default function KakaoMap({
         if (cancelled || !containerRef.current || mapRef.current) return
         const { center: c, level: l } = initialRef.current
         mapsRef.current = maps
-        mapRef.current = new maps.Map(containerRef.current, { center: new maps.LatLng(c.lat, c.lng), level: l })
+        const map = new maps.Map(containerRef.current, { center: new maps.LatLng(c.lat, c.lng), level: l })
+        mapRef.current = map
+        // 처음 타일이 다 그려지면 자리표시를 걷는다 (한 번만)
+        const onPainted = () => {
+          setPainted(true)
+          maps.event.removeListener(map, 'tilesloaded', onPainted)
+        }
+        maps.event.addListener(map, 'tilesloaded', onPainted)
+        // 안전장치: 숨은 지도처럼 타일 이벤트가 안 오는 경우에도 3초 뒤에는 걷는다 (지도를 계속 가리지 않게)
+        setTimeout(() => setPainted(true), 3000)
         setReady(true)
       })
       .catch((e: unknown) => {
@@ -1174,6 +1185,8 @@ export default function KakaoMap({
   return (
     <div className={`relative bg-neutral-200 ${className}`}>
       <div ref={containerRef} className="absolute inset-0" />
+      {/* 지도 SDK·타일을 불러오는 동안: 빛이 지나가는 자리표시 (오류면 오류 문구만) */}
+      {!painted && !error && <div aria-hidden className="skeleton-shimmer pointer-events-none absolute inset-0 z-1" />}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-neutral-500">
           {error}

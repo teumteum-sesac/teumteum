@@ -188,8 +188,8 @@ export interface KakaoMapsApi {
     addListener(target: KakaoMarkerClusterer, type: 'clustered', handler: (clusters: KakaoCluster[]) => void): void
     /** 숫자 원을 눌렀을 때 (disableClickZoom 이면 확대하지 않고 이 이벤트만 온다) */
     addListener(target: KakaoMarkerClusterer, type: 'clusterclick', handler: (cluster: KakaoCluster) => void): void
-    addListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed', handler: () => void): void
-    removeListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed', handler: () => void): void
+    addListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed' | 'tilesloaded', handler: () => void): void
+    removeListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed' | 'tilesloaded', handler: () => void): void
   }
 }
 
