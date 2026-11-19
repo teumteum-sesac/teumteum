@@ -22,9 +22,10 @@ export default function ConditionForm() {
   // (새로 열면 조건 → 결과 → 조건 → 결과… 가 기록에 쌓여 뒤로가기를 여러 번 눌러야 홈에 간다)
   const fromResults = (useLocation().state as { fromResults?: boolean } | null)?.fromResults === true
   const { origin, availableMinutes, startTime, transportType, setTransportType } = useConditionStore()
+  const categoryCount = useConditionStore((s) => s.categories.length)
   const requestRecommend = useRecommendStore((s) => s.request)
 
-  // 출발지가 없거나 이용시간이 0분이면 비활성 (REQ-008, 0분은 슬라이더 시작 위치). 카테고리는 비어 있으면 랜덤으로 진행
+  // 출발지가 없으면 비활성 (이용 시간은 슬라이더가 1시간 아래로 내려가지 않는다). 카테고리는 비어 있으면 랜덤으로 진행
   // 기준은 추천 API 검증 규칙과 같은 canRequestRecommend (recommendRequest.ts)
   const canSubmit = canRequestRecommend({ origin, availableMinutes, startTime })
 
@@ -37,13 +38,6 @@ export default function ConditionForm() {
 
         <Section title="여유 시간" badge={formatMinutes(availableMinutes)}>
           <TimeSelector />
-          {/* 0분이면 [추천받기] 가 꺼지는 이유를 바로 아래에 알려 준다 (버튼만 비활성이면 왜 안 눌리는지 모름) */}
-          {availableMinutes === 0 && (
-            <p role="status" className="mt-2 flex items-center gap-1.5 px-1 text-sm font-bold text-primary-dark">
-              <Icon name="clock" className="size-4 shrink-0" />
-              여유시간을 30분 이상 설정해 주세요.
-            </p>
-          )}
         </Section>
 
         <Section title="이동수단">
@@ -55,7 +49,10 @@ export default function ConditionForm() {
           />
         </Section>
 
-        <Section title="관심 카테고리" hint={`최대 ${MAX_CATEGORIES}개`}>
+        <Section
+          title="관심 카테고리"
+          count={categoryCount > 0 ? `${categoryCount} / ${MAX_CATEGORIES}개 골랐어요` : undefined}
+        >
           <CategorySelector />
         </Section>
       </div>
@@ -88,13 +85,27 @@ export default function ConditionForm() {
 }
 
 /** 구역 제목 (제목 폰트) + 선택 값 배지(노란 라벨) 또는 작은 안내 */
-function Section({ title, badge, hint, children }: { title: string; badge?: string; hint?: string; children: ReactNode }) {
+function Section({
+  title,
+  badge,
+  hint,
+  count,
+  children,
+}: {
+  title: string
+  badge?: string
+  hint?: string
+  /** hint 오른쪽에 붙는 진행 상황 (예: 고른 카테고리 개수) */
+  count?: string
+  children: ReactNode
+}) {
   return (
     <section>
       <h2 className="mb-2.5 flex items-center gap-2 px-1">
         <span className="font-display text-lg">{title}</span>
         {badge && <span className="rounded-full bg-sunny px-2.5 py-0.5 text-xs font-bold">{badge}</span>}
         {hint && <span className="text-xs text-neutral-400">{hint}</span>}
+        {count && <span className="text-xs font-bold text-primary-dark">{count}</span>}
       </h2>
       {children}
     </section>

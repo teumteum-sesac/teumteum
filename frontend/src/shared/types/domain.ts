@@ -5,9 +5,9 @@
 export type TransportType = 'TRANSIT' | 'WALK' | 'CAR'
 
 export const TRANSPORT_OPTIONS: { value: TransportType; label: string }[] = [
-  { value: 'TRANSIT', label: '대중교통' },
   { value: 'WALK', label: '도보' },
   { value: 'CAR', label: '차량' },
+  { value: 'TRANSIT', label: '대중교통' },
 ]
 
 export function getTransportLabel(type: TransportType): string {
@@ -59,8 +59,8 @@ export function getCategoryIcon(code: CategoryCode): string {
   return CATEGORIES.find((c) => c.code === code)?.icon ?? '📍'
 }
 
-/** 이용 시간 슬라이더 단계(분): 0분·30분·1~6시간. 0분 = 시간 제한 없음 (화면설계서 결정 4) */
-export const TIME_STEPS = [0, 30, 60, 120, 180, 240, 300, 360]
+/** 이용 시간으로 고를 수 있는 값(분): 1~6시간, 1시간 단위. 슬라이더 막대는 0부터 그리지만 1시간 아래로는 못 고른다 */
+export const TIME_STEPS = [60, 120, 180, 240, 300, 360]
 
 /** 이용 시간 0분 = 시간 제한 없음 */
 export const NO_TIME_LIMIT = 0
