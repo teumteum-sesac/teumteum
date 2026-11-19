@@ -29,7 +29,7 @@ export default function MyPageContent() {
         <StickerImage name="sceneRelax" className="w-64" ratio="aspect-[3/2]" />
         <p className="font-display text-xl">로그인하고 코스를 모아 보세요</p>
         <p className="text-sm text-neutral-500">마음에 드는 코스를 저장해 두고 언제든 다시 꺼내 볼 수 있어요</p>
-        <Button className="mt-2 w-auto px-10" onClick={() => navigate('/login', { state: { from: '/mypage' } })}>
+        <Button className="mt-2 w-auto px-10" onClick={() => navigate('/login', { replace: true, state: { from: '/mypage' } })}>
           로그인
         </Button>
       </div>

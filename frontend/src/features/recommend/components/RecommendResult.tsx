@@ -15,6 +15,8 @@ import CourseCard from './CourseCard'
 import ExpiredState from './ExpiredState'
 
 const ALL = '전체'
+/** 조건 화면에 "결과에서 왔다" 고 알려 준다 → [추천받기] 가 결과 화면을 새로 쌓지 않고 뒤로 돌아온다 (ConditionForm) */
+const FROM_RESULTS = { state: { fromResults: true } }
 
 /**
  * 추천 결과 목록 (RES-01)
@@ -66,7 +68,7 @@ export default function RecommendResult() {
         message="추천을 받지 못했어요"
         description={error.message}
         action={
-          <Button className="mx-auto w-auto px-8" onClick={() => navigate('/condition')}>
+          <Button className="mx-auto w-auto px-8" onClick={() => navigate('/condition', FROM_RESULTS)}>
             조건 다시 고르기
           </Button>
         }
@@ -146,7 +148,7 @@ export default function RecommendResult() {
       )}
 
       <BottomActionBar>
-        <Button variant="secondary" className="flex items-center justify-center gap-1.5" onClick={() => navigate('/condition')}>
+        <Button variant="secondary" className="flex items-center justify-center gap-1.5" onClick={() => navigate('/condition', FROM_RESULTS)}>
           <Icon name="sliders" className="size-5" />
           조건 바꾸기
         </Button>

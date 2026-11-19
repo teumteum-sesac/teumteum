@@ -65,7 +65,7 @@ function CourseDetailContent({ courseId }: { courseId: string }) {
     }
     if (!isLoggedIn) {
       const state: LoginRedirectState = { from: location.pathname, pendingAction: 'save' }
-      navigate('/login', { state })
+      navigate('/login', { state, replace: true }) // 로그인 후 이 화면으로 돌아오므로 기록에 두 번 남지 않게
       return
     }
     const requestToken = useAuthStore.getState().accessToken
@@ -84,7 +84,7 @@ function CourseDetailContent({ courseId }: { courseId: string }) {
       if (currentToken && currentToken !== requestToken) return
       if (e instanceof ApiError && e.status === 401) {
         const state: LoginRedirectState = { from: location.pathname, pendingAction: 'save' }
-        navigate('/login', { state })
+        navigate('/login', { state, replace: true }) // 로그인 후 이 화면으로 돌아오므로 기록에 두 번 남지 않게
       } else {
         setSaveError(e instanceof ApiError ? e : new ApiError('UNKNOWN', '코스를 저장하지 못했어요. 다시 시도해 주세요.', 0))
       }
