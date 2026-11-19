@@ -80,7 +80,7 @@ export interface LocationValue extends LatLng {
 /** 위치 권한 거부 시 기본 위치 (서울시청) */
 export const DEFAULT_POSITION: LatLng = { lat: 37.5666, lng: 126.9784 }
 
-/** 카카오맵에서 장소 보기 링크 (정보가 없는 장소용) */
-export function getKakaoMapLink(name: string, lat: number, lng: number): string {
-  return `https://map.kakao.com/link/map/${encodeURIComponent(name)},${lat},${lng}`
+/** 카카오 장소 ID로 리뷰를 확인할 수 있는 장소 상세 페이지 링크를 만든다. */
+export function getKakaoMapLink(kakaoPlaceId: string): string {
+  return `https://place.map.kakao.com/${encodeURIComponent(kakaoPlaceId)}`
 }
