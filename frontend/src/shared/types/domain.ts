@@ -82,5 +82,5 @@ export const DEFAULT_POSITION: LatLng = { lat: 37.5666, lng: 126.9784 }
 
 /** 카카오 장소 ID로 리뷰를 확인할 수 있는 장소 상세 페이지 링크를 만든다. */
 export function getKakaoMapLink(kakaoPlaceId: string): string {
-  return `https://place.map.kakao.com/${kakaoPlaceId}`
+  return `https://place.map.kakao.com/${encodeURIComponent(kakaoPlaceId)}`
 }
