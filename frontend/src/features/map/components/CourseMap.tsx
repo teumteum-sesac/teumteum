@@ -11,6 +11,10 @@ import { coursePlaceLink } from '../coursePlaceLink'
 import CourseMapSheet from './CourseMapSheet'
 import KakaoMap, { type BoundsPadding, type MapMarker } from './KakaoMap'
 import MapLocateButton from './MapLocateButton'
+import { straightDistance } from '../format'
+
+/** 출발지·도착지가 이 거리(m) 안이면 같은 곳으로 보고 마커를 깃발 하나만 찍는다 (둘 다 현재 위치 기본값일 때) */
+const SAME_SPOT_M = 30
 
 /**
  * 코스 전체를 맞출 때 지도 가장자리에서 비울 여백(px). 가장자리 마커가 지도 밖으로 걸치지 않고,
@@ -57,6 +61,9 @@ export default function CourseMap({ course, backLabel, backTo, backBy = 'open', 
   // 현재 위치 버튼으로 받은 위치 (지도에 현재 위치 스티커). 코스 마커·경로선과 따로 그려 범위를 다시 맞추지 않는다
   const [located, setLocated] = useState<LatLng | null>(null)
 
+  // 출발지 = 도착지(거의 같은 자리)면 S 핀과 깃발이 겹친다 → 깃발만 찍고, 패널의 S 를 눌러도 깃발을 고른다
+  const sameSpot = course.destination !== null && course.destination !== undefined && straightDistance(course.origin, course.destination) <= SAME_SPOT_M
+
   const markers = useMemo<MapMarker[]>(() => {
     const { places, origin, destination } = course
     // 마커를 누르면 지도를 그 지점으로 옮기고 패널에서도 고른다. 같은 마커를 다시 누르면 지도처럼 선택 해제
@@ -65,7 +72,9 @@ export default function CourseMap({ course, backLabel, backTo, backBy = 'open', 
       setCenter({ lat, lng })
     }
     return [
-      { id: 'S', lat: origin.lat, lng: origin.lng, label: 'S', tone: 'dark', title: origin.name, onClick: pick('S', origin.lat, origin.lng) },
+      ...(sameSpot
+        ? []
+        : [{ id: 'S', lat: origin.lat, lng: origin.lng, label: 'S', tone: 'dark' as const, title: origin.name, onClick: pick('S', origin.lat, origin.lng) }]),
       ...places.map<MapMarker>((p, i) => {
         const next = places[i + 1]?.travelMinutes ?? (destination ? course.finalTravelMinutes : null)
         const id = String(p.visitOrder)
@@ -88,13 +97,13 @@ export default function CourseMap({ course, backLabel, backTo, backBy = 'open', 
               label: 'E',
               icon: 'flag' as const,
               tone: 'dark' as const,
-              title: destination.name,
+              title: sameSpot ? `출발·도착 · ${destination.name}` : destination.name,
               onClick: pick('E', destination.lat, destination.lng),
             },
           ]
         : []),
     ]
-  }, [course])
+  }, [course, sameSpot])
 
   // 경로선 좌표. visitOrder 번호는 출발지 0, 장소 1~N, 도착지 N+1 (RouteLegResponse 와 같은 기준)
   const routePath = useMemo(() => buildRoutePath(getRouteStops(course), routeLegs), [course, routeLegs])
@@ -103,7 +112,9 @@ export default function CourseMap({ course, backLabel, backTo, backBy = 'open', 
   const selectedPlace = course.places.find((p) => String(p.visitOrder) === selectedId) ?? null
 
   // 패널에서 지점을 고름: 지도를 그 지점으로 옮기고 말풍선
-  const selectFromSheet = (id: string) => {
+  const selectFromSheet = (picked: string) => {
+    // 같은 자리라 S 마커가 없으면 깃발(E)을 고른다
+    const id = sameSpot && picked === 'S' ? 'E' : picked
     const m = markers.find((marker) => marker.id === id)
     if (!m) return
     setSelectedId(id)

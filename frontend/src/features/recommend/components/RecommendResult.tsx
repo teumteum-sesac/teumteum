@@ -7,6 +7,7 @@ import ChipGroup from '../../../shared/components/ChipGroup'
 import EmptyState from '../../../shared/components/EmptyState'
 import Icon from '../../../shared/components/Icon'
 import LoadingState from '../../../shared/components/LoadingState'
+import { useRaceLoading } from '../../../shared/hooks/useRaceLoading'
 import type { CategoryCode } from '../../../shared/types/domain'
 import Toast from '../../../shared/components/Toast'
 import { isExpiredError, useRecommendCourses, useRecommendStore } from '../store'
@@ -30,6 +31,8 @@ const FROM_RESULTS = { state: { fromResults: true } }
 export default function RecommendResult() {
   const navigate = useNavigate()
   const { result, loading, error, regenerate } = useRecommendStore()
+  // 로딩 화면은 토끼·거북이가 깃발에 도착할 때까지 유지 (추천·다시 추천 모두)
+  const race = useRaceLoading(loading)
   const courses = useRecommendCourses()
   const [category, setCategory] = useState<CategoryCode | null>(null) // null = 전체
   const [subCategory, setSubCategory] = useState<string | null>(null) // null = 고른 대분류 전체
@@ -59,7 +62,8 @@ export default function RecommendResult() {
     selectCategory(null) // 새 결과는 '전체' 부터
   }
 
-  if (loading) return <LoadingState message="딱 맞는 코스를 찾고 있어요" />
+  // 토끼·거북이가 깃발에 도착한 뒤에 결과를 보여 준다 (최소 2초, 늦으면 그만큼 더)
+  if (race.show) return <LoadingState variant="race" message="딱 맞는 코스를 찾고 있어요" readyAt={race.readyAt} />
   if (error && isExpiredError(error.code)) return <ExpiredState />
   if (error) {
     return (
