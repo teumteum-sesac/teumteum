@@ -186,3 +186,13 @@
     animation: none;
   }
 }
+
+/* 칩 선택 효과 (shared/components/Chip.tsx): 선택되는 순간 살짝 눌렸다가 통 튄다 */
+@utility chip-pop {
+  animation: chip-pop 0.28s ease-out;
+}
+@keyframes chip-pop {
+  0% { transform: scale(0.9); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
