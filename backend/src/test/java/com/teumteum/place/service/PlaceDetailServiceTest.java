@@ -10,10 +10,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.teumteum.global.exception.CustomException;
+import com.teumteum.place.domain.Place;
 import com.teumteum.place.dto.PlaceDetailResponse;
 import com.teumteum.place.dto.tour.TourCommon;
 import com.teumteum.place.dto.tour.TourIntro;
 import com.teumteum.place.dto.tour.TourPlace;
+import com.teumteum.place.exception.PlaceErrorCode;
+import com.teumteum.place.repository.PlaceRepository;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,9 @@ class PlaceDetailServiceTest {
 
     @Mock
     private TourApiClient tourApiClient;
+
+    @Mock
+    private PlaceRepository placeRepository;
 
     @InjectMocks
     private PlaceDetailService placeDetailService;
@@ -93,5 +99,32 @@ class PlaceDetailServiceTest {
     void 좌표가_범위를_벗어나면_예외를_던진다() {
         assertThatThrownBy(() -> placeDetailService.getDetail(KAKAO_ID, "할머니냉면", 91, LNG))
                 .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void 우리_장소_ID로_조회하면_저장된_카카오ID_이름_좌표로_찾는다() {
+        given(placeRepository.findById(12L)).willReturn(Optional.of(Place.kakao(KAKAO_ID, "할머니냉면", "서울 동대문구", LAT, LNG)));
+        given(tourApiClient.findNearby(LNG, LAT, PlaceDetailService.MATCH_RADIUS)).willReturn(List.of(
+                new TourPlace("2842974", "39", "할머니냉면", 13.0, "http://image/1.jpg", "Type3")));
+        given(tourApiClient.findCommon("2842974")).willReturn(Optional.empty());
+        given(tourApiClient.findIntro("2842974", "39")).willReturn(Optional.of(new TourIntro("10:30~21:00", "연중무휴")));
+
+        PlaceDetailResponse result = placeDetailService.getDetailByPlaceId(12L);
+
+        assertThat(result.kakaoPlaceId()).isEqualTo(KAKAO_ID);
+        assertThat(result.tourInfoAvailable()).isTrue();
+        assertThat(result.openingHours()).isEqualTo("10:30~21:00");
+        assertThat(result.kakaoMapUrl()).isEqualTo("https://place.map.kakao.com/10926416");
+    }
+
+    @Test
+    void 없는_장소_ID면_PLACE_NOT_FOUND() {
+        given(placeRepository.findById(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> placeDetailService.getDetailByPlaceId(999L))
+                .isInstanceOf(CustomException.class)
+                .extracting(e -> ((CustomException) e).getErrorCode())
+                .isEqualTo(PlaceErrorCode.PLACE_NOT_FOUND);
+        verify(tourApiClient, never()).findNearby(anyDouble(), anyDouble(), anyInt());
     }
 }
