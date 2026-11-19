@@ -95,7 +95,7 @@ export default function RecommendResult() {
       <div className="flex flex-col gap-3 px-4 pt-4">
         <ConditionSummary />
         {courses.length > 0 && filters.length > 0 && (
-          <ChipGroup>
+          <ChipGroup arrows>
             <Chip selected={category === null} onClick={() => selectCategory(null)}>
               {ALL}
             </Chip>
@@ -108,11 +108,7 @@ export default function RecommendResult() {
         )}
         {/* 세분류: 고른 대분류 아래에 딸린 단계로 보이게, 연한 핑크 받침 위에 작은 칩(level="sub")으로 */}
         {selectedFilter && (
-          <div className="-mt-1 rounded-2xl bg-primary-light/40 px-3 pt-2 pb-2.5">
-            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-primary-dark">
-              <span aria-hidden>↳</span>
-              {selectedFilter.categoryName} 세부
-            </p>
+          <div className="-mt-1 rounded-2xl bg-primary-light/40 px-3 py-2">
             <ChipGroup>
               {selectedFilter.subCategories.map((name) => (
                 <Chip key={name} level="sub" selected={subCategory === name} onClick={() => toggleSubCategory(name)}>

@@ -78,12 +78,21 @@ interface KakaoMapProps {
   clusterMarkers?: ClusterMarker[]
   /** 탐색 반경 원 (중심·반지름 m). null 이면 그리지 않는다 */
   circle?: { center: LatLng; radius: number } | null
+  /**
+   * 현재 위치 스티커 (지도 위 현재 위치 버튼으로 받은 좌표). markers 와 따로 그려서,
+   * 찍어도 다른 마커·경로선을 다시 그리거나 범위를 다시 맞추지 않는다. null 이면 그리지 않는다
+   */
+  currentPosition?: LatLng | null
   className?: string
 }
 
 /** 클러스터로 묶이는 장소 마커 */
 export interface ClusterMarker extends LatLng {
   id: string
+  /** 묶음 목록에 보일 이름 (가게명) */
+  title?: string
+  /** 묶음 목록에 보일 짧은 정보 (예: '카페 · 120m') */
+  subtitle?: string
   /** true면 흐리게 (검색 결과 중 반경 밖) */
   dimmed?: boolean
   onClick?: () => void
@@ -115,7 +124,7 @@ export interface KakaoMapController {
 
 // ── 주변 탐색(HOM-02) 클러스터 · 반경 원 ──
 /** 이 레벨 이상(멀리 볼 때)에서만 마커를 묶는다. 더 확대하면 모두 개별 마커 */
-const CLUSTER_MIN_LEVEL = 3
+export const CLUSTER_MIN_LEVEL = 3
 /** 묶는 격자 크기(px) */
 const CLUSTER_GRID = 60
 /** 검색 결과 중 반경 밖 마커의 투명도 */
@@ -242,6 +251,16 @@ const Z_CURRENT = 20
 const Z_CLUSTER = 25
 /** 주변 탐색·검색에서 고른 장소 핀 (가장 위) */
 const Z_FOCUSED = 30
+/** 묶음 가게 목록 말풍선: 모든 마커·숫자 원보다 위 */
+const Z_CLUSTER_LIST = 40
+/** 이 개수 이하로 묶인 숫자 원을 누르면 확대 대신 가게 목록을 띄운다 (한 자리 숫자) */
+const SMALL_CLUSTER_MAX = 9
+/** 지도 위쪽 이만큼(px)은 검색창·안내 문구가 덮는다고 보고, 말풍선이 들어갈 자리가 없으면 아래로 띄운다 */
+const CLUSTER_LIST_TOP_SAFE = 150
+/** 좌우 끝 여백(px) */
+const CLUSTER_LIST_SIDE_SAFE = 12
+/** 말풍선 기본 너비(px). 자리를 고를 때 쓴다 */
+const CLUSTER_LIST_WIDTH = 224
 /** 현재 위치: 바깥 핑크 후광 · 흰 원 지름(px) */
 const ME_HALO_SIZE = 76
 const ME_RING_SIZE = 60
@@ -518,6 +537,146 @@ function fitToBounds(map: KakaoMapInstance, bounds: KakaoLatLngBounds, padding: 
 }
 
 /** 카카오 지도. SDK 로드는 loadKakaoMap 한 곳에서만 한다 (AGENTS.md 6장) */
+type ClusterListSide = 'top' | 'bottom' | 'left' | 'right'
+/** 말풍선과 숫자 원 사이 간격 (꼬리 자리) */
+const CLUSTER_LIST_GAP_CLASS: Record<ClusterListSide, string> = { top: 'mb-8', bottom: 'mt-8', left: 'mr-8', right: 'ml-8' }
+/** 꼬리 모양·위치 (Tailwind 가 찾을 수 있게 완성된 문자열로) */
+const CLUSTER_LIST_TAIL_CLASS: Record<ClusterListSide, string> = {
+  top: '-bottom-[9px] -translate-x-1/2 border-r-2 border-b-2',
+  bottom: '-top-[9px] -translate-x-1/2 border-t-2 border-l-2',
+  left: '-right-[9px] -translate-y-1/2 border-t-2 border-r-2',
+  right: '-left-[9px] -translate-y-1/2 border-b-2 border-l-2',
+}
+/** 말풍선 머리말(이 근처 N곳) 높이 + 테두리·여백(px) */
+const CLUSTER_LIST_CHROME = 48
+/** 목록 한 줄 높이(px)와 목록 최대 높이 */
+const CLUSTER_LIST_ROW = 46
+const CLUSTER_LIST_MAX = 220
+/** 숫자 원과 말풍선 사이(꼬리) 간격(px) */
+const CLUSTER_LIST_GAP = 34
+/** 좌우에 띄울 때 말풍선 최소 너비(px) */
+const CLUSTER_LIST_MIN_WIDTH = 170
+
+/**
+ * 묶음 목록 말풍선을 어디에 띄울지 정한다. 지도 위쪽 CLUSTER_LIST_TOP_SAFE 는 검색창이 덮는다고 보고 빼고,
+ * 위·아래·왼쪽·오른쪽 중 목록이 가장 많이 들어가는 쪽을 고른다. 좌우·위아래로 밀어 지도 밖으로 나가지 않게 anchor 를 맞춘다
+ */
+function placeClusterList(box: DOMRect | null, at: DOMRect | null, count: number) {
+  const fallback = { side: 'top' as ClusterListSide, xAnchor: 0.5, yAnchor: 1, tailAt: 0.5, maxListHeight: CLUSTER_LIST_MAX, width: CLUSTER_LIST_WIDTH }
+  if (!box || !at || at.width === 0) return fallback
+  const cx = at.left + at.width / 2
+  const cy = at.top + at.height / 2
+  const top = box.top + CLUSTER_LIST_TOP_SAFE
+  const bottom = box.bottom - CLUSTER_LIST_SIDE_SAFE
+  const wanted = Math.min(count * CLUSTER_LIST_ROW + 8, CLUSTER_LIST_MAX)
+  // 좌우에 띄울 때 쓸 수 있는 너비 (좁으면 말풍선을 그만큼 줄인다. CLUSTER_LIST_MIN_WIDTH 보다 좁으면 못 띄움)
+  const sideWidth = {
+    left: Math.min(CLUSTER_LIST_WIDTH, cx - box.left - CLUSTER_LIST_GAP - CLUSTER_LIST_SIDE_SAFE),
+    right: Math.min(CLUSTER_LIST_WIDTH, box.right - cx - CLUSTER_LIST_GAP - CLUSTER_LIST_SIDE_SAFE),
+  }
+  // 각 방향에서 목록 부분에 쓸 수 있는 높이
+  const room: Record<ClusterListSide, number> = {
+    top: at.top - CLUSTER_LIST_GAP - top - CLUSTER_LIST_CHROME,
+    bottom: bottom - at.bottom - CLUSTER_LIST_GAP - CLUSTER_LIST_CHROME,
+    left: sideWidth.left >= CLUSTER_LIST_MIN_WIDTH ? bottom - top - CLUSTER_LIST_CHROME : -1,
+    right: sideWidth.right >= CLUSTER_LIST_MIN_WIDTH ? bottom - top - CLUSTER_LIST_CHROME : -1,
+  }
+  // 위·아래에 다 들어가면 그쪽(말풍선 기본 모양), 아니면 가장 넓은 쪽
+  const order: ClusterListSide[] = ['top', 'bottom', 'right', 'left']
+  const side = order.find((d) => room[d] >= wanted) ?? order.reduce((a, b) => (room[b] > room[a] ? b : a))
+  const maxListHeight = Math.max(CLUSTER_LIST_ROW, Math.min(wanted, room[side]))
+  const height = maxListHeight + CLUSTER_LIST_CHROME
+  if (side === 'top' || side === 'bottom') {
+    const left = Math.min(Math.max(cx - CLUSTER_LIST_WIDTH / 2, box.left + CLUSTER_LIST_SIDE_SAFE), box.right - CLUSTER_LIST_SIDE_SAFE - CLUSTER_LIST_WIDTH)
+    const xAnchor = Math.min(Math.max((cx - left) / CLUSTER_LIST_WIDTH, 0.08), 0.92)
+    return { side, xAnchor, yAnchor: side === 'top' ? 1 : 0, tailAt: xAnchor, maxListHeight, width: CLUSTER_LIST_WIDTH }
+  }
+  // 좌우: 세로 가운데를 숫자 원에 맞추되, 검색창 아래 ~ 지도 아래 사이로 민다
+  const boxTop = Math.min(Math.max(cy - height / 2, top), bottom - height)
+  const yAnchor = Math.min(Math.max((cy - boxTop) / height, 0.1), 0.9)
+  return { side, xAnchor: side === 'left' ? 1 : 0, yAnchor, tailAt: yAnchor, maxListHeight, width: sideWidth[side] }
+}
+
+/**
+ * 작은 묶음(숫자 원)을 눌렀을 때 숫자 원 바로 위에 뜨는 가게 목록 말풍선 (네이버·카카오 지도의 겹친 장소 목록처럼).
+ * 가게명 + 짧은 정보(분류·거리)만 보여 주고, 하나를 누르면 그 장소를 고른다.
+ * 카카오 오버레이는 DOM 을 직접 받으므로 React 대신 DOM 으로 만든다. 글자는 textContent 로만 넣는다
+ */
+function buildClusterList(
+  items: ClusterMarker[],
+  {
+    side,
+    tailAt,
+    maxListHeight,
+    width,
+    onPick,
+    onClose,
+  }: {
+    /** 숫자 원의 어느 쪽에 띄우는지 (꼬리는 반대쪽 가장자리에서 숫자 원을 가리킨다) */
+    side: ClusterListSide
+    /** 꼬리 위치 (가장자리 길이의 0~1). 말풍선을 밀었을 때도 숫자 원을 가리키게 */
+    tailAt: number
+    /** 목록 부분 최대 높이(px). 넘치면 목록 안에서 스크롤 */
+    maxListHeight: number
+    /** 말풍선 너비(px) */
+    width: number
+    onPick: (item: ClusterMarker) => void
+    onClose: () => void
+  },
+): HTMLElement {
+  const root = document.createElement('div')
+  // 숫자 원(약 44px) 위로 띄운다. 말풍선 안을 누르거나 굴려도 지도가 움직이거나 닫히지 않게 이벤트를 막는다
+  root.style.width = `${width}px`
+  root.className = `relative ${CLUSTER_LIST_GAP_CLASS[side]} rounded-2xl border-2 border-ink bg-cream shadow-[0_3px_0_var(--color-ink),0_6px_16px_rgba(0,0,0,0.15)]`
+  for (const type of ['mousedown', 'touchstart', 'pointerdown', 'click', 'wheel', 'dblclick']) {
+    root.addEventListener(type, (e) => e.stopPropagation())
+  }
+
+  const header = document.createElement('div')
+  header.className = 'flex items-center justify-between border-b-2 border-dashed border-line py-1.5 pr-1.5 pl-3'
+  const title = document.createElement('p')
+  title.className = 'text-xs font-bold text-ink'
+  title.textContent = `이 근처 ${items.length}곳`
+  const close = document.createElement('button')
+  close.type = 'button'
+  close.setAttribute('aria-label', '목록 닫기')
+  close.className = 'grid size-7 cursor-pointer place-items-center rounded-full text-base leading-none text-neutral-500'
+  close.textContent = '✕'
+  close.addEventListener('click', onClose)
+  header.append(title, close)
+
+  const list = document.createElement('ul')
+  list.className = 'overflow-y-auto overscroll-contain py-1'
+  list.style.maxHeight = `${maxListHeight}px`
+  for (const item of items) {
+    const li = document.createElement('li')
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'flex w-full cursor-pointer flex-col items-start px-3 py-1.5 text-left active:bg-primary-light hover:bg-primary-light/60'
+    const name = document.createElement('span')
+    name.className = 'w-full truncate text-[13px] font-bold text-ink'
+    name.textContent = item.title ?? '이름 없는 장소'
+    button.append(name)
+    if (item.subtitle) {
+      const sub = document.createElement('span')
+      sub.className = 'w-full truncate text-[11px] text-neutral-500'
+      sub.textContent = item.subtitle
+      button.append(sub)
+    }
+    button.addEventListener('click', () => onPick(item))
+    li.append(button)
+    list.append(li)
+  }
+
+  // 꼬리 (숫자 원을 가리키는 삼각형): 말풍선이 놓인 쪽의 반대 가장자리
+  const tail = document.createElement('span')
+  tail.className = `absolute size-4 rotate-45 border-ink bg-cream ${CLUSTER_LIST_TAIL_CLASS[side]}`
+  if (side === 'top' || side === 'bottom') tail.style.left = `${tailAt * 100}%`
+  else tail.style.top = `${tailAt * 100}%`
+  root.append(header, list, tail)
+  return root
+}
+
 export default function KakaoMap({
   center,
   level = 4,
@@ -533,6 +692,7 @@ export default function KakaoMap({
   onReady,
   clusterMarkers,
   circle,
+  currentPosition = null,
   className = '',
 }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -788,6 +948,47 @@ export default function KakaoMap({
     })
   })
   const clusterMarkersRef = useRef(new Map<string, KakaoMarker>())
+  // 마커 → 장소 id, 장소 id → 목록에 보일 정보 (묶음 목록 말풍선용)
+  const markerIdsRef = useRef(new Map<KakaoMarker, string>())
+  const clusterInfoRef = useRef(new Map<string, ClusterMarker & { order: number }>())
+  // 열린 묶음 목록 말풍선과 연 순간의 확대 수준·시각 (말풍선을 보이게 지도를 옮길 때 오는 이벤트로 바로 닫히지 않게)
+  const clusterListRef = useRef<KakaoCustomOverlay | null>(null)
+  const clusterListOpenedRef = useRef({ level: 0, at: 0 })
+  const closeClusterListRef = useRef(() => {
+    clusterListRef.current?.setMap(null)
+    clusterListRef.current = null
+  })
+  // 작은 묶음을 누르면: 묶인 가게들을 숫자 원 바로 위에 목록으로 띄운다. 하나를 누르면 그 장소를 고른다 (마커를 누른 것과 같음)
+  const openClusterListRef = useRef((cluster: KakaoCluster) => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!maps || !map) return
+    // 말풍선을 보이게 지도를 옮기면 같은 누름이 한 번 더 들어온다. 연 직후(0.4초)에 오는 것은 무시한다
+    if (clusterListRef.current && Date.now() - clusterListOpenedRef.current.at < 400) return
+    const items = cluster
+      .getMarkers()
+      .map((marker) => clusterInfoRef.current.get(markerIdsRef.current.get(marker) ?? ''))
+      .filter((item): item is ClusterMarker & { order: number } => item !== undefined)
+      .sort((a, b) => a.order - b.order)
+    if (items.length === 0) return
+    closeClusterListRef.current()
+    // 말풍선 자리: 지도는 옮기지 않는다. 숫자 원 위·아래·왼쪽·오른쪽 중 들어갈 공간이 가장 넓은 쪽에 띄우고, 목록 높이도 그 공간에 맞춘다
+    const anchor = cluster.getClusterMarker().getContent()
+    const place = placeClusterList(containerRef.current?.getBoundingClientRect() ?? null, anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : null, items.length)
+    const content = buildClusterList(items, {
+      side: place.side,
+      tailAt: place.tailAt,
+      maxListHeight: place.maxListHeight,
+      width: place.width,
+      onPick: (item) => {
+        closeClusterListRef.current()
+        clusterClicksRef.current.get(item.id)?.()
+      },
+      onClose: () => closeClusterListRef.current(),
+    })
+    clusterListOpenedRef.current = { level: map.getLevel(), at: Date.now() }
+    clusterListRef.current = new maps.CustomOverlay({ position: cluster.getCenter(), content, xAnchor: place.xAnchor, yAnchor: place.yAnchor, zIndex: Z_CLUSTER_LIST, map })
+  })
   const clusterClicksRef = useRef(new Map<string, () => void>())
   const placePinImageRef = useRef<KakaoMarkerImage | null | undefined>(undefined)
   useEffect(() => {
@@ -801,8 +1002,10 @@ export default function KakaoMap({
         averageCenter: true,
         minLevel: CLUSTER_MIN_LEVEL,
         gridSize: CLUSTER_GRID,
-        // 누르면 한 단계 확대 (카카오 기본 동작). 같은 좌표만 남은 묶음은 끝까지 확대해도 풀리지 않는다 (좌표는 옮기지 않음)
-        disableClickZoom: false,
+        // 멀리 볼 때(CLUSTER_MIN_LEVEL 이상)는 혼자 있는 장소도 '1' 묶음으로 그린다 (핀 하나만 덩그러니 남지 않게). 확대하면 모두 핀
+        minClusterSize: 1,
+        // 누름은 직접 처리한다 (clusterclick): 큰 묶음은 한 단계 확대, 작은 묶음(SMALL_CLUSTER_MAX 이하)이나 마지막 묶음 단계는 가게 목록 말풍선
+        disableClickZoom: true,
         calculator: [10, 30],
         styles: CLUSTER_STYLES,
       })
@@ -812,6 +1015,19 @@ export default function KakaoMap({
         clusters.forEach((cluster) => cluster.getClusterMarker().setZIndex(Z_CLUSTER))
         clustersRef.current = clusters
         requestAnimationFrame(() => updateNearMeRef.current())
+      })
+      maps.event.addListener(clustererRef.current, 'clusterclick', (cluster) => {
+        const center = cluster.getCenter()
+        // 한 단계 더 확대해도 아직 묶음으로 보이는 레벨이면 확대 (큰 묶음을 좁혀 들어가는 단계).
+        // 다음 확대에서 묶음이 다 풀려 핀이 흩어지는 마지막 단계이거나, 작은 묶음(한 자리 숫자)이면 확대하지 않고 가게 목록
+        const next = map.getLevel() - 1
+        const canZoom = next >= Math.max(CLUSTER_MIN_LEVEL, rangeRef.current.minLevel ?? 1)
+        if (cluster.getSize() > SMALL_CLUSTER_MAX && canZoom) {
+          closeClusterListRef.current()
+          map.setLevel(next, { animate: true, anchor: center })
+          return
+        }
+        openClusterListRef.current(cluster)
       })
     }
     const clusterer = clustererRef.current
@@ -825,6 +1041,7 @@ export default function KakaoMap({
       if (!nextIds.has(id)) {
         removed.push(marker)
         current.delete(id)
+        markerIdsRef.current.delete(marker)
       }
     }
     const added: KakaoMarker[] = []
@@ -838,11 +1055,15 @@ export default function KakaoMap({
         const id = m.id
         maps.event.addListener(marker, 'click', () => clusterClicksRef.current.get(id)?.())
         current.set(id, marker)
+        markerIdsRef.current.set(marker, id)
         added.push(marker)
       }
       marker.setOpacity(m.dimmed ? DIMMED_OPACITY : 1)
     }
     clusterClicksRef.current = clicks
+    clusterInfoRef.current = new Map(clusterMarkers.map((m, i) => [m.id, { ...m, order: i }]))
+    // 목록이 바뀌면(반경·카테고리·선택) 열린 묶음 목록은 닫는다
+    closeClusterListRef.current()
     if (clusterer) {
       // 한 번에 빼고 더한 뒤 한 번만 다시 그린다
       if (removed.length) clusterer.removeMarkers(removed, true)
@@ -854,8 +1075,31 @@ export default function KakaoMap({
     }
   }, [ready, clusterMarkers])
 
-  // 지도를 끌어 클러스터가 새로 화면에 들어오거나 현재 위치가 다시 그려지면 겹침을 다시 본다
+  // 지도를 누르거나 확대·축소하면 열린 묶음 목록을 닫는다
   const usesCluster = clusterMarkers !== undefined
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!ready || !maps || !map || !usesCluster) return
+    const close = () => closeClusterListRef.current()
+    // 지도 누름: 숫자 원을 누른 그 동작이 지도 누름으로도 들어오므로, 연 직후(0.4초)는 무시한다
+    const onClick = () => {
+      if (Date.now() - clusterListOpenedRef.current.at > 400) close()
+    }
+    // 확대·축소: 확대 수준이 실제로 바뀌었을 때만 닫는다 (지도를 옮기기만 해도 이 이벤트가 올 때가 있다)
+    const onZoom = () => {
+      if (map.getLevel() !== clusterListOpenedRef.current.level) close()
+    }
+    maps.event.addListener(map, 'click', onClick)
+    maps.event.addListener(map, 'zoom_changed', onZoom)
+    return () => {
+      maps.event.removeListener(map, 'click', onClick)
+      maps.event.removeListener(map, 'zoom_changed', onZoom)
+      close()
+    }
+  }, [ready, usesCluster])
+
+  // 지도를 끌어 클러스터가 새로 화면에 들어오거나 현재 위치가 다시 그려지면 겹침을 다시 본다
   useEffect(() => {
     const maps = mapsRef.current
     const map = mapRef.current
@@ -909,6 +1153,17 @@ export default function KakaoMap({
     },
     [],
   )
+
+  // ── 현재 위치 스티커 (markers 와 별도) ──
+  const currentLat = currentPosition?.lat
+  const currentLng = currentPosition?.lng
+  useEffect(() => {
+    const maps = mapsRef.current
+    const map = mapRef.current
+    if (!ready || !maps || !map || currentLat === undefined || currentLng === undefined) return
+    const { overlays } = drawOverlays(maps, map, [{ lat: currentLat, lng: currentLng, variant: 'current' }], false, () => {})
+    return () => overlays.forEach((o) => o.setMap(null))
+  }, [ready, currentLat, currentLng])
 
   // 매 렌더 마지막에 실행: 범위 맞춤 표시는 그 렌더에서만 유효하게 초기화한다
   // (effect는 선언 순서대로 실행되므로 반드시 위 effect들 다음에 둔다)

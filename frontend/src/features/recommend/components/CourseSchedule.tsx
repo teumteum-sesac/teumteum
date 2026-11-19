@@ -5,6 +5,7 @@ import StickerImage from '../../../shared/components/StickerImage'
 import { getCategoryLabel } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
 import { buildSchedule, getLegMode, parseTransitInfo, type Course, type CoursePlace } from '../types'
+import { coursePlaceLink } from '../../map/coursePlaceLink'
 import PlaceThumbnail from './PlaceThumbnail'
 import CourseDirectionsSidebar from './CourseDirectionsSidebar'
 
@@ -24,20 +25,8 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
   const navigate = useNavigate()
 
   function openPlace(place: CoursePlace) {
-    const previewId = place.kakaoPlaceId ?? `saved-${place.placeId}`
-    navigate(`/places/${encodeURIComponent(previewId)}`, { state: { place: {
-      previewId,
-      kakaoPlaceId: place.kakaoPlaceId ?? '',
-      name: place.name,
-      category: place.category,
-      subCategory: place.subCategory,
-      address: place.address,
-      latitude: place.lat,
-      longitude: place.lng,
-      imageUrl: place.imageUrl,
-      description: place.description,
-      openingHours: place.openingHours,
-    } } })
+    const { to, state } = coursePlaceLink(place)
+    navigate(to, { state })
   }
 
   const { rows, endTime } = buildSchedule(course)
@@ -126,14 +115,14 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
 function Leg({ course, minutes, transitInfo }: { course: Course; minutes: number; transitInfo?: string }) {
   const mode = getLegMode(course, transitInfo)
   const { lines, transfer } = transitInfo ? parseTransitInfo(transitInfo) : { lines: [], transfer: null }
-  const text =
-    lines.length > 0
-      ? [mode, lines.join(' → '), formatMinutes(minutes), transfer].filter(Boolean).join(' · ')
-      : `${mode} ${formatMinutes(minutes)}`
+  // 이동수단(도보·차량·대중교통)은 굵게, 노선·시간은 그 뒤에 이어서. 잘 보이게 글씨를 키운다
+  const rest = lines.length > 0 ? [lines.join(' → '), formatMinutes(minutes), transfer].filter(Boolean).join(' · ') : formatMinutes(minutes)
   return (
-    <p className="mb-2 inline-flex items-center gap-1 rounded-full bg-cream/80 py-0.5 pr-2.5 pl-1 text-[11px] text-neutral-500">
-      <StickerImage name={TRANSPORT_STICKER[course.transportType]} className="size-5" />
-      {text}
+    <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-cream/80 py-1 pr-3 pl-1 text-sm text-neutral-600">
+      <StickerImage name={TRANSPORT_STICKER[course.transportType]} className="size-6" />
+      <span className="font-bold text-ink">{mode}</span>
+      {lines.length > 0 && <span aria-hidden>·</span>}
+      <span className="font-bold">{rest}</span>
     </p>
   )
 }

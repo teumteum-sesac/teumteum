@@ -28,15 +28,16 @@ interface PlaceCardProps {
  */
 export function PlaceCardSkeletonList({ label, count = 4 }: { label: string; count?: number }) {
   return (
+    // 안내 글씨는 화면에 쓰지 않는다 (빛 지나가는 애니메이션으로 충분). 화면 읽기 프로그램에는 label 로 알린다
     <div role="status" aria-label={label}>
-      <p className="pb-2 text-xs text-neutral-500">{label}</p>
       <ul aria-hidden className="flex flex-col gap-2">
         {Array.from({ length: count }, (_, i) => (
-          <li key={i} className="flex items-center gap-3 rounded-xl border border-line p-3 motion-safe:animate-pulse">
-            <span className="size-14 shrink-0 rounded-lg bg-neutral-100" />
+          // 회색 덩어리마다 빛이 왼쪽 → 오른쪽으로 지나간다 (index.css skeleton-shimmer)
+          <li key={i} className="flex items-center gap-3 rounded-xl border border-line bg-white p-3">
+            <span className="skeleton-shimmer size-14 shrink-0 rounded-lg" />
             <span className="flex flex-1 flex-col gap-2">
-              <span className="h-4 w-2/5 rounded bg-neutral-100" />
-              <span className="h-3 w-3/5 rounded bg-neutral-100" />
+              <span className="skeleton-shimmer h-4 w-2/5 rounded" />
+              <span className="skeleton-shimmer h-3 w-3/5 rounded" />
             </span>
           </li>
         ))}

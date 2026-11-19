@@ -24,7 +24,7 @@ export default function CourseMapView({ courseId, source }: CourseMapViewProps) 
  * <p>
  * 화면 순서는 추천 결과 → 지도 → 상세 (#177). 하단 버튼은 들어온 곳에 따라 다르다.
  * - 추천 결과에서 옴: [코스 상세 보기] → 상세로 이동. 상세에서 뒤로 가면 다시 지도, 한 번 더 뒤로 가면 추천 결과
- * - 상세의 [지도] 에서 옴: [코스 상세로 돌아가기] → 뒤로 가기. 상세로 "이동" 하면 상세·지도가 기록에 계속 쌓여서
+ * - 상세의 [지도] 에서 옴: [코스 상세 보기] → 뒤로 가기 (문구는 추천 결과에서 올 때와 같게). 상세로 "이동" 하면 상세·지도가 기록에 계속 쌓여서
  *   뒤로 가기를 여러 번 눌러야 추천 결과로 돌아가게 된다
  */
 function RecommendedCourseMapView({ courseId }: { courseId: string }) {
@@ -36,7 +36,7 @@ function RecommendedCourseMapView({ courseId }: { courseId: string }) {
   if (error && isExpiredError(error.code)) return <ExpiredState />
   if (!course) return <EmptyState message="코스 정보를 찾을 수 없어요." description={error?.message} />
   return fromDetail ? (
-    <CourseMap course={course} backLabel="코스 상세로 돌아가기" routeLegs={routeLegs} />
+    <CourseMap course={course} backLabel="코스 상세 보기" routeLegs={routeLegs} />
   ) : (
     <CourseMap course={course} backLabel="코스 상세 보기" backTo={`/results/${courseId}`} routeLegs={routeLegs} />
   )

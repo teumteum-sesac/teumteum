@@ -4,6 +4,7 @@ import type { LatLng, LocationValue } from '../../../shared/types/domain'
 import { getAddress } from '../api/addressApi'
 import type { AddressResponse } from '../types'
 import KakaoMap from './KakaoMap'
+import MapLocateButton from './MapLocateButton'
 
 /** 지도가 멈춘 뒤 이만큼(ms) 기다렸다 주소를 조회한다 (지도를 계속 움직이는 동안 요청을 줄임) */
 const ADDRESS_DELAY_MS = 300
@@ -34,8 +35,11 @@ interface AddressResult {
  * 핀은 지도 위에 겹쳐 둔 그림이라 지도 드래그·확대·축소를 막지 않는다.
  */
 export default function MapCenterPicker({ initialCenter, onConfirm, confirmLabel = '이 위치로 설정', className = '' }: MapCenterPickerProps) {
-  // 지도에 넘기는 처음 중심. 고정해 두고 바꾸지 않는다 (사용자가 움직인 위치는 지도가 들고 있다)
-  const [mapCenter] = useState(initialCenter)
+  // 지도에 넘기는 중심. 처음 값 그대로 두고, 현재 위치 버튼을 누를 때만 새 객체로 바꿔 지도를 옮긴다
+  // (사용자가 끌어서 움직인 위치는 지도가 들고 있다)
+  const [mapCenter, setMapCenter] = useState(initialCenter)
+  // 현재 위치 버튼으로 받은 위치 (현재 위치 스티커)
+  const [located, setLocated] = useState<LatLng | null>(null)
   // 핀이 가리키는 좌표. 지도 움직임이 끝날 때마다 KakaoMap 이 알려 준다
   const [center, setCenter] = useState<LatLng>(initialCenter)
   const [result, setResult] = useState<AddressResult | null>(null)
@@ -83,7 +87,14 @@ export default function MapCenterPicker({ initialCenter, onConfirm, confirmLabel
   return (
     <div className={`flex flex-col ${className}`}>
       <div className="relative min-h-0 flex-1">
-        <KakaoMap center={mapCenter} level={3} onCenterChange={setCenter} className="size-full" />
+        <KakaoMap center={mapCenter} level={3} onCenterChange={setCenter} currentPosition={located} className="size-full" />
+        {/* 현재 위치로 이동: 지도가 멈추면 onCenterChange 로 핀 좌표·주소도 따라 바뀐다 */}
+        <MapLocateButton
+          onLocate={(position) => {
+            setLocated(position)
+            setMapCenter({ ...position })
+          }}
+        />
         {/* 지도 중앙 고정 핀. pointer-events-none 이라 핀 위를 눌러도 지도를 끌고 확대할 수 있다. 핀 끝(아래쪽)이 지도 중심 */}
         <div aria-hidden className="pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-full">
           <svg width="36" height="44" viewBox="0 0 36 44" className="text-primary drop-shadow">

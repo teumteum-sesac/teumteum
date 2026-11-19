@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { CATEGORY_STICKER } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
@@ -6,19 +6,21 @@ import EmptyState from '../../../shared/components/EmptyState'
 import Icon from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
 import KakaoPlaceSheet from '../../../shared/components/KakaoPlaceSheet'
-import { getCategoryLabel, type CategoryCode } from '../../../shared/types/domain'
-import { useConditionStore } from '../../condition/store'
-import { formatDistance } from '../format'
-import KakaoMap from './KakaoMap'
-import { usePlaceDetail } from '../hooks/usePlaceDetail'
+import { getCategoryLabel, type CategoryCode, type LatLng } from '../../../shared/types/domain'
+import { getWalkRoute } from '../api/walkRouteApi'
+import { formatDistance, straightDistance } from '../format'
+import { requestCurrentPosition } from '../hooks/useCurrentPosition'
+import KakaoMap, { type MapMarker } from './KakaoMap'
+import MapLocateButton from './MapLocateButton'
 
 /*
  * [이 파일이 하는 일]
  * 장소 상세 (/places/:placeId). 홈 검색·주변 탐색·코스 일정에서 장소를 누르면 여기로 온다.
- * 목록에서 받은 기본 정보와 사진·소개를 표시하고, 카카오 장소 ID가 있으면 장소 상세 API로 보완한다.
- * 저장 코스의 내부 장소 ID는 카카오 ID로 사용하지 않는다.
+ * 목록에서 받은 기본 정보(이름·분류·주소)와 지도만 보여 준다. 지도에는 내 위치 → 가게 도보 경로와 '도보 N분'을 그린다
+ *   (GET /api/routes/walk, 추천과 같은 이동시간 계산. 위치를 못 받거나 5km 넘게 멀면 가게 핀만). 사진·소개·영업시간·후기는 아래 카카오맵 시트가 보여 준다
+ * (TourAPI 장소 상세는 쓰지 않는다: 일반 가게는 데이터가 거의 없어 '소개 없음'만 나왔다).
+ * 카카오 장소 ID가 없으면(저장 코스의 예전 데이터 등) 시트에 이름·주소만 보여 준다.
  *
- * 버튼: [여기서 출발해 코스 추천받기] = 이 장소를 출발지로 외출 조건(CON-01)
  * 하단 시트는 항상 표시하며 손잡이로 최소화·펼치기 한다. 카카오 장소 페이지의 영업시간·리뷰를 그대로 보여 준다.
  */
 export interface PlacePreviewState {
@@ -39,12 +41,54 @@ export interface PlacePreviewState {
   openingHours?: string
 }
 
+/** 이보다 멀면(m) 도보 경로를 그리지 않는다 (걸어가기엔 먼 곳) */
+const WALK_ROUTE_MAX_M = 5_000
+/** 경로를 그릴 때 지도 가장자리 여백 (위: 도보 배지, 오른쪽 아래: 현재 위치 버튼) */
+const WALK_BOUNDS_PADDING = { top: 48, right: 40, bottom: 40, left: 32 }
+
 export default function PlacePreview({ placeId, place }: { placeId: string; place: PlacePreviewState | null }) {
   const navigate = useNavigate()
-  const setOrigin = useConditionStore((s) => s.setOrigin)
-  const descriptionRef = useRef<HTMLParagraphElement>(null)
+  // 카카오맵 시트가 처음에 이 영역(주소) 바로 아래부터 올라오게 하는 기준
+  const actionsRef = useRef<HTMLDivElement>(null)
   const validPlace = place && (place.previewId ?? place.kakaoPlaceId) === placeId ? place : null
-  const { detail, loading, error } = usePlaceDetail(validPlace?.kakaoPlaceId ?? '', validPlace?.name ?? '', validPlace?.latitude ?? 0, validPlace?.longitude ?? 0)
+  // 지도 중심: 장소 좌표. 렌더마다 새 객체를 만들면 지도가 계속 장소로 되돌아가므로 좌표가 바뀔 때만 만든다
+  const placeLat = validPlace?.latitude ?? 0
+  const placeLng = validPlace?.longitude ?? 0
+  const placeCenter = useMemo(() => ({ lat: placeLat, lng: placeLng }), [placeLat, placeLng])
+  // 현재 위치 버튼으로 받은 위치. 받으면 지도를 그리로 옮기고 현재 위치 스티커를 찍는다
+  const [located, setLocated] = useState<LatLng | null>(null)
+  // 내 위치 → 가게 도보 경로 (들어올 때 한 번). 위치를 못 받거나 너무 멀면 null (가게 핀만)
+  const [walk, setWalk] = useState<{ from: LatLng; path: LatLng[]; minutes: number; estimated: boolean } | null>(null)
+  const hasPlace = validPlace !== null
+  useEffect(() => {
+    if (!hasPlace) return
+    let active = true
+    void (async () => {
+      const from = await requestCurrentPosition()
+      if (!active || !from || straightDistance(from, placeCenter) > WALK_ROUTE_MAX_M) return
+      try {
+        const route = await getWalkRoute(from, placeCenter)
+        if (!active) return
+        setWalk({
+          from,
+          path: route.path.map((p) => ({ lat: p.latitude, lng: p.longitude })),
+          minutes: route.travelMinutes,
+          estimated: route.estimated,
+        })
+      } catch {
+        // 경로를 못 받으면 가게 핀만 보여 준다 (안내 없이)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [hasPlace, placeCenter])
+  // 지도 표시: 가게 핀 (+ 경로가 있으면 내 위치 스티커). 둘 다 있으면 둘이 함께 보이게 범위를 맞춘다
+  const mapMarkers = useMemo<MapMarker[]>(() => {
+    const list: MapMarker[] = [{ lat: placeCenter.lat, lng: placeCenter.lng, title: validPlace?.name }]
+    if (walk) list.push({ lat: walk.from.lat, lng: walk.from.lng, variant: 'current' })
+    return list
+  }, [placeCenter, validPlace?.name, walk])
 
   // 새로고침·주소 직접 입력으로 들어오면 넘겨받은 정보가 없다 → 카카오맵 링크로 안내
   if (!place || !validPlace) {
@@ -64,11 +108,6 @@ export default function PlacePreview({ placeId, place }: { placeId: string; plac
       />
     )
   }
-
-  const center = { lat: place.latitude, lng: place.longitude }
-  const description = detail?.overview ?? place.description
-  const imageUrl = detail?.imageUrl ?? place.imageUrl
-  const openingHours = detail?.openingHours ?? place.openingHours
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -93,52 +132,43 @@ export default function PlacePreview({ placeId, place }: { placeId: string; plac
         </div>
       </section>
 
-      <div className="overflow-hidden rounded-2xl border-2 border-line">
-        <KakaoMap center={center} level={3} markers={[{ lat: center.lat, lng: center.lng, title: place.name }]} className="h-52 w-full" />
+      <div className="relative overflow-hidden rounded-2xl border-2 border-line">
+        <KakaoMap
+          center={located ?? placeCenter}
+          level={3}
+          markers={mapMarkers}
+          polyline={walk?.path ?? false}
+          fitBounds={walk !== null}
+          boundsPadding={WALK_BOUNDS_PADDING}
+          currentPosition={walk ? null : located}
+          className="h-52 w-full"
+        />
+        {/* 내 위치에서 걸어서 몇 분인지 (경로 API 실패로 직선 추정이면 '예상') */}
+        {walk && (
+          <span className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1 rounded-full border-2 border-ink bg-sunny px-2.5 py-0.5 text-xs font-bold shadow-[0_2px_0_var(--color-ink)]">
+            <StickerImage name="transportWalk" className="size-4" />내 위치에서 도보 {walk.minutes}분{walk.estimated && ' (예상)'}
+          </span>
+        )}
+        <MapLocateButton onLocate={(position) => setLocated({ ...position })} />
       </div>
 
-      {place.address && (
-        <p className="flex items-start gap-2 px-1 text-sm text-neutral-700">
-          <Icon name="location" className="mt-0.5 size-4 text-primary-dark" />
-          {place.address}
-        </p>
-      )}
-
-      <div className="mt-2 flex flex-col gap-2">
-        <Button
-          variant="pink"
-          className="flex items-center justify-center gap-1.5"
-          onClick={() => {
-            setOrigin({ name: place.name, address: place.address ?? undefined, lat: place.latitude, lng: place.longitude })
-            navigate('/condition')
-          }}
-        >
-          여기서 출발해 코스 추천받기
-          <Icon name="chevronRight" className="size-5" strokeWidth={2.8} />
-        </Button>
+      <div ref={actionsRef}>
+        {place.address && (
+          <p className="flex items-start gap-2 px-1 text-sm text-neutral-700">
+            <Icon name="location" className="mt-0.5 size-4 text-primary-dark" />
+            {place.address}
+          </p>
+        )}
       </div>
-      {imageUrl && (
-        <figure>
-          <img src={imageUrl} alt={`${place.name} 사진`} className="aspect-video w-full rounded-2xl object-cover" />
-          {detail?.imageUrl && <figcaption className="mt-1 text-xs text-neutral-500">출처: 한국관광공사{detail.imageCopyrightType && ` · ${detail.imageCopyrightType}`}</figcaption>}
-        </figure>
-      )}
-      {openingHours && <p className="whitespace-pre-line px-1 text-sm">운영시간 · {openingHours}</p>}
-      {detail?.restDate && <p className="px-1 text-sm">쉬는 날 · {detail.restDate}</p>}
-      {error && <p role="alert" className="px-1 text-xs text-red-600">{error}</p>}
-      <p ref={descriptionRef} className="whitespace-pre-line px-1 text-sm leading-relaxed text-neutral-600">
-        {description ?? (loading ? '장소 소개를 불러오는 중이에요.' : '등록된 장소 소개가 없어요.')}
-      </p>
+
       <KakaoPlaceSheet
         kakaoPlaceId={place.kakaoPlaceId || undefined}
         placeName={place.name}
-        initialTopRef={descriptionRef}
+        initialTopRef={actionsRef}
       >
         <div className="space-y-3 p-4 text-sm">
           <p className="font-bold">{place.name}</p>
           <p>{place.address}</p>
-          <p className="whitespace-pre-line">{description ?? '등록된 장소 소개가 없어요.'}</p>
-          {openingHours && <p>{openingHours}</p>}
         </div>
       </KakaoPlaceSheet>
     </div>

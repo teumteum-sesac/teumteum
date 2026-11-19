@@ -24,6 +24,7 @@ export function toSavedCourse(response: CourseResponse): Course {
     estimated: response.estimated,
     places: response.places.map((place) => ({
       placeId: place.placeId,
+      kakaoPlaceId: place.kakaoPlaceId ?? undefined,
       name: place.placeName,
       category: place.category,
       subCategory: place.subCategory,

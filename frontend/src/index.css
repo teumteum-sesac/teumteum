@@ -196,3 +196,29 @@
   60% { transform: scale(1.08); }
   100% { transform: scale(1); }
 }
+
+/* 불러오는 중 자리표시(스켈레톤): 빛이 왼쪽에서 오른쪽으로 지나가는 효과 (구글 로딩처럼).
+   회색 덩어리에 skeleton-shimmer 를 붙이면 된다. 움직임 줄이기 설정이면 멈춘 회색만 보인다 */
+@utility skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #efe7d6;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    animation: skeleton-shimmer 1.3s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      animation: none;
+    }
+  }
+}
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

@@ -1,23 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
-import { PAPER_STYLE, type StickerKey } from '../../../shared/assets/stickerAssets'
+import { useNavigate } from 'react-router'
+import { PAPER_STYLE } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
 import Icon from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
 import BottomNav from '../../../shared/layout/BottomNav'
-import { DEFAULT_POSITION, type CategoryCode, type LatLng } from '../../../shared/types/domain'
+import { CATEGORIES, DEFAULT_POSITION, type CategoryCode, type LatLng } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
 import { requestCurrentPosition, useCurrentPosition } from '../hooks/useCurrentPosition'
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces'
 import { MAP_BOTTOM_CLASS, type SheetLevel } from '../sheetLayout'
 import NoticeBanner from '../../admin/components/NoticeBanner'
 import HomeSearchBar from './HomeSearchBar'
-import KakaoMap, { type ClusterMarker, type KakaoMapController, type MapMarker, type MapPadding } from './KakaoMap'
+import KakaoMap, { CLUSTER_MIN_LEVEL, type ClusterMarker, type KakaoMapController, type MapMarker, type MapPadding } from './KakaoMap'
 import LocationGuide from './LocationGuide'
 import MapControls, { LocateButton, MAP_CONTROLS_HEIGHT, type LocateStatus } from './MapControls'
 import NearbySheet, { type NearbySearchView } from './NearbySheet'
 import type { NearbyPlaceResult } from '../types'
-import { straightDistance } from '../format'
+import type { PlaceSearchResult } from '../../condition/types'
+import { formatDistance, formatDistanceForRadius, straightDistance } from '../format'
 import { useNearbySearch, type NearbySearchItem } from '../hooks/useNearbySearch'
 
 /** 주변 탐색 진입 시 이 시간(ms) 안에 받은 현재 위치는 다시 쓴다 */
@@ -56,17 +57,6 @@ interface HomeLayout {
   height: number
 }
 
-/** 홈 하단 패널의 바로가기 카드 (목업: 스티커 + 짧은 라벨) */
-function QuickLink({ to, sticker, label }: { to: string; sticker: StickerKey; label: string }) {
-  return (
-    <Link to={to} className="paper-card flex items-center gap-2 px-3 py-2.5 active:translate-y-0.5">
-      <StickerImage name={sticker} className="size-8" />
-      <span className="flex-1 text-[13px] font-bold">{label}</span>
-      <Icon name="chevronRight" className="size-4 text-neutral-400" />
-    </Link>
-  )
-}
-
 interface HomeScreenProps {
   /** true면 주변 장소 탐색 시트(HOM-02)를 연다 */
   nearby?: boolean
@@ -89,6 +79,8 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   const [radius, setRadius] = useState(1000)
   // 주변 탐색(HOM-02) 대분류 필터. null = 전체. 지도 마커와 시트 목록이 같은 값을 쓴다
   const [category, setCategory] = useState<CategoryCode | null>(null)
+  // 세분류 필터 (추천 결과 RES-01 과 같은 두 단계). null = 고른 대분류 전체. 대분류를 고른 뒤에만 쓴다
+  const [subCategory, setSubCategory] = useState<string | null>(null)
   // 주변 탐색에서 지도 마커로 고른 장소. 시트에서 해당 카드를 강조한다
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null)
   // 마커를 누를 때마다 1씩 늘린다. 같은 마커를 다시 눌러도 시트가 해당 카드로 다시 스크롤하게 한다
@@ -106,9 +98,22 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   // 홈(HOM-01)에서는 부르지 않는다
   const nearbyPlaces = useNearbyPlaces(position, radius, nearby && !loading && !searching)
   // 서버에서는 대분류 8개 전체를 받고, 카테고리 칩은 화면에서 거른다 (칩을 바꿀 때 다시 요청하지 않음)
-  const places = useMemo(
+  const categoryPlaces = useMemo(
     () => nearbyPlaces.places.filter((p) => category === null || p.category === category),
     [nearbyPlaces.places, category],
+  )
+  // 고른 대분류의 세분류 칩: 지금 반경 안에 실제로 있는 세분류만, 공통 목록(CATEGORIES) 순서로 보여 준다
+  const subCategories = useMemo(() => {
+    if (category === null) return []
+    const present = new Set(categoryPlaces.map((p) => p.subCategory))
+    const order = CATEGORIES.find((c) => c.code === category)?.subCategories ?? []
+    return [...order.filter((name) => present.has(name)), ...[...present].filter((name) => !order.includes(name))]
+  }, [category, categoryPlaces])
+  // 반경을 바꿔 고른 세분류가 사라지면 대분류 전체로 본다
+  const activeSubCategory = subCategory !== null && subCategories.includes(subCategory) ? subCategory : null
+  const places = useMemo(
+    () => (activeSubCategory === null ? categoryPlaces : categoryPlaces.filter((p) => p.subCategory === activeSubCategory)),
+    [categoryPlaces, activeSubCategory],
   )
   // 검색 결과에서 고른 장소 id (주변 장소 선택과 따로 둔다)
   const [searchSelectedId, setSearchSelectedId] = useState<string | null>(null)
@@ -150,6 +155,8 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
           id: i.id,
           lat: i.lat,
           lng: i.lng,
+          title: i.name,
+          subtitle: [i.categoryLabel, `직선 ${formatDistanceForRadius(i.distance)}`].filter(Boolean).join(' · '),
           dimmed: !i.inRadius,
           onClick: () => {
             setSearchSelectedId(i.id)
@@ -164,6 +171,8 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
         id: p.kakaoPlaceId,
         lat: p.latitude,
         lng: p.longitude,
+        title: p.name,
+        subtitle: [p.subCategory, p.distance !== null ? formatDistance(p.distance) : null].filter(Boolean).join(' · '),
         onClick: () => {
           setSelectedPlaceId(p.kakaoPlaceId)
           setScrollRequest((n) => n + 1)
@@ -193,6 +202,17 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   // 탐색 반경 원: 실제 주변 장소 조회 기준 좌표(position)가 중심. 지도를 끌어도 기준은 바뀌지 않는다
   const circle = useMemo(() => (nearby && !loading ? { center: position, radius } : null), [nearby, loading, position, radius])
 
+  // 주변 탐색 지도를 축소하면 고른 장소 핀을 지운다 (핀이 묶음에서 빠져 혼자 덩그러니 남지 않게, 다시 묶음 안으로)
+  const nearbyLevelRef = useRef<number | null>(null)
+  const onNearbyLevelChange = useCallback((level: number) => {
+    const prev = nearbyLevelRef.current
+    nearbyLevelRef.current = level
+    if (prev !== null && level > prev) {
+      setSelectedPlaceId(null)
+      setSearchSelectedId(null)
+    }
+  }, [])
+
   // 반경·대분류를 바꾸면 목록이 달라지므로 이전 선택은 해제한다
   const changeRadius = (next: number) => {
     setRadius(next)
@@ -200,6 +220,12 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
   }
   const changeCategory = (next: CategoryCode | null) => {
     setCategory(next)
+    setSubCategory(null) // 대분류를 바꾸면 세분류 선택은 풀린다
+    setSelectedPlaceId(null)
+  }
+  // 같은 세분류를 다시 누르면 선택을 푼다 (대분류 전체)
+  const toggleSubCategory = (name: string) => {
+    setSubCategory((current) => (current === name ? null : name))
     setSelectedPlaceId(null)
   }
 
@@ -306,6 +332,17 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
     },
     [runSearch],
   )
+  // 검색창 추천 목록에서 하나 고르기: 그 검색어로 시트 검색 결과를 띄우고, 고른 장소를 바로 강조·지도 이동한다.
+  // id 는 searchItems 와 같은 규칙(장소 ID, 주소면 좌표)으로 만들어, 시트 결과가 도착하면 같은 카드가 강조된다
+  const pickSuggestion = useCallback(
+    (query: string, result: PlaceSearchResult) => {
+      submitSearch(query)
+      setSearchSelectedId(result.kakaoPlaceId ?? `addr-${result.latitude},${result.longitude}`)
+      setScrollRequest((n) => n + 1)
+      panNearbyTo({ lat: result.latitude, lng: result.longitude })
+    },
+    [submitSearch, panNearbyTo],
+  )
   // 검색어 지우기: 검색 전 주변 탐색으로 (반경·카테고리·주변 장소 선택은 그대로, 주변 장소는 다시 부르지 않음)
   const clearSearch = useCallback(() => {
     setSearchSelectedId(null)
@@ -398,6 +435,10 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
               level={HOME_LEVEL}
               clusterMarkers={clusterMarkers}
               circle={circle}
+              // 묶음이 풀리는 레벨(CLUSTER_MIN_LEVEL)보다 더 확대하지 못하게 막는다 (그 아래는 지도가 깨져 보였다).
+              // 이 레벨에서는 숫자 원을 누르면 개수와 상관없이 가게 목록이 뜬다
+              minLevel={CLUSTER_MIN_LEVEL}
+              onLevelChange={onNearbyLevelChange}
               onReady={setController}
               className="size-full"
             />
@@ -420,7 +461,7 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
         <div ref={topOverlayRef} className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 p-4">
           {nearby ? (
             // 주변 탐색: 결과는 이 화면 바텀시트에 보여 주고 다른 화면으로 가지 않는다
-            <HomeSearchBar center={position} onSubmitQuery={submitSearch} onClearQuery={clearSearch} />
+            <HomeSearchBar center={position} onSubmitQuery={submitSearch} onPickSuggestion={pickSuggestion} onClearQuery={clearSearch} />
           ) : (
             <HomeSearchBar center={loading || denied ? null : position} />
           )}
@@ -476,6 +517,9 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             onRadiusChange={changeRadius}
             category={category}
             onCategoryChange={changeCategory}
+            subCategories={subCategories}
+            subCategory={activeSubCategory}
+            onSubCategoryToggle={toggleSubCategory}
             places={places}
             status={nearbyPlaces.status}
             errorMessage={nearbyPlaces.errorMessage}
@@ -489,35 +533,18 @@ export default function HomeScreen({ nearby = false }: HomeScreenProps) {
             search={searchView}
           />
         ) : (
-          // 홈 하단 패널 (목업 HOM-01): 찢은 종이 위에 헤드라인 + 듀오 장면 + 노란 추천 버튼 + 바로가기 카드
+          // 홈 하단 패널 (HOM-01): 찢은 종이 위에 듀오 로고 + 노란 추천 버튼만 둔다.
+          // 헤드라인·설명 문구와 바로가기 카드(주변 장소·저장한 코스)는 뺐다 — 바로가기는 하단바와 같은 메뉴라 겹친다
           // 그림자는 바깥 div, 물결 자르기는 안쪽 div (같은 요소에 주면 그림자가 잘린다)
           <div ref={panelRef} className="absolute inset-x-0 bottom-0 z-10 drop-shadow-[0_-4px_10px_rgba(32,32,32,0.12)]">
-            <div className="torn-top bg-cream px-5 pt-6 pb-4" style={PAPER_STYLE}>
-              <div className="flex items-end">
-                <div className="min-w-0 flex-1 pb-1">
-                  <h2 className="font-display text-[26px] leading-[1.2]">
-                    지금,
-                    <br />
-                    <span className="marker-pink">몇 시간</span> 비었나요?
-                  </h2>
-                  <p className="mt-2 text-[13px] leading-snug text-neutral-600">
-                    남은 시간과 취향에 맞춰
-                    <br />
-                    가볍게 다녀올 코스를 추천해 드려요
-                  </p>
-                </div>
-                <StickerImage name="sceneHome" className="-mr-3 w-40 shrink-0" ratio="aspect-[3/2]" />
-              </div>
+            <div className="torn-top bg-cream px-5 pt-5 pb-4" style={PAPER_STYLE}>
+              {/* 로고 비율(약 20:9)을 ratio 로 맞춰 두면 이미지가 늦게 떠도 패널 높이가 바뀌지 않는다 (지도 컨트롤 위치가 패널 윗변 기준) */}
+              <StickerImage name="brandLogoDuo" alt="틈틈" className="mx-auto w-64" ratio="aspect-[20/9]" />
 
               <Button className="mt-3 flex items-center justify-center gap-1" onClick={startRecommend}>
-                외출 코스 추천하기
+                외출 코스 추천받기
                 <Icon name="chevronRight" className="size-5" strokeWidth={2.8} />
               </Button>
-
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <QuickLink to="/nearby" sticker="navNearby" label="주변 장소 둘러보기" />
-                <QuickLink to="/mypage/courses" sticker="navSaved" label="저장한 코스 보기" />
-              </div>
             </div>
           </div>
         )}

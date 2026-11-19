@@ -1,15 +1,12 @@
 import type { CategoryCode } from '../../shared/types/domain'
 
-/** GET /api/places/detail 응답. */
-export interface PlaceDetailResponse {
-  kakaoPlaceId: string
-  tourInfoAvailable: boolean
-  imageUrl: string | null
-  imageCopyrightType: string | null
-  overview: string | null
-  openingHours: string | null
-  restDate: string | null
-  kakaoMapUrl: string
+/** GET /api/routes/walk 응답. 백엔드 recommend/dto/WalkRouteResponse 와 같은 이름 */
+export interface WalkRouteResponse {
+  /** 도보 시간(분) */
+  travelMinutes: number
+  /** true 면 경로 API 실패로 직선거리 추정 (path 는 출발·도착 두 점) */
+  estimated: boolean
+  path: { latitude: number; longitude: number }[]
 }
 
 // ── 주변 장소 API 응답 (HOM-02) ──
@@ -61,8 +58,8 @@ export interface KakaoMapInstance {
   /** 지도 중심을 화면 픽셀만큼 부드럽게 옮긴다 (dx > 0 이면 오른쪽, dy > 0 이면 아래쪽을 더 보여 줌) */
   panBy(dx: number, dy: number): void
   getLevel(): number
-  /** animate: true 면 확대·축소를 애니메이션으로 한다 (기준은 지도 중심) */
-  setLevel(level: number, options?: { animate?: boolean }): void
+  /** animate: true 면 확대·축소를 애니메이션으로 한다. anchor 를 주면 그 좌표를 기준으로 확대한다 (없으면 지도 중심) */
+  setLevel(level: number, options?: { animate?: boolean; anchor?: KakaoLatLng }): void
   /** 확대할 수 있는 가장 작은 레벨 (SDK 버전에 따라 없을 수 있어 선택) */
   setMinLevel?(level: number): void
   /** 축소할 수 있는 가장 큰 레벨 (SDK 버전에 따라 없을 수 있어 선택) */
@@ -103,6 +100,12 @@ export interface KakaoCircle extends KakaoOverlay {
 /** 클러스터 하나 (숫자 원). 숫자 원은 CustomOverlay 라 겹침 순서를 바꿀 수 있다 */
 export interface KakaoCluster {
   getClusterMarker(): KakaoCustomOverlay
+  /** 묶인 마커들 */
+  getMarkers(): KakaoMarker[]
+  /** 묶인 마커 수 */
+  getSize(): number
+  /** 숫자 원 위치 */
+  getCenter(): KakaoLatLng
 }
 
 /** 마커 클러스터러 (SDK libraries=clusterer). 가까운 마커를 숫자 원으로 묶고 확대하면 풀어 준다 */
@@ -183,6 +186,8 @@ export interface KakaoMapsApi {
     removeListener(target: KakaoOverlay, type: 'click', handler: () => void): void
     /** 클러스터를 다시 계산해 그린 뒤 (clusters: 지금 지도에 그려진 클러스터들) */
     addListener(target: KakaoMarkerClusterer, type: 'clustered', handler: (clusters: KakaoCluster[]) => void): void
+    /** 숫자 원을 눌렀을 때 (disableClickZoom 이면 확대하지 않고 이 이벤트만 온다) */
+    addListener(target: KakaoMarkerClusterer, type: 'clusterclick', handler: (cluster: KakaoCluster) => void): void
     addListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed', handler: () => void): void
     removeListener(target: KakaoMapInstance, type: 'idle' | 'click' | 'zoom_changed', handler: () => void): void
   }
