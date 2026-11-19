@@ -1,5 +1,17 @@
 import type { CategoryCode } from '../../shared/types/domain'
 
+/** GET /api/places/detail 응답. */
+export interface PlaceDetailResponse {
+  kakaoPlaceId: string
+  tourInfoAvailable: boolean
+  imageUrl: string | null
+  imageCopyrightType: string | null
+  overview: string | null
+  openingHours: string | null
+  restDate: string | null
+  kakaoMapUrl: string
+}
+
 // ── 주변 장소 API 응답 (HOM-02) ──
 
 /**
