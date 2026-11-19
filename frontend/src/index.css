@@ -98,6 +98,93 @@
   body {
     @apply bg-paper font-sans text-ink;
   }
+
+  /*
+   * 스크롤바 숨기기 (사이트 전체). 스크롤은 그대로 되고 막대만 안 보인다.
+   * 이유: PC 에서 세로 스크롤바가 생겼다 사라질 때마다 화면 너비가 바뀌어 가운데 정렬된 화면이 좌우로 밀렸다.
+   * 모바일 우선 화면이라 휴대폰처럼 스크롤바 없이 보이게 한다 (터치·휠·키보드 스크롤은 그대로)
+   */
+  * {
+    scrollbar-width: none; /* Firefox, 최신 Chrome·Edge */
+  }
+  *::-webkit-scrollbar {
+    display: none; /* Safari, 예전 Chrome */
+  }
+}
+
+/*
+ * 토끼·거북이 달리기 로딩 바 (스플래시·공통 로딩 화면)
+ *   토끼: 깡충깡충 앞서 달림(0~22%) → 쉬면서 졸기(22~62%) → 거북이가 다가오면 다시 달려 결승(62~88%)
+ *   거북이: 처음부터 끝까지 같은 속도로 뒤뚱뒤뚱. 채워지는 바도 거북이를 따라간다
+ * 컴포넌트: shared/components/RaceLoadingBar.tsx (스플래시·공통 로딩 화면). 한 판 길이(RACE_MS)·반복 여부는 그 파일에서 넣는다
+ */
+.splash-rabbit {
+  animation-name: splash-rabbit-run;
+  animation-fill-mode: both;
+}
+/* 위치는 left 대신 transform 으로 움직인다 (몸통의 transform 애니메이션과 같은 합성 단계라 끊기거나 사라지지 않는다)
+   달리기 줄(.splash-rabbit)이 바 전체 너비라서 translateX(66%) = 바의 66% 지점 */
+@keyframes splash-rabbit-run {
+  0% { transform: translateX(0%); }
+  22% { transform: translateX(66%); animation-timing-function: linear; }
+  62% { transform: translateX(66%); animation-timing-function: ease-in; }
+  88%, 100% { transform: translateX(100%); }
+}
+.splash-rabbit-body {
+  animation-name: splash-rabbit-hop;
+  animation-fill-mode: both;
+}
+@keyframes splash-rabbit-hop {
+  0%, 5.5%, 11%, 16.5% { transform: translateY(0) rotate(0); }
+  2.75%, 8.25%, 13.75%, 19.25% { transform: translateY(-9px) rotate(-6deg); }
+  /* 쉬는 중: 옆으로 기울어져 숨쉬기 */
+  24% { transform: translateY(3px) rotate(-18deg); }
+  38% { transform: translateY(3px) rotate(-18deg) scale(1.04); }
+  50% { transform: translateY(3px) rotate(-18deg); }
+  60% { transform: translateY(3px) rotate(-18deg) scale(1.04); }
+  /* 거북이가 가까이 오면 깨서 다시 달리기 */
+  64%, 70%, 76%, 82%, 88%, 100% { transform: translateY(0) rotate(0); }
+  67%, 73%, 79%, 85% { transform: translateY(-9px) rotate(-6deg); }
+}
+.splash-zzz {
+  animation-name: splash-zzz;
+  animation-fill-mode: both;
+}
+@keyframes splash-zzz {
+  0%, 26% { opacity: 0; transform: translate(0, 4px); }
+  32%, 56% { opacity: 1; transform: translate(4px, -6px); }
+  62%, 100% { opacity: 0; transform: translate(8px, -12px); }
+}
+.splash-turtle {
+  animation-name: splash-turtle-walk;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+.splash-fill {
+  animation-name: splash-fill;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+@keyframes splash-turtle-walk {
+  from { transform: translateX(0%); }
+  to { transform: translateX(94%); }
+}
+@keyframes splash-fill {
+  from { width: 0%; }
+  to { width: 94%; }
+}
+.splash-turtle-body {
+  animation: splash-waddle 0.32s ease-in-out infinite alternate;
+}
+@keyframes splash-waddle {
+  from { transform: rotate(-7deg); }
+  to { transform: rotate(7deg) translateY(-2px); }
+}
+/* 움직임 줄이기 설정을 켠 사용자: 달리기 없이 바만 채운다 */
+@media (prefers-reduced-motion: reduce) {
+  .splash-rabbit, .splash-rabbit-body, .splash-zzz, .splash-turtle, .splash-turtle-body {
+    animation: none;
+  }
 }
 
 /*
