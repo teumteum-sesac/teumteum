@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { ApiError, DEFAULT_ERROR_MESSAGE } from "../../../shared/api/apiError";
-import {getAddress, searchPlaces, toLocationValue} from "../api/conditionApi";
+import { searchPlaces, toCurrentLocation, toLocationValue } from "../api/conditionApi";
 import Icon from '../../../shared/components/Icon'
 import { DEFAULT_POSITION, type LocationValue } from '../../../shared/types/domain'
 import MapCenterPicker from '../../map/components/MapCenterPicker'
@@ -44,7 +44,7 @@ export default function LocationSearch({ type }: LocationSearchProps) {
   const destination = useConditionStore((s) => s.destination)
   const setOrigin = useConditionStore((s) => s.setOrigin)
   const setDestination = useConditionStore((s) => s.setDestination)
-  const { recent, add: addRecent } = useRecentLocationStore()
+  const { recent, add: addRecent, remove: removeRecent } = useRecentLocationStore()
   const [keyword, setKeyword] = useState('')
   const [search, setSearch] = useState<SearchState>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -102,19 +102,10 @@ export default function LocationSearch({ type }: LocationSearchProps) {
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
         async (pos) => {
-          const { latitude: lat, longitude: lng } = pos.coords
-          // 주소를 못 찾거나 조회에 실패해도 좌표는 쓸 수 있으므로 "현재 위치"로 진행한다
-          let name = '현재 위치'
-          let address: string | undefined
-          try {
-            const result = await getAddress(lat, lng)
-            name = result.displayName ?? name
-            address = result.roadAddress ?? result.jibunAddress ?? undefined
-          } catch {
-            // 주소 표시만 못 할 뿐 위치 선택은 계속한다
-          }
+          // 그 자리 건물·주소를 이름으로 (입력란에 '현재 위치 : 이름'). 주소를 못 찾아도 '현재 위치'로 진행
+          const location = await toCurrentLocation(pos.coords.latitude, pos.coords.longitude)
           setLocating(false)
-          select({ name, address: address !== name ? address : undefined, lat, lng }, false)
+          select(location, false)
         },
         () => {
           setLocating(false)
@@ -155,25 +146,12 @@ export default function LocationSearch({ type }: LocationSearchProps) {
             </button>
           {message && <p className="text-sm text-red-500">{message}</p>}
 
-          {type === 'destination' && (
-            <button
-              type="button"
-              onClick={() => {
-                setDestination(null)
-                navigate(-1)
-              }}
-              className="px-1 text-left text-sm text-neutral-500 underline decoration-line decoration-2 underline-offset-4"
-            >
-              도착지 입력 안 함
-            </button>
-          )}
-
           <section>
             <h2 className="mb-2 px-1 font-display text-base">최근 검색</h2>
             {recent.length === 0 ? (
               <p className="px-1 text-sm text-neutral-400">최근 검색한 위치가 없습니다.</p>
             ) : (
-              <LocationList locations={recent} onSelect={select} />
+              <LocationList locations={recent} onSelect={select} onRemove={removeRecent} />
             )}
           </section>
 
@@ -212,18 +190,37 @@ function SearchResult({ search, keyword, onSelect}: SearchResultProps) {
   return <LocationList locations={search.locations} onSelect={onSelect} />
 }
 
-function LocationList({ locations, onSelect }: { locations: LocationValue[]; onSelect: (location: LocationValue) => void }) {
+/** onRemove 를 주면 줄 오른쪽 끝에 x (최근 검색 삭제) */
+function LocationList({
+  locations,
+  onSelect,
+  onRemove,
+}: {
+  locations: LocationValue[]
+  onSelect: (location: LocationValue) => void
+  onRemove?: (location: LocationValue) => void
+}) {
   return (
     <ul className="paper-card flex flex-col px-3.5">
       {locations.map((location) => (
-        <li key={`${location.name}-${location.lat}-${location.lng}`} className="border-b border-dashed border-line last:border-0">
-          <button type="button" onClick={() => onSelect(location)} className="flex w-full items-center gap-3 py-3 text-left">
-            <Icon name="location" className="size-4 text-primary-dark" />
+        <li key={`${location.name}-${location.lat}-${location.lng}`} className="flex items-center border-b border-dashed border-line last:border-0">
+          <button type="button" onClick={() => onSelect(location)} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left">
+            <Icon name="location" className="size-4 shrink-0 text-primary-dark" />
             <span className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold">{location.name}</p>
               {location.address && <p className="truncate text-xs text-neutral-500">{location.address}</p>}
             </span>
           </button>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={() => onRemove(location)}
+              aria-label={`최근 검색에서 ${location.name} 삭제`}
+              className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-full text-neutral-400 active:bg-paper active:text-ink"
+            >
+              <Icon name="close" className="size-4" strokeWidth={2.6} />
+            </button>
+          )}
         </li>
       ))}
     </ul>

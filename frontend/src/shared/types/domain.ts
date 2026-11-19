@@ -75,6 +75,17 @@ export interface LatLng {
 export interface LocationValue extends LatLng {
   name: string
   address?: string
+  /** 현재 위치로 고른 곳이면 true. 입력란에 '현재 위치 : {name}' 으로 보인다 (CON-01) */
+  current?: boolean
+}
+
+/** 현재 위치 주소를 못 찾았을 때 쓰는 이름 */
+export const CURRENT_LOCATION_NAME = '현재 위치'
+
+/** 입력란에 보일 위치 이름. 현재 위치면 '현재 위치 : 건물·주소' (주소를 못 찾았으면 '현재 위치') */
+export function formatLocationLabel(location: LocationValue): string {
+  if (!location.current || location.name === CURRENT_LOCATION_NAME) return location.name
+  return `${CURRENT_LOCATION_NAME} : ${location.name}`
 }
 
 /** 위치 권한 거부 시 기본 위치 (서울시청) */

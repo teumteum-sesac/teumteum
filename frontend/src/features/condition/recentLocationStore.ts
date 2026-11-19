@@ -8,6 +8,8 @@ const MAX_RECENT = 5
 interface RecentLocationState {
   recent: LocationValue[]
   add: (location: LocationValue) => void
+  /** 최근 검색 한 줄 삭제 (CON-02 오른쪽 x). add 와 같은 기준(이름)으로 찾는다 */
+  remove: (location: LocationValue) => void
 }
 
 /**
@@ -21,6 +23,7 @@ export const useRecentLocationStore = create<RecentLocationState>()(
         set((state) => ({
           recent: [location, ...state.recent.filter((r) => r.name !== location.name)].slice(0, MAX_RECENT),
         })),
+      remove: (location) => set((state) => ({ recent: state.recent.filter((r) => r.name !== location.name) })),
     }),
     { name: 'teumteum-recent-locations', storage: createJSONStorage(() => localStorage) },
   ),

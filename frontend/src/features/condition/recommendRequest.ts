@@ -64,13 +64,14 @@ function toLocationRequest(location: LocationValue): LocationRequest {
 
 /**
  * 지금 조건으로 추천을 요청할 수 있는지. [추천받기] 버튼 활성 조건과 같다.
- * - 출발지 필수 (REQ-007)
+ * - 출발지·도착지 필수 (REQ-007. 둘 다 기본값은 현재 위치)
  * - 이용 시간 30분 ~ 6시간 (0분이면 비활성, REQ-008)
  * - 시작 시각 30분 단위
  */
-export function canRequestRecommend(values: Pick<ConditionValues, 'origin' | 'availableMinutes' | 'startTime'>): boolean {
+export function canRequestRecommend(values: Pick<ConditionValues, 'origin' | 'destination' | 'availableMinutes' | 'startTime'>): boolean {
   return (
     values.origin !== null &&
+    values.destination !== null &&
     values.availableMinutes >= MIN_AVAILABLE_MINUTES &&
     values.availableMinutes <= MAX_AVAILABLE_MINUTES &&
     START_TIME_PATTERN.test(values.startTime)
