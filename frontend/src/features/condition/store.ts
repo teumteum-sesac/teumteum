@@ -15,6 +15,7 @@ interface ConditionState {
   /** 이용 가능 시간(분). 종료 시각 = 시작 시각 + 이 값 */
   availableMinutes: number
   transportType: TransportType
+  /** 고른 대분류가 있으면 DIRECT, 없으면 RANDOM (categories 와 항상 함께 바뀐다) */
   categoryMode: CategoryMode
   /** 직접 선택한 대분류. 비어 있으면 랜덤으로 진행 */
   categories: CategoryCode[]
@@ -33,9 +34,9 @@ const initialState = () => ({
   origin: null,
   destination: null,
   startTime: nowRoundedTime(),
-  availableMinutes: 120,
+  availableMinutes: 60,
   transportType: 'TRANSIT' as TransportType,
-  categoryMode: 'DIRECT' as CategoryMode,
+  categoryMode: 'RANDOM' as CategoryMode,
   categories: [] as CategoryCode[],
 })
 
@@ -46,13 +47,16 @@ export const useConditionStore = create<ConditionState>((set) => ({
   setStartTime: (startTime) => set({ startTime }),
   setAvailableMinutes: (availableMinutes) => set({ availableMinutes }),
   setTransportType: (transportType) => set({ transportType }),
-  setCategoryMode: (categoryMode) => set({ categoryMode }),
+  // 랜덤 추천을 누르면 고른 카테고리를 모두 푼다. 직접 선택은 카테고리를 1개 이상 골라야 켜진다 (CategorySelector)
+  setCategoryMode: (categoryMode) => set(categoryMode === 'RANDOM' ? { categoryMode, categories: [] } : { categoryMode }),
+  // 카테고리를 고르면 직접 선택, 전부 풀면 랜덤 추천으로 바뀐다
   toggleCategory: (category) =>
-    set((state) => ({
-      categories: state.categories.includes(category)
+    set((state) => {
+      const categories = state.categories.includes(category)
         ? state.categories.filter((c) => c !== category)
-        : [...state.categories, category],
-    })),
+        : [...state.categories, category]
+      return { categories, categoryMode: categories.length > 0 ? 'DIRECT' : 'RANDOM' }
+    }),
   reset: () => set(initialState()),
 }))
 
