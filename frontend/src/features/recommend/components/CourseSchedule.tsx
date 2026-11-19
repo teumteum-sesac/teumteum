@@ -1,13 +1,12 @@
-import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { TRANSPORT_STICKER } from '../../../shared/assets/stickerAssets'
 import Icon, { type IconName } from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
-import KakaoPlaceSheet from '../../../shared/components/KakaoPlaceSheet'
 import { getCategoryLabel } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
 import { buildSchedule, getLegMode, parseTransitInfo, type Course, type CoursePlace } from '../types'
-import KakaoMap from '../../map/components/KakaoMap'
 import PlaceThumbnail from './PlaceThumbnail'
+import CourseDirectionsSidebar from './CourseDirectionsSidebar'
 
 interface CourseScheduleProps {
   course: Course
@@ -17,29 +16,39 @@ interface CourseScheduleProps {
 
 /**
  * 코스 일정: 출발지 → 장소(방문 순서) → 도착지 (DET-01 ②, MY-03)
- * 장소마다 방문 시각·체류시간·주소·운영시간을 보여주고, 누르면 사진·소개를 펼친다.
- * 장소를 누르면 위치 지도·사진·소개를 펼친다. 카카오맵 상세 정보는 크기 조절 가능한 하단 시트에서 본다.
+ * 장소마다 방문 시각·체류시간·주소·운영시간을 보여주고, 누르면 장소 상세로 이동한다.
+ * 차량·도보는 사이드바에서 전체 코스 길찾기를 본다. 대중교통은 사이드바를 표시하지 않는다.
  * 디자인 (목업 코스 타임라인): 왼쪽 핑크 점선 위에 출발(핀)·번호 원·도착(깃발), 구간마다 이동수단 스티커 알약
  */
 export default function CourseSchedule({ course, onReplace }: CourseScheduleProps) {
-  const [openPlaceId, setOpenPlaceId] = useState<string | null>(null)
-  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null)
-  const selectedPlace = course.places.find((place) => place.placeId === selectedPlaceId) ?? course.places[0]
+  const navigate = useNavigate()
 
-  function togglePlace(place: CoursePlace) {
-    setSelectedPlaceId(place.placeId)
-    setOpenPlaceId(openPlaceId === place.placeId ? null : place.placeId)
+  function openPlace(place: CoursePlace) {
+    const previewId = place.kakaoPlaceId ?? `saved-${place.placeId}`
+    navigate(`/places/${encodeURIComponent(previewId)}`, { state: { place: {
+      previewId,
+      kakaoPlaceId: place.kakaoPlaceId ?? '',
+      name: place.name,
+      category: place.category,
+      subCategory: place.subCategory,
+      address: place.address,
+      latitude: place.lat,
+      longitude: place.lng,
+      imageUrl: place.imageUrl,
+      description: place.description,
+      openingHours: place.openingHours,
+    } } })
   }
 
   const { rows, endTime } = buildSchedule(course)
 
   return (
     <>
+    {course.transportType !== 'TRANSIT' && <CourseDirectionsSidebar course={course} />}
     <ol className="relative ml-3 flex flex-col gap-3 border-l-2 border-dashed border-primary/50 pl-6">
       <Point icon="location" title={`출발 · ${course.origin.name}`} sub={course.startTime} />
 
       {rows.map(({ place, arrive, leave }) => {
-        const open = openPlaceId === place.placeId
         return (
           <li key={place.placeId} className="relative">
             <Leg course={course} minutes={place.travelMinutes} transitInfo={place.transitInfo} />
@@ -50,9 +59,8 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
               <div className="flex items-start gap-3">
                 <button
                   type="button"
-                  onClick={() => togglePlace(place)}
+                  onClick={() => openPlace(place)}
                   className="flex min-w-0 flex-1 gap-3 text-left"
-                  aria-expanded={open}
                 >
                   <PlaceThumbnail place={place} className="size-14" />
                   <span className="min-w-0 flex-1">
@@ -79,7 +87,7 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
 
               <button
                 type="button"
-                onClick={() => togglePlace(place)}
+                onClick={() => openPlace(place)}
                 className="mt-2 flex w-full items-center justify-between gap-2 text-left text-[11px] text-neutral-500"
               >
                 <span className="truncate">
@@ -87,30 +95,11 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
                   {place.openingHours && ` · ${place.openingHours}`}
                 </span>
                 <span className="flex shrink-0 items-center gap-0.5 font-bold text-primary-dark">
-                  {open ? '접기' : '장소 보기'}
-                  <Icon name="chevronDown" className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+                  장소 상세
+                  <Icon name="chevronRight" className="size-3.5" />
                 </span>
               </button>
 
-              {/* 펼친 내용: 위치·사진·소개. 더 자세한 정보는 하단 시트에서 본다. */}
-              {open && (
-                <div className="mt-3 flex flex-col gap-2 border-t-2 border-dashed border-line pt-3 text-xs text-neutral-600">
-                  {place.imageUrl && <PlaceThumbnail place={place} className="aspect-video w-full" />}
-                  <div className="overflow-hidden rounded-xl border-2 border-line">
-                    <KakaoMap
-                      center={{ lat: place.lat, lng: place.lng }}
-                      level={3}
-                      markers={[{ lat: place.lat, lng: place.lng, label: String(place.visitOrder), title: place.name }]}
-                      className="h-40 w-full"
-                    />
-                  </div>
-                  {place.description ? (
-                    <p className="leading-relaxed">{place.description}</p>
-                  ) : (
-                    <p className="text-neutral-400">사진·소개는 장소 상세 정보가 준비되면 함께 보여 드려요.</p>
-                  )}
-                </div>
-              )}
             </div>
           </li>
         )
@@ -125,25 +114,6 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
         <Point icon="flag" title="코스 종료" sub={`${endTime} · 총 ${formatMinutes(course.totalMinutes)}`} />
       )}
     </ol>
-    {selectedPlace && (
-      <KakaoPlaceSheet key={selectedPlace.placeId} kakaoPlaceId={selectedPlace.kakaoPlaceId} placeName={selectedPlace.name}>
-        <div className="flex flex-col gap-4 p-4 text-sm">
-          {selectedPlace.imageUrl && <PlaceThumbnail place={selectedPlace} className="aspect-video w-full" />}
-          <p>{selectedPlace.address}</p>
-          <p>{selectedPlace.openingHours ?? '운영시간 정보가 없어요.'}</p>
-          {selectedPlace.description && <p className="whitespace-pre-line leading-relaxed">{selectedPlace.description}</p>}
-          <div className="overflow-hidden rounded-xl border-2 border-line">
-            <KakaoMap
-              center={{ lat: selectedPlace.lat, lng: selectedPlace.lng }}
-              level={3}
-              markers={[{ lat: selectedPlace.lat, lng: selectedPlace.lng, title: selectedPlace.name }]}
-              className="h-52 w-full"
-            />
-          </div>
-          <p className="text-xs text-neutral-500">코스를 저장할 당시의 장소 정보예요.</p>
-        </div>
-      </KakaoPlaceSheet>
-    )}
     </>
   )
 }
