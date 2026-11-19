@@ -55,6 +55,11 @@ public class MemberService {
      */
     @Transactional
     public LoginResponse signup(SignupRequest request) {
+        // 탈퇴 회원용 이메일(Member.withdraw)을 미리 선점하면 그 회원의 탈퇴가 UNIQUE 충돌로 막힌다.
+        // MySQL 기본 비교는 대소문자를 구분하지 않으므로 소문자로 바꿔 확인한다.
+        if (request.email().toLowerCase(java.util.Locale.ROOT).endsWith(Member.WITHDRAWN_EMAIL_DOMAIN)) {
+            throw new CustomException(CommonErrorCode.INVALID_REQUEST);
+        }
         if (memberRepository.existsByEmail(request.email())) {
             throw new CustomException(MemberErrorCode.DUPLICATE_EMAIL);
         }
@@ -130,13 +135,6 @@ public class MemberService {
     public boolean isActiveMember(Long memberId) {
         return memberId != null && memberId > 0
                 && findMember(memberId).filter(Member::isActive).isPresent();
-    }
-
-    /** 탈퇴 처리 (상태만 WITHDRAWN 으로). 바뀐 회원을 돌려준다 */
-    @Transactional
-    public Member withdraw(Member member) {
-        member.withdraw();
-        return member;
     }
 
     /** 닉네임·선택적인 새 비밀번호를 수정한다. 이메일은 변경하지 않는다. */

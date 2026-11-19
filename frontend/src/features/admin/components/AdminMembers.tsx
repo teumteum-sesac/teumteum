@@ -155,7 +155,7 @@ export default function AdminMembers() {
         <fieldset disabled={withdrawing} className="contents">
           <ConfirmDialog
             message={`${target.nickname} 님을 탈퇴 처리할까요?`}
-            description={withdrawError ?? '탈퇴하면 이 계정으로 로그인할 수 없어요.'}
+            description={withdrawError ?? '탈퇴하면 이 계정으로 로그인할 수 없고, 저장한 코스도 함께 삭제돼요.'}
             confirmLabel={withdrawing ? '처리 중…' : '탈퇴 처리'}
             onCancel={() => {
               if (!withdrawing) setTarget(null)

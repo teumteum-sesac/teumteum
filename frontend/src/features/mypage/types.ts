@@ -14,7 +14,8 @@ export interface MemberUpdateRequest {
   newPassword?: string
   newPasswordConfirm?: string
 }
-export interface MemberWithdrawRequest { password: string | null; agreed: boolean }
+// 동의 체크(agreed=true)와 현재 비밀번호를 둘 다 보내야 탈퇴된다
+export interface MemberWithdrawRequest { password: string; agreed: boolean }
 export interface MemberWithdrawResponse { withdrawn: boolean }
 
 export interface LatestPlaceResponse {

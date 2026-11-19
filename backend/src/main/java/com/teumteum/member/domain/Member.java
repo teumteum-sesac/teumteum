@@ -117,9 +117,19 @@ public class Member {
         this.passwordHash = passwordHash;
     }
 
-    /** 탈퇴 처리. 행을 지우지 않고 상태만 바꾼다 (AccountStatus.java 설명 참고) */
+    /** 탈퇴 회원의 이메일을 바꿔 둘 때 쓰는 도메인. .invalid 는 실제로 메일이 갈 수 없는 예약 도메인이다 */
+    public static final String WITHDRAWN_EMAIL_DOMAIN = "@teumteum.invalid";
+
+    /**
+     * 탈퇴 처리. 행을 지우지 않고 상태만 바꾼다 (AccountStatus.java 설명 참고).
+     * 이메일은 "withdrawn+{회원번호}@teumteum.invalid" 로 바꾼다.
+     *   - email 은 UNIQUE 라서 그대로 두면 같은 이메일로 다시 가입할 수 없다
+     *   - 탈퇴한 사람의 이메일(개인정보)을 계속 보관하지 않는다
+     *   회원번호는 PK 라서 바꾼 이메일끼리도 겹치지 않는다.
+     */
     public void withdraw() {
         this.accountStatus = AccountStatus.WITHDRAWN;
+        this.email = "withdrawn+" + id + WITHDRAWN_EMAIL_DOMAIN;
     }
 
     /** 정상 회원인지. 로그인할 때 탈퇴한 회원을 걸러내는 데 쓴다 */

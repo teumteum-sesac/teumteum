@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import jakarta.persistence.EntityManager;
 import com.teumteum.member.service.MemberWithdrawalService;
+import com.teumteum.admin.service.AdminMemberService;
 import com.teumteum.member.dto.MemberWithdrawRequest;
 import com.teumteum.global.auth.JwtProvider;
 import com.teumteum.place.service.PlaceLatestService;
@@ -53,6 +54,8 @@ class CourseDeleteTransactionTest {
     @Autowired
     private MemberWithdrawalService withdrawalService;
     @Autowired
+    private AdminMemberService adminMemberService;
+    @Autowired
     private MockMvc mockMvc;
     @Autowired
     private JwtProvider jwtProvider;
@@ -93,7 +96,7 @@ class CourseDeleteTransactionTest {
     void withdrawalHttpRequestRevokesExistingTokenForMemberAndCourseApis() throws Exception {
         String authorization = "Bearer " + jwtProvider.createAccessToken(fixture.memberId());
         mockMvc.perform(delete("/api/members/me").header("Authorization", authorization)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"agreed\":true}"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"" + fixture.password() + "\",\"agreed\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.withdrawn").value(true));
         mockMvc.perform(get("/api/members/me").header("Authorization", authorization))
@@ -110,7 +113,7 @@ class CourseDeleteTransactionTest {
     void withdrawalLeavesAnotherMembersCoursesUntouched() {
         transactionTemplate.executeWithoutResult(status -> {
             Fixture other = createFixture();
-            withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(null, true));
+            withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(fixture.password(), true));
             entityManager.flush();
             assertSavedRowCounts(0L);
             assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM course WHERE course_id = ?",
@@ -128,7 +131,7 @@ class CourseDeleteTransactionTest {
 
     @Test
     void withdrawalRemovesCoursesAndChildrenButKeepsSharedPlace() {
-        withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(null, true));
+        withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(fixture.password(), true));
         transactionTemplate.executeWithoutResult(status -> {
             assertSavedRowCounts(0L);
             assertSharedPlaceExists();
@@ -138,9 +141,23 @@ class CourseDeleteTransactionTest {
     }
 
     @Test
+    void adminForcedWithdrawalAlsoRemovesCoursesAndFreesEmail() {
+        // 예전에는 관리자 강제 탈퇴가 상태만 바꿔서 저장 코스가 DB 에 남았다.
+        adminMemberService.withdraw(-1L, fixture.memberId());
+        transactionTemplate.executeWithoutResult(status -> {
+            assertSavedRowCounts(0L);
+            assertSharedPlaceExists();
+            assertThat(jdbcTemplate.queryForObject("SELECT account_status FROM member WHERE member_id = ?",
+                    String.class, fixture.memberId())).isEqualTo("WITHDRAWN");
+            assertThat(jdbcTemplate.queryForObject("SELECT email FROM member WHERE member_id = ?",
+                    String.class, fixture.memberId())).isEqualTo("withdrawn+" + fixture.memberId() + "@teumteum.invalid");
+        });
+    }
+
+    @Test
     void withdrawalRollsBackStatusAndCourseDeletionTogether() {
         assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {
-            withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(null, true));
+            withdrawalService.withdrawMyAccount(fixture.memberId(), new MemberWithdrawRequest(fixture.password(), true));
             entityManager.flush();
             assertSavedRowCounts(0L);
             assertThat(jdbcTemplate.queryForObject("SELECT account_status FROM member WHERE member_id = ?",
@@ -256,7 +273,8 @@ class CourseDeleteTransactionTest {
     private record Fixture(
             long memberId,
             long placeId,
-            long courseId
+            long courseId,
+            String password
     ) {
     }
 
@@ -345,7 +363,7 @@ class CourseDeleteTransactionTest {
                 courseId
         );
 
-        return new Fixture(memberId, placeId, courseId);
+        return new Fixture(memberId, placeId, courseId, uniqueId);
     }
 
     // 테스트마다 생성한 데이터의 ID를 기억한다.
