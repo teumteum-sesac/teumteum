@@ -11,7 +11,7 @@ interface ConfirmDialogProps {
   onCancel: () => void
 }
 
-/** 페이지 안에서 한 번 더 확인하는 창 (저장 해제·로그아웃 등). 브라우저 confirm 대신 쓴다 */
+/** 페이지 안에서 한 번 더 확인하는 창 (코스 삭제·로그아웃 등). 브라우저 confirm 대신 쓴다 */
 export default function ConfirmDialog({ message, description, confirmLabel = '확인', onConfirm, onCancel }: ConfirmDialogProps) {
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
