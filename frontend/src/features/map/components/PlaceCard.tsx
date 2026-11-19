@@ -76,7 +76,8 @@ export default function PlaceCard({ id, icon, name, meta, badge, selected, onSel
         {selected && detail && (
           <Link
             to={`/places/${encodeURIComponent(detail.kakaoPlaceId)}`}
-            state={{ place: detail }}
+            // 주변 탐색에서 온 상세만 내 위치 → 장소 도보 경로를 그린다 (PlacePreview walkRoute)
+            state={{ place: { ...detail, walkRoute: true } }}
             className="shrink-0 rounded-full bg-primary px-3 py-2 text-xs font-bold text-white active:translate-y-px"
           >
             상세 보기

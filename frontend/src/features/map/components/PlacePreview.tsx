@@ -16,7 +16,7 @@ import MapLocateButton from './MapLocateButton'
 /*
  * [이 파일이 하는 일]
  * 장소 상세 (/places/:placeId). 홈 검색·주변 탐색·코스 일정에서 장소를 누르면 여기로 온다.
- * 목록에서 받은 기본 정보(이름·분류·주소)와 지도만 보여 준다. 지도에는 내 위치 → 가게 도보 경로와 '도보 N분'을 그린다
+ * 목록에서 받은 기본 정보(이름·분류·주소)와 지도만 보여 준다. 지도: 주변 탐색에서 왔으면 내 위치 → 가게 도보 경로와 '도보 N분', 그 밖(홈 검색·코스)에서는 가게 마커만
  *   (GET /api/routes/walk, 추천과 같은 이동시간 계산. 위치를 못 받거나 5km 넘게 멀면 가게 핀만). 사진·소개·영업시간·후기는 아래 카카오맵 시트가 보여 준다
  * (TourAPI 장소 상세는 쓰지 않는다: 일반 가게는 데이터가 거의 없어 '소개 없음'만 나왔다).
  * 카카오 장소 ID가 없으면(저장 코스의 예전 데이터 등) 시트에 이름·주소만 보여 준다.
@@ -39,6 +39,11 @@ export interface PlacePreviewState {
   imageUrl?: string
   description?: string
   openingHours?: string
+  /**
+   * true 면 지도에 내 위치 → 장소 도보 경로·'도보 N분'을 그린다. 주변 탐색(HOM-02)의 [상세 보기]에서만 켠다 (PlaceCard).
+   * 홈 검색·코스 일정·코스 지도에서 오면 없음 → 장소 마커만 찍힌 지도 (이전 방식)
+   */
+  walkRoute?: boolean
 }
 
 /** 이보다 멀면(m) 도보 경로를 그리지 않는다 (걸어가기엔 먼 곳) */
@@ -59,9 +64,10 @@ export default function PlacePreview({ placeId, place }: { placeId: string; plac
   const [located, setLocated] = useState<LatLng | null>(null)
   // 내 위치 → 가게 도보 경로 (들어올 때 한 번). 위치를 못 받거나 너무 멀면 null (가게 핀만)
   const [walk, setWalk] = useState<{ from: LatLng; path: LatLng[]; minutes: number; estimated: boolean } | null>(null)
-  const hasPlace = validPlace !== null
+  // 도보 경로는 주변 탐색에서 들어왔을 때만
+  const showWalkRoute = validPlace?.walkRoute === true
   useEffect(() => {
-    if (!hasPlace) return
+    if (!showWalkRoute) return
     let active = true
     void (async () => {
       const from = await requestCurrentPosition()
@@ -82,7 +88,7 @@ export default function PlacePreview({ placeId, place }: { placeId: string; plac
     return () => {
       active = false
     }
-  }, [hasPlace, placeCenter])
+  }, [showWalkRoute, placeCenter])
   // 지도 표시: 가게 핀 (+ 경로가 있으면 내 위치 스티커). 둘 다 있으면 둘이 함께 보이게 범위를 맞춘다
   const mapMarkers = useMemo<MapMarker[]>(() => {
     const list: MapMarker[] = [{ lat: placeCenter.lat, lng: placeCenter.lng, title: validPlace?.name }]
