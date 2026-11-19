@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import splashUrl from '../../assets/splash/splash.webp'
 import LoadingDots from './LoadingDots'
-import RaceLoadingBar from './RaceLoadingBar'
+import RaceLoadingBar, { FINISH_TOTAL_MS, READY_CHECK_MS } from './RaceLoadingBar'
 
 /*
  * [이 파일이 하는 일]
  * 사이트에 처음 들어올 때 잠깐 보이는 스플래시 화면 (토끼·거북이 + '틈틈' 로고).
  *   - 탭(세션)마다 한 번만 보인다. 같은 탭에서 새로고침·화면 이동할 때는 다시 안 뜬다 (sessionStorage)
- *   - 2.6초 동안 로딩 바를 보여 주고, 0.4초 동안 서서히 사라진다 (총 약 3초). 화면을 누르면 바로 넘어간다
+ *   - 토끼가 1초에 1, 2초에 2, 3초에 깃발 도착 → 0.4초 동안 서서히 사라진다. 화면을 누르면 바로 넘어간다
  *   - 앱 화면은 뒤에서 그대로 그려지고 있어서, 스플래시 때문에 로딩이 늦어지지 않는다
  *
  * 로딩 바: 토끼와 거북이 달리기 (RaceLoadingBar, 로딩 화면과 같이 씀)
@@ -16,7 +16,8 @@ import RaceLoadingBar from './RaceLoadingBar'
  * 배경색은 이미지 가장자리 색(#fef3df)과 맞춰서, PC 처럼 화면 비율이 달라도 이음새가 안 보인다
  */
 const SEEN_KEY = 'teumteum-splash-seen'
-const SHOW_MS = 2600 // 달리기 한 판이 끝날 때쯤 사라지기 시작 (로딩 화면의 RACE_MS 보다 천천히 달림)
+/** 스플래시는 기다릴 응답이 없어 처음부터 준비된 것으로 본다 → 2초에 2 도착, 3초에 깃발 도착 후 사라지기 시작 */
+const SHOW_MS = READY_CHECK_MS + FINISH_TOTAL_MS
 const FADE_MS = 400
 
 function hasSeen(): boolean {
@@ -29,6 +30,8 @@ function hasSeen(): boolean {
 
 export default function Splash() {
   const [phase, setPhase] = useState<'show' | 'fade' | 'done'>(() => (hasSeen() ? 'done' : 'show'))
+  // 처음부터 준비된 상태 (readyAt = 처음 보인 시각)
+  const [readyAt] = useState(() => Date.now())
 
   useEffect(() => {
     if (phase === 'done') return
@@ -56,8 +59,9 @@ export default function Splash() {
         <img src={splashUrl} alt="틈틈" className="h-full w-full object-cover" />
 
         {/* 로딩 바: 이미지 아래쪽 빈 공간에 둔다 */}
-        <div className="absolute inset-x-0 bottom-[11%] flex flex-col items-center gap-2.5" role="progressbar" aria-label="불러오는 중">
-          <RaceLoadingBar durationMs={SHOW_MS} />
+        <div className="absolute inset-x-0 bottom-[3%] flex flex-col items-center gap-1" role="progressbar" aria-label="불러오는 중">
+          {/* 캐릭터 그림 아래 빈 공간에 들어가게 작게 */}
+          <RaceLoadingBar readyAt={readyAt} sizeClass="w-[min(52vw,230px)]" />
           <p className="font-display text-sm text-neutral-500">
             출발 준비 중
             <LoadingDots />
