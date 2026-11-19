@@ -8,6 +8,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Collection;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 public class PlaceLatestService {
@@ -21,6 +25,15 @@ public class PlaceLatestService {
                 .map(p -> new PlaceLatestSource(p.getExternalPlaceId(), p.getName(),
                         p.getLatitude().doubleValue(), p.getLongitude().doubleValue()))
                 .orElse(null);
+    }
+
+    // 내부 place_id → 카카오 장소 ID. 저장 코스 응답이 장소 상세(카카오 장소 정보)로 연결할 때 쓴다.
+    // 카카오 장소가 아니거나 없는 ID 는 결과에 넣지 않는다.
+    public Map<Long, String> kakaoPlaceIds(Collection<Long> internalPlaceIds) {
+        if (internalPlaceIds == null || internalPlaceIds.isEmpty()) return Map.of();
+        return repository.findAllById(internalPlaceIds).stream()
+                .filter(p -> Place.PROVIDER_KAKAO.equals(p.getProvider()) && StringUtils.hasText(p.getExternalPlaceId()))
+                .collect(Collectors.toMap(Place::getId, Place::getExternalPlaceId, (a, b) -> a));
     }
 
     // 이름·좌표는 검색 단서로만 사용한다. 동일 카카오 ID가 확인된 응답만 최신 정보로 반환한다.

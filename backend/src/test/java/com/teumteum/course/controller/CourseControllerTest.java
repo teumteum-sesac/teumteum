@@ -182,7 +182,7 @@ class CourseControllerTest {
                 new BigDecimal("37.5650"), new BigDecimal("126.9770"));
         var place = new CoursePlaceResponse("100", "200", 1, "저장 당시 카페", "CAFE", "카페",
                 null, new BigDecimal("37.5665"), new BigDecimal("126.9780"),
-                null, null, null, 50, 10, null);
+                null, null, null, 50, 10, null, "12345");
         var leg = new CourseRouteLegResponse(0, 1, "STRAIGHT", List.of(
                 new CourseCoordinateResponse(origin.latitude(), origin.longitude()),
                 new CourseCoordinateResponse(place.latitude(), place.longitude())

@@ -33,6 +33,8 @@ public record CoursePlaceResponse(
         // 직전 지점에서 이 장소까지의 이동시간(분). 첫 장소는 출발지에서 오는 시간이다.
         Integer travelMinutes,
         // 대중교통 노선·환승 설명. 정보가 없으면 null이다.
-        String transitInfo
+        String transitInfo,
+        // 공용 장소의 카카오 장소 ID. 장소 상세 화면에서 카카오 장소 정보를 보여 줄 때 쓴다. 카카오 장소가 아니면 null이다.
+        String kakaoPlaceId
 ) {
 }
