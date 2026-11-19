@@ -139,13 +139,13 @@ function clusterStyle(size: number): Partial<CSSStyleDeclaration> {
 }
 const CLUSTER_STYLES = [clusterStyle(38), clusterStyle(44), clusterStyle(50)]
 
-/** 현재 위치와 겹친 클러스터의 링 지름(px). 현재 위치 핑크 후광(76px)보다 커서 캐릭터를 가리지 않는다 */
-const NEAR_ME_RING = 92
+/** 현재 위치와 겹친 클러스터 배지를 놓을 원의 반지름(px). 현재 위치 핑크 후광(76px) 바로 바깥이라 캐릭터를 가리지 않는다 */
+const NEAR_ME_BADGE_RADIUS = 42
 
 /**
  * 현재 위치 스티커와 겹친 클러스터 표시 (HOM-02).
- * 클러스터 좌표·크기·클릭은 그대로 두고 모양만 바꾼다: 가운데를 투명하게 해 캐릭터가 비쳐 보이게 하고,
- * 스티커 바깥에 핑크 링(outline)을 두르고, 묶인 개수는 링 오른쪽 위 작은 배지로 보여 준다. 겹치지 않으면 원래 숫자 원으로 되돌린다
+ * 클러스터 좌표·크기·클릭은 그대로 두고 모양만 바꾼다: 숫자 원을 투명하게 해 캐릭터가 보이게 하고,
+ * 묶인 개수는 스티커 오른쪽 위 작은 배지로만 보여 준다 (배지를 누르면 클러스터처럼 확대). 겹치지 않으면 원래 숫자 원으로 되돌린다
  */
 function styleClusterNearMe(el: HTMLElement, near: boolean) {
   const badge = el.querySelector<HTMLElement>('[data-near-me-count]')
@@ -153,7 +153,7 @@ function styleClusterNearMe(el: HTMLElement, near: boolean) {
     if (el.dataset.nearMe !== '1') return
     delete el.dataset.nearMe
     badge?.remove()
-    Object.assign(el.style, { background: '#F26FA8', color: '#fff', borderColor: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,.25)', outline: '', outlineOffset: '' })
+    Object.assign(el.style, { background: '#F26FA8', color: '#fff', borderColor: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,.25)' })
     return
   }
   // 카카오가 넣은 숫자(글자 노드)만 읽는다 (배지 글자는 제외)
@@ -169,15 +169,13 @@ function styleClusterNearMe(el: HTMLElement, near: boolean) {
     color: 'transparent',
     borderColor: 'transparent',
     boxShadow: 'none',
-    outline: '3px solid #F26FA8',
-    outlineOffset: `${(NEAR_ME_RING - size) / 2 - 3}px`,
   })
   if (getComputedStyle(el).position === 'static') el.style.position = 'relative'
   const next = badge ?? document.createElement('span')
   next.setAttribute('data-near-me-count', '')
   next.textContent = count
-  // 링 위 오른쪽 위(45°) 지점. 현재 위치 라벨(위 가운데)과 겹치지 않는다
-  const offset = (NEAR_ME_RING / 2) * Math.SQRT1_2
+  // 스티커 오른쪽 위(45°) 지점. 현재 위치 라벨(위 가운데)과 겹치지 않는다
+  const offset = NEAR_ME_BADGE_RADIUS * Math.SQRT1_2
   next.style.cssText = `position:absolute;left:${size / 2 + offset}px;top:${size / 2 - offset}px;transform:translate(-50%,-50%);min-width:28px;height:28px;padding:0 7px;box-sizing:border-box;border-radius:9999px;border:2px solid #fff;background:#F26FA8;color:#fff;font-size:13px;font-weight:800;line-height:24px;text-align:center;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25)`
   if (!badge) el.append(next)
 }
