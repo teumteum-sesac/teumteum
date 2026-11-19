@@ -7,6 +7,8 @@ import type { RouteLegResponse } from '../map/routePath'
 /** 코스 안의 장소 1곳 */
 export interface CoursePlace {
   placeId: string
+  /** 카카오맵 상세 링크용 ID. 저장 코스의 DB placeId와 구분한다. */
+  kakaoPlaceId?: string
   name: string
   category: CategoryCode
   subCategory: string
@@ -265,6 +267,7 @@ function toLocationValue(location: LocationResponse, fallbackName: string): Loca
 function toCoursePlace(place: RecommendPlaceResponse | RecommendPlaceDetailResponse): CoursePlace {
   return {
     placeId: place.placeId,
+    kakaoPlaceId: place.placeId,
     name: place.placeName,
     category: place.category,
     subCategory: place.subCategory,

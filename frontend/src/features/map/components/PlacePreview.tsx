@@ -1,12 +1,14 @@
+import { useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { CATEGORY_STICKER } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
 import EmptyState from '../../../shared/components/EmptyState'
 import Icon from '../../../shared/components/Icon'
 import StickerImage from '../../../shared/components/StickerImage'
+import KakaoPlaceSheet from '../../../shared/components/KakaoPlaceSheet'
 import { getCategoryLabel, type CategoryCode } from '../../../shared/types/domain'
 import { useConditionStore } from '../../condition/store'
-import { formatDistance, getKakaoPlaceUrl } from '../format'
+import { formatDistance } from '../format'
 import KakaoMap from './KakaoMap'
 
 /*
@@ -16,7 +18,7 @@ import KakaoMap from './KakaoMap'
  * 화면 이동 때 같이 넘겨받아(location.state) 그대로 보여 준다. 사진·소개는 API 가 나오면 이 화면에 채운다.
  *
  * 버튼: [여기서 출발해 코스 추천받기] = 이 장소를 출발지로 외출 조건(CON-01)
- *       [카카오맵에서 보기]           = 카카오 장소 페이지 (영업시간·리뷰 등 더 자세한 정보)
+ * 하단 시트는 항상 표시하며 손잡이로 최소화·펼치기 한다. 카카오 장소 페이지의 영업시간·리뷰를 그대로 보여 준다.
  */
 export interface PlacePreviewState {
   kakaoPlaceId: string
@@ -35,6 +37,7 @@ export interface PlacePreviewState {
 export default function PlacePreview({ placeId, place }: { placeId: string; place: PlacePreviewState | null }) {
   const navigate = useNavigate()
   const setOrigin = useConditionStore((s) => s.setOrigin)
+  const descriptionRef = useRef<HTMLParagraphElement>(null)
 
   // 새로고침·주소 직접 입력으로 들어오면 넘겨받은 정보가 없다 → 카카오맵 링크로 안내
   if (!place || place.kakaoPlaceId !== placeId) {
@@ -48,9 +51,7 @@ export default function PlacePreview({ placeId, place }: { placeId: string; plac
             <Button className="mx-auto w-auto px-8" onClick={() => navigate('/nearby')}>
               주변 장소 보기
             </Button>
-            <a href={getKakaoPlaceUrl(placeId)} target="_blank" rel="noreferrer" className="mt-1 text-sm text-neutral-500 underline underline-offset-4">
-              카카오맵에서 보기
-            </a>
+            <KakaoPlaceSheet kakaoPlaceId={placeId} />
           </>
         }
       />
@@ -105,17 +106,13 @@ export default function PlacePreview({ placeId, place }: { placeId: string; plac
           여기서 출발해 코스 추천받기
           <Icon name="chevronRight" className="size-5" strokeWidth={2.8} />
         </Button>
-        <a
-          href={getKakaoPlaceUrl(place.kakaoPlaceId)}
-          target="_blank"
-          rel="noreferrer"
-          className="sticker-edge flex h-12 items-center justify-center gap-1.5 rounded-2xl bg-cream font-display text-[17px]"
-        >
-          <Icon name="map" className="size-5" />
-          카카오맵에서 보기
-        </a>
       </div>
-      <p className="px-1 text-xs text-neutral-400">사진·소개는 장소 상세 정보가 준비되면 여기에 함께 보여 드려요.</p>
+      <p ref={descriptionRef} className="px-1 text-xs text-neutral-400">사진·소개는 장소 상세 정보가 준비되면 여기에 함께 보여 드려요.</p>
+      <KakaoPlaceSheet
+        kakaoPlaceId={place.kakaoPlaceId}
+        placeName={place.name}
+        initialTopRef={descriptionRef}
+      />
     </div>
   )
 }

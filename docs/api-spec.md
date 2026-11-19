@@ -1,12 +1,12 @@
 # 틈틈 API 명세 (취합본)
 
-> 담당: 김용현 (취합) · NFR-032 · 기준: 2026-11-18 `dev`
+> 담당: 김용현 (취합) · NFR-032 · 기준: 2026-11-19 `dev`
 > 전체 API를 한 장에서 찾는 문서입니다. 도메인별 상세 명세가 있으면 그 문서로 연결하고, 상세 문서가 없는 인증·회원·장소 API는 여기에 직접 적습니다.
 > 실제 요청은 백엔드를 띄운 뒤 Swagger UI(<http://localhost:8080/swagger-ui/index.html>)에서 해 볼 수 있습니다.
 
 ## 1. 전체 API 목록
 
-**로그인** 열: 🔓 누구나 / 🔒 로그인 토큰 필요 (`Authorization: Bearer {accessToken}`)
+**로그인** 열: 🔓 누구나 / 🔒 로그인 토큰 필요 (`Authorization: Bearer {accessToken}`) / 🔒 관리자 = 관리자 계정 토큰만 (일반 회원은 403)
 **상태** 열: ✅ 구현됨(dev) / ⬜ 명세만 있음
 
 | 도메인 | 기능 | Method | URL | 로그인 | 상태 | 담당 | 화면 | 상세 |
@@ -20,7 +20,7 @@
 | 장소 | 장소·주소 검색 | GET | `/api/places/search?query=&lat=&lng=` | 🔓 | ✅ | 정종일 | HOM-01, CON-02 | [3.1](#31-장소주소-검색) |
 | 장소 | 좌표 → 주소 | GET | `/api/places/address?lat=&lng=` | 🔓 | ✅ | 정종일 | CON-02, 지도 핀 | [3.2](#32-좌표--주소) |
 | 장소 | 주변 장소 | GET | `/api/places/nearby?lat=&lng=&categories=&radius=` | 🔓 | ✅ | 정종일 | HOM-02 | [3.3](#33-주변-장소) |
-| 장소 | 장소 상세 (TourAPI) | GET | 미정 | 🔓 | ⬜ | 정종일 | DET-01(장소 1곳) | 명세 작성 전 |
+| 장소 | 장소 상세 (TourAPI 사진·소개·운영시간) | GET | `/api/places/detail?kakaoPlaceId=&name=&lat=&lng=` | 🔓 | ✅ | 정종일 | 장소 미리보기 `/places/:placeId` | Swagger 참고 |
 | 추천 | 추천 생성 | POST | `/api/recommendations` | 🔓 | ✅ | 나혜빈 | CON-01 → RES-01 | [recommend-api.md 1](recommend-api.md#1-추천-생성) |
 | 추천 | 다시 추천 | POST | `/api/recommendations/{recommendationSetId}/regenerate` | 🔓 | ✅ | 나혜빈 | RES-01 | [recommend-api.md 2](recommend-api.md#2-다시-추천-req-026) |
 | 추천 | 추천 코스 상세 | GET | `/api/recommendations/courses/{recommendationId}` | 🔓 | ✅ | 나혜빈 | DET-01·DET-02 | [recommend-api.md 3](recommend-api.md#3-추천-코스-상세-det-01--det-02) |
@@ -31,7 +31,13 @@
 | 코스 | 내 저장 코스 상세·지도 | GET | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-03, DET-02 | [course-api.md 3](course-api.md#3-내-저장-코스-상세지도-조회) |
 | 코스 | 내 저장 코스 삭제 | DELETE | `/api/courses/{courseId}` | 🔒 | ✅ | 김하윤 | MY-02·MY-03 | [course-api.md 4](course-api.md#4-내-저장-코스-삭제) |
 | 코스 | 최신 장소 정보 조회 | GET | `/api/courses/{courseId}/places/latest` | 🔒 | ✅ | 김하윤 | MY-03 [정보 새로고침] | [course-api.md 5](course-api.md#5-최신-장소-정보-별도-조회) |
-| 관리자 | 회원 관리·공지·알림 | - | `/api/admin/**` | 🔒 | ⬜ | 정종화 | `/admin` | 명세 작성 전 |
+| 관리자 | 회원 목록 (검색) | GET | `/api/admin/members?keyword=&page=&size=` | 🔒 관리자 | ✅ | 김용현 | `/admin` | Swagger 참고 |
+| 관리자 | 회원 강제 탈퇴 | PATCH | `/api/admin/members/{memberId}/withdraw` | 🔒 관리자 | ✅ | 김용현 | `/admin` | Swagger 참고 |
+| 관리자 | 공지 등록 (최신 공지 = 전체 알림 배너) | POST | `/api/admin/notices` | 🔒 관리자 | ✅ | 김용현 | `/admin` | Swagger 참고 |
+| 관리자 | 공지 수정 | PATCH | `/api/admin/notices/{noticeId}` | 🔒 관리자 | ✅ | 김용현 | `/admin` | Swagger 참고 |
+| 관리자 | 공지 삭제 | DELETE | `/api/admin/notices/{noticeId}` | 🔒 관리자 | ✅ | 김용현 | `/admin` | Swagger 참고 |
+| 공지 | 공지 목록 (홈 배너는 size=1) | GET | `/api/notices?page=&size=` | 🔓 | ✅ | 김용현 | HOM-01 배너 | Swagger 참고 |
+| 공지 | 공지 상세 | GET | `/api/notices/{noticeId}` | 🔓 | ✅ | 김용현 | `/notices/:noticeId` | Swagger 참고 |
 | 인증 | 비밀번호 찾기 (메일) | - | 미정 | 🔓 | ⬜ | 김용현 | AUT-01 | P1, 명세 작성 전 |
 
 로그아웃은 API가 없습니다. JWT는 서버가 로그인 상태를 저장하지 않으므로 프론트가 토큰을 지우면 로그아웃입니다 (REQ-003).
@@ -275,6 +281,7 @@
 ## 변경 이력
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-19 | 관리자(회원 관리·공지) API 5개, 공지 조회 API 2개, 장소 상세 API 주소·구현 상태 반영. 관리자 담당 김용현으로 변경 |
 | 2026-11-18 | 내 회원 정보 수정(PATCH /api/members/me) 요청·응답·비밀번호 유지 정책 추가 (#153) |
 | 2026-11-18 | 회원 탈퇴 요청·응답·저장 코스 삭제·탈퇴 토큰 차단 정책 추가 (#155) |
 | 2026-11-18 | 내 회원 정보 조회(GET /api/members/me) 응답·인증·오류 명세 추가 (#142) |
