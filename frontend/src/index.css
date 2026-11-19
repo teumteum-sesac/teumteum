@@ -1,11 +1,177 @@
 @import 'tailwindcss';
 
+/*
+ * [이 파일이 하는 일]
+ * 전체 디자인 토큰(색·폰트·그림자)과 스티커 스타일 공통 클래스.
+ * 디자인 기준: docs/design-sticker.md (토끼·거북이 스티커 스크랩북)
+ *
+ * 색 이름 → Tailwind 클래스: --color-sunny 를 정의하면 bg-sunny, text-sunny, border-sunny 를 쓸 수 있다.
+ * 기존 화면이 쓰던 primary·line 이름은 그대로 두고 값만 바꿨다 → 화면 코드를 고치지 않아도 새 색이 적용된다.
+ */
 @theme {
-  --font-sans: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  /* 본문은 읽기 좋은 Pretendard, 제목·버튼은 동글동글한 Jua (index.html 에서 웹폰트 로드) */
+  --font-sans: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-display: 'Jua', 'Pretendard Variable', Pretendard, sans-serif;
+
+  /* 메인 핑크: 선택 상태·주요 포인트 */
+  --color-primary: #f26fa8;
+  /* 진한 핑크: 핑크 글씨가 작을 때 (연한 배경 위에서 #f26fa8 은 글씨로 읽기 어렵다) */
+  --color-primary-dark: #c93d7a;
+  /* 연한 핑크: 선택된 칩·카드 강조 배경 */
+  --color-primary-light: #f9d5e3;
+
+  --color-cream: #fff8e9; /*  기본 패널·카드 배경 */
+  --color-paper: #e9dfc9; /*  종이 베이지: 구분 영역, 자리표시 */
+  --color-turtle: #8ccb63; /* 거북이 그린: 자연 카테고리 */
+  --color-sunny: #ffd84d; /*  옐로우: 메인 CTA, 별 */
+  --color-sky: #8bcbea; /*    스카이블루: 지도·이동 */
+  --color-ink: #202020; /*    잉크 블랙: 글씨, 스티커형 버튼 외곽선 */
+
+  /* 테두리 기본색 (기존 border-line 을 종이 톤으로) */
+  --color-line: #e6dac2;
+}
+
+/* 스티커 이미지 아래 짧고 부드러운 그림자 */
+@utility sticker-img {
+  filter: drop-shadow(0 2px 1.5px rgb(32 32 32 / 0.18));
+}
+
+/* 종이 카드: 크림 배경 + 얇은 종이색 테두리 + 아래로 살짝 눌린 그림자 */
+@utility paper-card {
+  background-color: var(--color-cream);
+  border: 1.5px solid var(--color-line);
+  border-radius: 1rem;
+  box-shadow: 0 2px 0 var(--color-line);
+}
+
+/* 스티커형 버튼 테두리: 잉크 외곽선 + 아래 그림자. 누르면 그림자만큼 내려가 "눌린" 느낌 */
+@utility sticker-edge {
+  border: 2px solid var(--color-ink);
+  box-shadow: 0 3px 0 var(--color-ink);
+  &:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 var(--color-ink);
+  }
+}
+
+/* 형광펜 밑줄: 글자 아래쪽 절반에 연한 핑크 (헤드라인 강조) */
+@utility marker-pink {
+  background: linear-gradient(transparent 55%, var(--color-primary-light) 55%, var(--color-primary-light) 92%, transparent 92%);
+  padding: 0 0.1em;
+}
+
+/* 위쪽 가장자리를 물결(찢은 종이) 모양으로 자른다. 하단바·바텀시트용 */
+@utility torn-top {
+  mask:
+    radial-gradient(circle at 8px 0, transparent 5px, #000 5.5px) top / 16px 8px repeat-x,
+    linear-gradient(#000, #000) 0 8px / 100% calc(100% - 8px) no-repeat;
+}
+
+/* 스티커 슬라이더: 종이색 트랙 + 노란 손잡이(잉크 테두리). 채워진 부분은 --fill(%) 로 핑크 */
+@utility sticker-range {
+  appearance: none;
+  height: 10px;
+  border-radius: 9999px;
+  border: 2px solid var(--color-ink);
+  background: linear-gradient(to right, var(--color-primary) var(--fill, 0%), var(--color-cream) var(--fill, 0%));
+  cursor: pointer;
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 9999px;
+    background: var(--color-sunny);
+    border: 2.5px solid var(--color-ink);
+    box-shadow: 0 2px 0 var(--color-ink);
+  }
+  &::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 9999px;
+    background: var(--color-sunny);
+    border: 2.5px solid var(--color-ink);
+    box-shadow: 0 2px 0 var(--color-ink);
+  }
 }
 
 @layer base {
   body {
-    @apply bg-neutral-100;
+    @apply bg-paper font-sans text-ink;
+  }
+
+  /*
+   * 스크롤바 숨기기 (사이트 전체). 스크롤은 그대로 되고 막대만 안 보인다.
+   * 이유: PC 에서 세로 스크롤바가 생겼다 사라질 때마다 화면 너비가 바뀌어 가운데 정렬된 화면이 좌우로 밀렸다.
+   * 모바일 우선 화면이라 휴대폰처럼 스크롤바 없이 보이게 한다 (터치·휠·키보드 스크롤은 그대로)
+   */
+  * {
+    scrollbar-width: none; /* Firefox, 최신 Chrome·Edge */
+  }
+  *::-webkit-scrollbar {
+    display: none; /* Safari, 예전 Chrome */
+  }
+}
+
+/*
+ * 토끼·거북이 달리기 로딩 바 (스플래시·공통 로딩 화면)
+ *   위치·진행은 shared/components/RaceLoadingBar.tsx 가 JS 로 정한다 (응답 시간에 맞춰 깃발에 도착).
+ *   여기는 계속 반복되는 작은 움직임만: 거북이 뒤뚱, 토끼가 쉬는 동안 z Z z zZ
+ */
+.race-zzz {
+  display: inline-block;
+  animation: race-zzz 1.2s ease-in-out infinite both;
+}
+@keyframes race-zzz {
+  0% { opacity: 0; transform: translateY(4px) scale(0.8); }
+  30%, 60% { opacity: 1; transform: translateY(-4px) scale(1); }
+  100% { opacity: 0; transform: translateY(-10px) scale(1.1); }
+}
+.splash-turtle-body {
+  animation: splash-waddle 0.32s ease-in-out infinite alternate;
+}
+@keyframes splash-waddle {
+  from { transform: rotate(-7deg); }
+  to { transform: rotate(7deg) translateY(-2px); }
+}
+/* 움직임 줄이기 설정을 켠 사용자: 달리기 없이 바만 채운다 */
+@media (prefers-reduced-motion: reduce) {
+  .race-zzz, .splash-turtle-body {
+    animation: none;
+  }
+}
+
+/* 칩 선택 효과 (shared/components/Chip.tsx): 선택되는 순간 살짝 눌렸다가 통 튄다 */
+@utility chip-pop {
+  animation: chip-pop 0.28s ease-out;
+}
+@keyframes chip-pop {
+  0% { transform: scale(0.9); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* 불러오는 중 자리표시(스켈레톤): 빛이 왼쪽에서 오른쪽으로 지나가는 효과 (구글 로딩처럼).
+   회색 덩어리에 skeleton-shimmer 를 붙이면 된다. 움직임 줄이기 설정이면 멈춘 회색만 보인다 */
+@utility skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #efe7d6;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    animation: skeleton-shimmer 1.3s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      animation: none;
+    }
+  }
+}
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
   }
 }

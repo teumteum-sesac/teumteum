@@ -11,6 +11,15 @@ spring:
 kakao:
   rest-api-key:            # 카카오 로컬 API (REST API 키)
 
+tour:
+  service-key:              #여기에_디코딩키
+
 jwt:
   secret:                  # 32자 이상 임의 문자열
   access-token-validity-seconds: 3600
+
+ors:
+  api-key:
+
+odsay:
+  api-key:
