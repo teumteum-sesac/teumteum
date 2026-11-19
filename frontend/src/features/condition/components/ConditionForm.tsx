@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import { TRANSPORT_STICKER } from '../../../shared/assets/stickerAssets'
 import Button from '../../../shared/components/Button'
@@ -18,6 +18,9 @@ import TimeSelector from './TimeSelector'
 /** 외출 조건 설정 (CON-01): 위치 → 시간 → 이동수단 → 카테고리 → 추천받기 */
 export default function ConditionForm() {
   const navigate = useNavigate()
+  // 추천 결과의 [조건 바꾸기] 로 들어왔는지. 그렇다면 [추천받기] 는 결과 화면을 새로 열지 않고 뒤로 돌아간다
+  // (새로 열면 조건 → 결과 → 조건 → 결과… 가 기록에 쌓여 뒤로가기를 여러 번 눌러야 홈에 간다)
+  const fromResults = (useLocation().state as { fromResults?: boolean } | null)?.fromResults === true
   const { origin, availableMinutes, startTime, transportType, setTransportType } = useConditionStore()
   const requestRecommend = useRecommendStore((s) => s.request)
 
@@ -70,7 +73,8 @@ export default function ConditionForm() {
               const request = toRecommendRequest(useConditionStore.getState())
               if (!request) return
               void requestRecommend(request)
-              navigate('/results')
+              if (fromResults) navigate(-1)
+              else navigate('/results')
             }}
           >
             추천받기

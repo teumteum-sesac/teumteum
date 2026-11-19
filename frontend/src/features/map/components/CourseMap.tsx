@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { useGoBack } from '../../../shared/hooks/useGoBack'
 import BottomActionBar from '../../../shared/components/BottomActionBar'
 import Button from '../../../shared/components/Button'
 import Icon from '../../../shared/components/Icon'
@@ -20,8 +21,15 @@ interface CourseMapProps {
   course: Course
   /** 돌아가기 버튼 문구 */
   backLabel: string
-  /** 저장 지도의 직접 진입에서도 저장 상세로 돌아갈 수 있도록 지정한다. */
+  /**
+   * 하단 버튼이 갈 화면.
+   * - backBy 'open'(기본): backTo 를 새로 연다 (추천 결과 → 지도 → [코스 상세 보기] 처럼 "다음 화면" 으로 갈 때)
+   * - backBy 'return'  : 이전 화면으로 돌아간다. 기록이 없을 때(주소 직접 입력)만 backTo 로 간다.
+   *                      (저장 상세 → 지도 → [돌아가기] 에서 상세를 새로 열면 상세·지도가 기록에 계속 쌓인다)
+   * backTo 가 없으면 이전 화면으로 돌아간다.
+   */
   backTo?: string
+  backBy?: 'open' | 'return'
   /**
    * 지도 경로 구간 (추천 상세·저장 코스 응답의 routeLegs). ACTUAL 구간은 실제 경로 좌표를 따라 그리고,
    * STRAIGHT·구간 없음·값 없음은 지점 사이 직선으로 그린다 (REQ-041)
@@ -33,8 +41,9 @@ interface CourseMapProps {
  * 코스 지도 상세 (DET-02): 출발(S)·방문 순번·도착(E) 마커와 경로선, 전체 코스가 한 화면에 보이게 맞춤.
  * 번호를 누르면 장소명·체류시간·다음 이동시간 말풍선. 차량·도보는 실제 경로, 대중교통은 1차 버전에서 장소 사이 직선
  */
-export default function CourseMap({ course, backLabel, backTo, routeLegs }: CourseMapProps) {
+export default function CourseMap({ course, backLabel, backTo, backBy = 'open', routeLegs }: CourseMapProps) {
   const navigate = useNavigate()
+  const goBack = useGoBack(backTo ?? '/')
 
   const markers = useMemo<MapMarker[]>(() => {
     const { places, origin, destination } = course
@@ -102,7 +111,7 @@ export default function CourseMap({ course, backLabel, backTo, routeLegs }: Cour
       </section>
 
       <BottomActionBar>
-        <Button variant="secondary" onClick={() => { if (backTo) navigate(backTo); else navigate(-1) }}>
+        <Button variant="secondary" onClick={() => (backTo && backBy === 'open' ? navigate(backTo) : goBack())}>
           {backLabel}
         </Button>
       </BottomActionBar>

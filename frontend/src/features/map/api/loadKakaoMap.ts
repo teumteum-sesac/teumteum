@@ -16,7 +16,8 @@ export function loadKakaoMap(): Promise<KakaoMapsApi> {
 
   loading = new Promise<KakaoMapsApi>((resolve, reject) => {
     const script = document.createElement('script')
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&autoload=false&libraries=services`
+    // services: 주소·장소 검색 / clusterer: 주변 탐색(HOM-02) 마커 클러스터링
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&autoload=false&libraries=services,clusterer`
     script.async = true
     script.onload = () => {
       const maps = window.kakao?.maps
