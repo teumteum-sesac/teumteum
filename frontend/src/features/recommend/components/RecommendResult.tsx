@@ -63,7 +63,7 @@ export default function RecommendResult() {
   }
 
   // 토끼·거북이가 깃발에 도착한 뒤에 결과를 보여 준다 (최소 2초, 늦으면 그만큼 더)
-  if (race.show) return <LoadingState message="딱 맞는 코스를 찾고 있어요" readyAt={race.readyAt} />
+  if (race.show) return <LoadingState variant="race" message="딱 맞는 코스를 찾고 있어요" readyAt={race.readyAt} />
   if (error && isExpiredError(error.code)) return <ExpiredState />
   if (error) {
     return (
