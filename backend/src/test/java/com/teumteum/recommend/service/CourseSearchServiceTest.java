@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -78,7 +79,7 @@ class CourseSearchServiceTest {
         List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
 
         assertEquals(3, courses.size());
-        verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(1_000));
+        verify(nearbyPlaceService, times(2)).findCandidates(anyDouble(), anyDouble(), any(), eq(1_000)); // 출발지 + 먼 지점
         verify(nearbyPlaceService, never()).findCandidates(anyDouble(), anyDouble(), any(), eq(2_000));
     }
 
@@ -92,7 +93,7 @@ class CourseSearchServiceTest {
         List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
 
         assertEquals(3, courses.size());
-        verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(2_000));
+        verify(nearbyPlaceService, times(2)).findCandidates(anyDouble(), anyDouble(), any(), eq(2_000)); // 출발지 + 먼 지점
         verify(nearbyPlaceService, never()).findCandidates(anyDouble(), anyDouble(), any(), eq(3_000));
     }
 
@@ -105,8 +106,8 @@ class CourseSearchServiceTest {
         List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
 
         assertTrue(courses.isEmpty());
-        verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(1_000));
-        verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(2_000));
+        verify(nearbyPlaceService, times(2)).findCandidates(anyDouble(), anyDouble(), any(), eq(1_000)); // 출발지 + 먼 지점
+        verify(nearbyPlaceService, times(2)).findCandidates(anyDouble(), anyDouble(), any(), eq(2_000)); // 출발지 + 먼 지점
         verify(nearbyPlaceService, never()).findCandidates(anyDouble(), anyDouble(), any(), eq(3_000));
         verify(nearbyPlaceService, never()).findCandidates(anyDouble(), anyDouble(), any(), eq(5_000));
     }
@@ -122,7 +123,7 @@ class CourseSearchServiceTest {
 
         assertTrue(courses.isEmpty());
         for (int radius : List.of(1_000, 2_000, 3_000, 5_000)) {
-            verify(nearbyPlaceService).findCandidates(anyDouble(), anyDouble(), any(), eq(radius));
+            verify(nearbyPlaceService, times(2)).findCandidates(anyDouble(), anyDouble(), any(), eq(radius)); // 출발지 + 먼 지점
         }
     }
 
@@ -251,16 +252,67 @@ class CourseSearchServiceTest {
             new CourseCondition(ORIGIN, DESTINATION, 240, TransportType.TRANSIT, List.of());
 
     @Test
-    @DisplayName("경로 모드가 아니면 출발지 한 곳만 검색한다")
-    void searchCenters_originOnly() {
+    @DisplayName("경로 모드가 아니면 출발지와 먼 지점(도보 1.4km 떨어진 곳) 두 곳을 검색한다")
+    void searchCenters_originAndFarCenter() {
         given(courseComposer.isRouteMode(randomCondition)).willReturn(false);
 
-        assertEquals(List.of(ORIGIN), courseSearchService.searchCenters(randomCondition));
+        List<Coordinate> centers = courseSearchService.searchCenters(randomCondition);
+
+        assertEquals(2, centers.size());
+        assertEquals(ORIGIN, centers.get(0));
     }
 
     @Test
-    @DisplayName("경로 모드면 출발지·중간 지점·도착지 세 곳 주변을 검색한다")
-    void findCourses_routeMode_searchesThreeCenters() {
+    @DisplayName("먼 지점은 방향은 무작위지만 출발지에서 늘 목표 거리(도보 1.4km, 대중교통 3.5km)만큼 떨어져 있다")
+    void farCenter_isAtTargetDistance() {
+        CourseCondition transit = new CourseCondition(ORIGIN, null, 180, TransportType.TRANSIT, List.of());
+        StraightLineTravelCalculator straightLine = new StraightLineTravelCalculator();
+
+        for (int i = 0; i < 30; i++) { // 방향이 무작위라 여러 번 확인
+            Coordinate walkFar = courseSearchService.farCenter(randomCondition);
+            Coordinate transitFar = courseSearchService.farCenter(transit);
+
+            assertEquals(1.4, straightLine.calculateDistanceKm(ORIGIN.latitude(), ORIGIN.longitude(),
+                    walkFar.latitude(), walkFar.longitude()), 0.02);
+            assertEquals(3.5, straightLine.calculateDistanceKm(ORIGIN.latitude(), ORIGIN.longitude(),
+                    transitFar.latitude(), transitFar.longitude()), 0.05);
+        }
+    }
+
+    @Test
+    @DisplayName("경로 모드면 출발지·1/3 지점·2/3 지점·도착지 네 곳 주변을 검색한다")
+    void searchCenters_routeMode_fourCenters() {
+        given(courseComposer.isRouteMode(routeCondition)).willReturn(true);
+
+        List<Coordinate> centers = courseSearchService.searchCenters(routeCondition);
+
+        assertEquals(4, centers.size());
+        assertEquals(37.5446, centers.get(0).latitude(), 0.0001); // 출발지
+        assertEquals(37.5546, centers.get(1).latitude(), 0.0001); // 1/3
+        assertEquals(37.5646, centers.get(2).latitude(), 0.0001); // 2/3
+        assertEquals(37.5746, centers.get(3).latitude(), 0.0001); // 도착지
+        centers.forEach(center -> assertEquals(127.0559, center.longitude(), 0.0001));
+    }
+
+    @Test
+    @DisplayName("먼 지점만 검색에 실패하면 출발지 후보로 계속 추천한다 (일부 지점 실패로 전체가 실패하지 않음)")
+    void findCourses_continues_whenOnlyOneCenterFails() {
+        given(courseComposer.isRouteMode(randomCondition)).willReturn(false);
+        given(nearbyPlaceService.findCandidates(anyDouble(), anyDouble(), any(), anyInt()))
+                .willReturn(List.of(nearby("101", "서울 성동구 왕십리로 1", "서울 성동구 성수동 1"))) // 출발지 성공
+                .willThrow(new CustomException(PlaceErrorCode.KAKAO_API_RATE_LIMIT));               // 먼 지점 실패
+        given(courseComposer.compose(eq(randomCondition), candidatesCaptor.capture(), anyList()))
+                .willReturn(List.of(course("1"), course("2"), course("3")));
+
+        List<CoursePlan> courses = courseSearchService.findCourses(randomCondition).plans();
+
+        assertEquals(3, courses.size());
+        assertEquals(1, candidatesCaptor.getValue().size()); // 출발지 후보만으로 조합
+    }
+
+    @Test
+    @DisplayName("경로 모드면 네 지점 모두 실제로 장소 검색을 부른다")
+    void findCourses_routeMode_searchesFourCenters() {
         given(courseComposer.isRouteMode(routeCondition)).willReturn(true);
         givenNearbyResults();
         given(courseComposer.compose(eq(routeCondition), anyList(), anyList()))
@@ -268,9 +320,7 @@ class CourseSearchServiceTest {
 
         courseSearchService.findCourses(routeCondition);
 
-        verify(nearbyPlaceService).findCandidates(eq(37.5446), eq(127.0559), any(), eq(1_000)); // 출발지
-        verify(nearbyPlaceService).findCandidates(eq(37.5596), eq(127.0559), any(), eq(1_000)); // 중간
-        verify(nearbyPlaceService).findCandidates(eq(37.5746), eq(127.0559), any(), eq(1_000)); // 도착지
+        verify(nearbyPlaceService, times(4)).findCandidates(anyDouble(), anyDouble(), any(), eq(1_000));
     }
 
     @Test
