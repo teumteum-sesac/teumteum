@@ -4,7 +4,6 @@ import com.teumteum.global.exception.CustomException;
 import com.teumteum.global.common.category.Category;
 import com.teumteum.place.dto.NearbyPlaceResult;
 import com.teumteum.place.service.NearbyPlaceService;
-import com.teumteum.global.common.category.Category;
 import com.teumteum.recommend.domain.CourseCondition;
 import com.teumteum.recommend.domain.CoursePlan;
 import com.teumteum.recommend.domain.CourseSearchResult;
@@ -19,6 +18,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 
 /**
@@ -27,7 +27,7 @@ import java.util.Set;
  * 흐름 (명세 1.6 서버 처리 순서 3 ~ 6)
  * <pre>
  * 반경 1km → 후보 검색(장소 도메인) → 코스 조합(CourseComposer) → 3개 모이면 끝
- *            (도착지가 멀면 출발지·중간·도착지 3곳 주변에서 찾아 합친다)
+ *            (출발지 + 먼 지점 2곳, 도착지가 멀면 출발지·1/3·2/3·도착지 4곳 주변에서 찾아 합친다)
  *          ↓ 모자라면
  * 반경 2km → 3km → 5km 차례로, 모자란 만큼만 더 찾는다 (이동수단 최대 반경까지만. 도보는 2km)
  * 끝까지 넓혀도 없으면 빈 목록 (오류 아님 → 프론트가 "조건에 맞는 코스가 없어요" 안내)
@@ -47,8 +47,17 @@ public class CourseSearchService {
      */
     static final List<Integer> RADIUS_STEPS = NearbyPlaceService.RADIUS_STEPS;
 
+    /** 위도 1도의 거리(km). 지구 어디서나 거의 같다 */
+    static final double KM_PER_LATITUDE_DEGREE = 111.0;
+
     private final NearbyPlaceService nearbyPlaceService;
     private final CourseComposer courseComposer;
+
+    /**
+     * 먼 지점의 방향을 고르는 무작위 값. 스프링이 넣어 주는 값이 아니라 여기서 바로 만든다.
+     * (@RequiredArgsConstructor 는 값을 이미 넣어 둔 final 필드는 생성자에 넣지 않는다)
+     */
+    private final Random random = new Random();
 
     /**
      * 조건에 맞는 코스를 최대 3개 찾는다.
@@ -107,38 +116,86 @@ public class CourseSearchService {
     /**
      * 후보를 찾을 지점들.
      * <pre>
-     * 도착지가 없거나 출발지와 가까우면 → [출발지]
-     * 도착지가 멀면 (경로 모드)         → [출발지, 중간 지점, 도착지]   가는 길 전체에서 찾는다
+     * 도착지가 없거나 출발지와 가까우면 → [출발지, 먼 지점]
+     *     먼 지점 = 출발지에서 "조금 먼 코스" 목표 거리(최대 반경 × 70%)만큼, 무작위 방향으로 떨어진 곳
+     *     도보 1.4km, 대중교통·차량 3.5km
+     * 도착지가 멀면 (경로 모드)         → [출발지, 1/3 지점, 2/3 지점, 도착지]   가는 길 전체에서 찾는다
      * </pre>
-     * 출발지에서만 찾으면 "출발지 근처에서 놀다가 도착지로 이동" 하는 코스만 나와서 바꿨다 (#170).
-     * 경로 모드 판단은 코스 조합과 같은 기준을 쓰려고 CourseComposer.isRouteMode 에 맡긴다.
+     * 왜 여러 지점에서 찾는지:
+     * 카카오 검색은 가까운 순으로 정해진 개수만 돌려준다. 가게가 많은 동네는 출발지 주변만으로 개수가 다 차서
+     * 먼 장소가 후보에 아예 안 들어온다. 그러면 코스 조합에서 거리 비율(규칙 ⑫)을 줘도 고를 재료가 없다 (#204).
+     * - 출발지에서만 찾으면 "출발지 근처에서 놀다가 도착지로 이동" 하는 코스만 나왔다 (#170)
+     * - 중간 지점 하나만 두면 도착지 쪽(2/3 지점 근처) 후보가 모자랐다 (#204)
      * <p>
-     * 지점이 3개면 장소 검색(카카오 로컬) 호출도 3배가 된다 (NFR-014 무료 한도). 그래서 도착지가 멀 때만 쓴다.
+     * 경로 모드 판단은 코스 조합과 같은 기준을 쓰려고 CourseComposer.isRouteMode 에 맡긴다.
+     * 지점 수만큼 장소 검색(카카오 로컬) 호출이 늘어난다 (NFR-014 무료 한도): 보통 2배, 경로 모드 4배.
      */
     List<Coordinate> searchCenters(CourseCondition condition) {
-        if (!courseComposer.isRouteMode(condition)) {
-            return List.of(condition.origin());
-        }
         Coordinate origin = condition.origin();
+        if (!courseComposer.isRouteMode(condition)) {
+            return List.of(origin, farCenter(condition));
+        }
         Coordinate destination = condition.destination();
-        // 몇 km 안쪽 짧은 거리라 위도·경도를 그냥 평균 내도 실제 중간과 거의 같다
-        Coordinate middle = new Coordinate(
-                (origin.latitude() + destination.latitude()) / 2,
-                (origin.longitude() + destination.longitude()) / 2);
-        return List.of(origin, middle, destination);
+        return List.of(origin, pointBetween(origin, destination, 1.0 / 3), pointBetween(origin, destination, 2.0 / 3),
+                destination);
+    }
+
+    /**
+     * 출발지에서 "조금 먼 코스" 목표 거리만큼 떨어진 지점. 방향은 매번 무작위 (동서남북 어디로든).
+     * 목표 거리는 코스 조합의 거리 비율 마지막 값(70%)을 그대로 써서 둘이 어긋나지 않게 한다.
+     * <pre>
+     * 위도 1도 ≈ 111km (어디서나 같음)
+     * 경도 1도 ≈ 111km × cos(위도)  (서울 위도 37.5도 → 약 88km. 북쪽으로 갈수록 좁아진다)
+     * 북쪽으로 d·cos(각도) km, 동쪽으로 d·sin(각도) km 를 각각 도(°)로 바꿔 더한다
+     * </pre>
+     */
+    Coordinate farCenter(CourseCondition condition) {
+        double ratio = CourseComposer.DISTANCE_RATIOS.get(CourseComposer.DISTANCE_RATIOS.size() - 1);
+        double distanceKm = condition.transportType().getMaxSearchRadiusMeters() / 1000.0 * ratio;
+        double angle = random.nextDouble() * 2 * Math.PI; // 0 ~ 360도 (라디안)
+
+        Coordinate origin = condition.origin();
+        double latitude = origin.latitude() + distanceKm * Math.cos(angle) / KM_PER_LATITUDE_DEGREE;
+        double longitude = origin.longitude()
+                + distanceKm * Math.sin(angle) / (KM_PER_LATITUDE_DEGREE * Math.cos(Math.toRadians(origin.latitude())));
+        return new Coordinate(latitude, longitude);
+    }
+
+    /**
+     * 출발지와 도착지 사이 지점. ratio 0 = 출발지, 1 = 도착지.
+     * 몇 km 안쪽 짧은 거리라 위도·경도를 비율대로 나눠도 실제 지점과 거의 같다.
+     */
+    private Coordinate pointBetween(Coordinate from, Coordinate to, double ratio) {
+        return new Coordinate(
+                from.latitude() + (to.latitude() - from.latitude()) * ratio,
+                from.longitude() + (to.longitude() - from.longitude()) * ratio);
     }
 
     /**
      * 여러 지점 주변 후보를 모아 하나의 목록으로 만든다. 지점끼리 반경이 겹쳐 같은 장소가 또 나오면 하나만 남긴다.
-     * 한 지점이라도 검색에 실패하면 장소 쪽 오류(CustomException)가 그대로 올라간다 (부르는 쪽에서 처리).
+     * <p>
+     * 일부 지점만 검색에 실패하면 나머지 지점 후보로 계속한다 (먼 지점 하나 때문에 추천 전체가 실패하지 않게, #204).
+     * 모든 지점이 실패했을 때만 장소 쪽 오류(CustomException)를 그대로 올린다 (부르는 쪽에서 처리).
      */
     private List<PlaceCandidate> findAround(List<Coordinate> centers, Set<Category> placeCategories, int radius) {
         Map<String, PlaceCandidate> merged = new LinkedHashMap<>();
+        CustomException lastFailure = null;
+        int failures = 0;
         for (Coordinate center : centers) {
-            nearbyPlaceService.findCandidates(center.latitude(), center.longitude(), placeCategories, radius)
-                    .stream()
-                    .map(this::toPlaceCandidate)
-                    .forEach(candidate -> merged.putIfAbsent(candidate.placeId(), candidate));
+            try {
+                nearbyPlaceService.findCandidates(center.latitude(), center.longitude(), placeCategories, radius)
+                        .stream()
+                        .map(this::toPlaceCandidate)
+                        .forEach(candidate -> merged.putIfAbsent(candidate.placeId(), candidate));
+            } catch (CustomException e) {
+                log.warn("반경 {}m 장소 검색 실패 (지점 {}, {}) → 다른 지점 후보로 계속", radius,
+                        center.latitude(), center.longitude());
+                lastFailure = e;
+                failures++;
+            }
+        }
+        if (failures == centers.size()) {
+            throw lastFailure; // 모든 지점 실패 → 장소 오류 그대로 (명세 1.5)
         }
         return List.copyOf(merged.values());
     }
