@@ -28,3 +28,8 @@ export function straightDistance(a: { lat: number; lng: number }, b: { lat: numb
 export function walkMinutes(meters: number): number {
   return Math.max(1, Math.round(meters / 67))
 }
+
+/** 카카오 장소 페이지 주소 (장소 ID 로 바로 열린다). 장소 미리보기의 [카카오맵에서 보기] */
+export function getKakaoPlaceUrl(kakaoPlaceId: string): string {
+  return `https://place.map.kakao.com/${encodeURIComponent(kakaoPlaceId)}`
+}

@@ -5,6 +5,7 @@ import StickerImage from '../../../shared/components/StickerImage'
 import { getCategoryLabel, getKakaoMapLink } from '../../../shared/types/domain'
 import { formatMinutes } from '../../../shared/utils/format'
 import { buildSchedule, getLegMode, parseTransitInfo, type Course, type CoursePlace } from '../types'
+import KakaoMap from '../../map/components/KakaoMap'
 import PlaceThumbnail from './PlaceThumbnail'
 
 interface CourseScheduleProps {
@@ -16,7 +17,7 @@ interface CourseScheduleProps {
 /**
  * 코스 일정: 출발지 → 장소(방문 순서) → 도착지 (DET-01 ②, MY-03)
  * 장소마다 방문 시각·체류시간·주소·운영시간을 보여주고, 누르면 사진·소개를 펼친다.
- * 사진·소개가 없는 장소는 '카카오맵에서 보기' 링크로 대신한다.
+ * 장소를 누르면 앱 안에서 위치 지도·사진·소개를 펼친다. 카카오맵은 '더 보기' 보조 링크로만 둔다.
  * 디자인 (목업 코스 타임라인): 왼쪽 핑크 점선 위에 출발(핀)·번호 원·도착(깃발), 구간마다 이동수단 스티커 알약
  */
 export default function CourseSchedule({ course, onReplace }: CourseScheduleProps) {
@@ -30,7 +31,6 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
 
       {rows.map(({ place, arrive, leave }) => {
         const open = openPlaceId === place.placeId
-        const hasDetail = Boolean(place.imageUrl || place.description)
         return (
           <li key={place.placeId} className="relative">
             <Leg course={course} minutes={place.travelMinutes} transitInfo={place.transitInfo} />
@@ -41,9 +41,9 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
               <div className="flex items-start gap-3">
                 <button
                   type="button"
-                  onClick={() => hasDetail && setOpenPlaceId(open ? null : place.placeId)}
+                  onClick={() => setOpenPlaceId(open ? null : place.placeId)}
                   className="flex min-w-0 flex-1 gap-3 text-left"
-                  aria-expanded={hasDetail ? open : undefined}
+                  aria-expanded={open}
                 >
                   <PlaceThumbnail place={place} className="size-14" />
                   <span className="min-w-0 flex-1">
@@ -68,27 +68,47 @@ export default function CourseSchedule({ course, onReplace }: CourseScheduleProp
                 )}
               </div>
 
-              <p className="mt-2 text-[11px] text-neutral-500">
-                {place.address}
-                {place.openingHours && ` · ${place.openingHours}`}
-              </p>
+              <button
+                type="button"
+                onClick={() => setOpenPlaceId(open ? null : place.placeId)}
+                className="mt-2 flex w-full items-center justify-between gap-2 text-left text-[11px] text-neutral-500"
+              >
+                <span className="truncate">
+                  {place.address}
+                  {place.openingHours && ` · ${place.openingHours}`}
+                </span>
+                <span className="flex shrink-0 items-center gap-0.5 font-bold text-primary-dark">
+                  {open ? '접기' : '장소 보기'}
+                  <Icon name="chevronDown" className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+                </span>
+              </button>
 
-              {!hasDetail && (
-                <a
-                  href={getKakaoMapLink(place.name, place.lat, place.lng)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1.5 inline-flex items-center gap-0.5 text-xs font-bold text-primary-dark"
-                >
-                  카카오맵에서 보기
-                  <Icon name="chevronRight" className="size-3.5" />
-                </a>
-              )}
-
+              {/* 펼친 내용: 앱 안에서 위치·사진·소개를 본다. 카카오맵은 더 자세히 볼 때만 쓰는 보조 링크 */}
               {open && (
                 <div className="mt-3 flex flex-col gap-2 border-t-2 border-dashed border-line pt-3 text-xs text-neutral-600">
-                  <PlaceThumbnail place={place} className="aspect-video w-full" />
-                  {place.description && <p>{place.description}</p>}
+                  {place.imageUrl && <PlaceThumbnail place={place} className="aspect-video w-full" />}
+                  <div className="overflow-hidden rounded-xl border-2 border-line">
+                    <KakaoMap
+                      center={{ lat: place.lat, lng: place.lng }}
+                      level={3}
+                      markers={[{ lat: place.lat, lng: place.lng, label: String(place.visitOrder), title: place.name }]}
+                      className="h-40 w-full"
+                    />
+                  </div>
+                  {place.description ? (
+                    <p className="leading-relaxed">{place.description}</p>
+                  ) : (
+                    <p className="text-neutral-400">사진·소개는 장소 상세 정보가 준비되면 함께 보여 드려요.</p>
+                  )}
+                  <a
+                    href={getKakaoMapLink(place.name, place.lat, place.lng)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-0.5 self-start font-bold text-primary-dark"
+                  >
+                    카카오맵에서 더 보기
+                    <Icon name="chevronRight" className="size-3.5" />
+                  </a>
                 </div>
               )}
             </div>

@@ -15,7 +15,7 @@ import { KAKAO_GROUP_CATEGORY } from '../kakaoCategory'
 /*
  * [이 파일이 하는 일]
  * 홈 검색창 (HOM-01 ①, REQ-052). 검색어를 제출하면 GET /api/places/search 로 장소·주소를 찾아 아래에 목록으로 보여 준다.
- *   - 장소(PLACE) 결과 → 장소 1곳짜리 상세(DET-01, /results/place-{카카오 장소 ID}). 주변 탐색 카드와 같은 주소 규칙
+ *   - 장소(PLACE) 결과 → 장소 미리보기(/places/{카카오 장소 ID}). 주변 탐색 카드와 같은 화면
  *   - 주소(ADDRESS) 결과 → 그 위치를 출발지로 정하고 외출 조건(CON-01)으로
  * center(현재 위치)를 주면 결과마다 거리가 함께 온다.
  */
@@ -148,7 +148,22 @@ export default function HomeSearchBar({ center, onSubmitQuery, onClearQuery }: H
                   className="border-b border-dashed border-line last:border-0"
                 >
                   {result.type === 'PLACE' && result.kakaoPlaceId ? (
-                    <Link to={`/results/place-${result.kakaoPlaceId}`} className="flex items-center gap-3 px-3 py-2.5">
+                    <Link
+                      to={`/places/${result.kakaoPlaceId}`}
+                      state={{
+                        place: {
+                          kakaoPlaceId: result.kakaoPlaceId,
+                          name: result.name,
+                          category: result.categoryGroupCode ? (KAKAO_GROUP_CATEGORY[result.categoryGroupCode] ?? null) : null,
+                          subCategory: result.categoryName?.split(' > ').pop() ?? null,
+                          address: result.roadAddress ?? result.address,
+                          latitude: result.latitude,
+                          longitude: result.longitude,
+                          distance: result.distance,
+                        },
+                      }}
+                      className="flex items-center gap-3 px-3 py-2.5"
+                    >
                       <ResultRow result={result} />
                     </Link>
                   ) : (

@@ -268,8 +268,17 @@ export default function NearbySheet({
                   }
                   selected={place.kakaoPlaceId === selectedPlaceId}
                   onSelect={() => onSelectPlace(place)}
-                  detailTo={`/results/place-${place.kakaoPlaceId}`}
-                  detailState={{ name: place.name, lat: place.latitude, lng: place.longitude }}
+                  // '상세 보기' → 장소 미리보기. 목록에서 받은 정보를 그대로 넘긴다 (#180 과 같은 형식)
+                  detail={{
+                    kakaoPlaceId: place.kakaoPlaceId,
+                    name: place.name,
+                    category: place.category,
+                    subCategory: place.subCategory,
+                    address: place.roadAddress ?? place.address,
+                    latitude: place.latitude,
+                    longitude: place.longitude,
+                    distance: place.distance,
+                  }}
                 />
               ))}
             </ul>
@@ -350,8 +359,21 @@ function SearchResults({ search, radius }: { search: NearbySearchView; radius: n
                   meta={[kind, `직선 ${formatDistanceForRadius(item.distance)}`, item.address !== item.name ? item.address : null].filter(Boolean).join(' · ')}
                   selected={item.id === search.selectedId}
                   onSelect={() => search.onSelect(item)}
-                  detailTo={item.kakaoPlaceId ? `/results/place-${item.kakaoPlaceId}` : null}
-                  detailState={{ name: item.name, lat: item.lat, lng: item.lng }}
+                  // 장소(카카오 장소 ID 있음)만 미리보기로 갈 수 있다. 주소 결과는 상세 보기 없음
+                  detail={
+                    item.kakaoPlaceId
+                      ? {
+                          kakaoPlaceId: item.kakaoPlaceId,
+                          name: item.name,
+                          category: category ?? null,
+                          subCategory: item.categoryLabel,
+                          address: item.address,
+                          latitude: item.lat,
+                          longitude: item.lng,
+                          distance: item.distance,
+                        }
+                      : null
+                  }
                 />
               )
             })}
